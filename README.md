@@ -5,7 +5,7 @@
 Det här är ett gränssnitt för att läsa och skriva resultat
  till ladok 3. Det består av:
 
-* \__init__         konstruktor som loggar in och hämtar grunddata
+* \_\_init__         konstruktor som loggar in och hämtar grunddata
 * get_results      returnerar en dictionary med momentnamn och resultat
 * save_result      sparar resultat för en student som utkast
 * get_student_name
@@ -17,8 +17,11 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     #
     # init
     #
-    # username          - ditt loginid t.ex. alba
-    # password          - lösenord
+    # Konstruktorn loggar in på ladok3 över https genom att härma en
+    # webbläsare. 
+    #
+    # username            - ditt loginid t.ex. alba
+    # password            - lösenord
 
     def __init__(self, username, password):
 ```
@@ -30,9 +33,9 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     #
     # get_results
     #
-    # person_nr          - personnummer, siffror i strängformat
-    #            t.ex. 19461212-1212
-    # course_code          - kurskod t.ex. DD1321
+    # person_nr           - personnummer, flera format accepteras
+    #                       t.ex. 19461212-1212
+    # course_code         - kurskod t.ex. DD1321
     #
     # RETURNERAR en dictionary från ladok med momentnamn, resultat
     #
@@ -80,8 +83,8 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     #
     # get_student_name
     #
-    # person_nr          - personnummer, flera format accepteras enligt regex:
-    #                      (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
+    # person_nr           - personnummer, flera format accepteras enligt regex:
+    #                       (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
     #
     # RETURNERAR en dictionary med för- och efternamn
     #
