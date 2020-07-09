@@ -10,7 +10,7 @@ Det här är ett gränssnitt för att läsa och skriva resultat
 * save_result      sparar resultat för en student som utkast
 * get_student_name
 
-### \__init__
+### \_\_init__
 
 ```python
     #####################################################################
