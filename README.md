@@ -5,12 +5,12 @@
 Det här är ett gränssnitt för att läsa och skriva resultat
  till ladok 3. Det består av:
 
-* __init__         konstruktor som loggar in och hämtar grunddata
+* \__init__         konstruktor som loggar in och hämtar grunddata
 * get_results      returnerar en dictionary med momentnamn och resultat
 * save_result      sparar resultat för en student som utkast
 * get_student_name
 
-### __init__
+### \__init__
 
 ```python
     #####################################################################
