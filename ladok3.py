@@ -1,8 +1,17 @@
 # -*- coding: utf-8 -*-
-import requests, re, html, datetime, urllib.parse
+import re, html, datetime, urllib.parse
+
+try:
+    import requests
+except ImportError as e:
+    print("""
+Python-paketet requests behöver installeras för att nå ladok
+> pip3 install requests
+""")
+    print(e)
+    sys.exit()
 
 base_url = 'https://www.start.ladok.se/gui/proxy'
-
 
 ##############################################################
 #
