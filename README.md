@@ -116,7 +116,8 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     # RETURNERAR response to the request
     #
     # Example:     status=ladok_session.logout()
-    def logout(self):```
+    def logout(self):
+```
 
 ### all_grading_scale
 ```python
