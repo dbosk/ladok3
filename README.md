@@ -94,6 +94,129 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     def get_student_name(self, person_nr_raw):
 ```
 
+```python
+    #####################################################################
+    #
+    # get_student_data_complete
+    #
+    # person_nr           - personnummer, flera format accepteras enligt regex:
+    #                       (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
+    #
+    # RETURNERAR JSON of the request for studentinformation/student
+```
+
+```python
+    #####################################################################
+    #
+    # get_student_data_complete
+    #
+    # person_nr          - personnummer, flera format accepteras enligt regex:
+    #                      (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
+    #
+    # lang               - language code 'en' or 'sv', defaults to 'sv'
+    #
+    # RETURNERAR en dictionary med för- och efternamn and more
+    #
+    # {"first_name" : 'Anna', "last_name : 'Andersson'}
+```
+
+```python
+    #####################################################################
+    #
+    # logout
+    #                        Terminate the Ladok session
+    #
+    # RETURNERAR en dictionary of the request
+```
+
+```python
+    #####################################################################
+    #
+    # all_grading_scale
+    #
+    #
+    # RETURNERAR en dictionary of the grading scales
+```
+
+```python
+    #####################################################################
+    #
+    # change_local
+    #
+    # lang               - language code 'en' or 'sv', defaults to 'sv'
+    #
+    # RETURNERAR en dictionary of request
+```
+
+```python
+    #####################################################################
+    #
+    # course_instances
+    #
+    # course_code        - course code, such as "II2202"
+    #
+    # lang               - language code 'en' or 'sv', defaults to 'sv'
+    #
+    # RETURNERAR en dictionary of course instances
+```
+
+```python
+    #####################################################################
+    #
+    # organization_info
+    #
+    # RETURNERAR en dictionary of organization information
+```
+
+```python
+    #####################################################################
+    #
+    # period_info
+    #
+    # RETURNERAR en dictionary of period information
+```
+
+```python
+    #####################################################################
+    #
+    # instance_info
+    #
+    # course_code        - course code, such as "II2202"
+    #
+    # instance_code      - instance of the course ('TillfallesKod')
+    # 
+    # lang               - language code 'en' or 'sv', defaults to 'sv'
+    #
+    # RETURNERAR en dictionary of course instance information
+```
+```python
+    #####################################################################
+    #
+    # course_instance
+    #
+    # uid                -  uid of c course instance
+    #
+    # RETURNERAR en dictionary of course instance information
+```
+```python
+    #####################################################################
+    #
+    # participants
+    #
+    # uid                -  uid of c course instance
+    #
+    # RETURNERAR en dictionary of participants in a given course instance
+```
+```python
+    #####################################################################
+    #
+    # studystructure_student
+    #
+    # uid                -  uid of a student
+    #
+    # RETURNERAR en dictionary of student information
+```
+
 ### canvas_ladok3_spreadsheet.py
 
 Purpose: Use the data in a Canvas course room together with the data from Ladok3 to create a spreadsheet of students in the course
