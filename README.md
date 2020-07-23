@@ -262,7 +262,7 @@ Input:
 ladok3_course_instance_to_spreadsheet.py course_code course_instance
 ```
 
-Output: outputs a file ('users_programs-COURSE_ID.xlsx) containing a spreadsheet of the users information
+Output: outputs a file ('users_programs-instance-COURSE_INSTANCE.xlsx) containing a spreadsheet of the users information
 
 ```
 # for the P1 instance in 2019 the course instance is 50287
