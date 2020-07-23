@@ -110,6 +110,38 @@ def users_in_course(course_id):
 
     return users_found_thus_far
 
+def list_dashboard_cards():
+    cards_found_thus_far=[]
+    # Use the Canvas API to get the list of dashboard cards
+    #GET /api/v1/dashboard/dashboard_cards
+
+    url = "{0}/dashboard/dashboard_cards".format(canvas_baseUrl)
+    if Verbose_Flag:
+        print("url: {}".format(url))
+
+    r = requests.get(url, headers = canvas_header)
+    if Verbose_Flag:
+        print("result of getting dashboard cards: {}".format(r.text))
+
+    if r.status_code == requests.codes.ok:
+        page_response=r.json()
+
+        for p_response in page_response:  
+            cards_found_thus_far.append(p_response)
+
+            # the following is needed when the reponse has been paginated
+            # i.e., when the response is split into pieces - each returning only some of the list of files
+            # see "Handling Pagination" - Discussion created by tyler.clair@usu.edu on Apr 27, 2015, https://community.canvaslms.com/thread/1500
+        while r.links.get('next', False):
+            r = requests.get(r.links['next']['url'], headers=header)  
+            if Verbose_Flag:
+                print("result of getting files for a paginated response: {}".format(r.text))
+            page_response = r.json()  
+            for p_response in page_response:  
+                cards_found_thus_far.append(p_response)
+
+    return cards_found_thus_far
+
 #//////////////////////////////////////////////////////////////////////
 # Ladok related routines
 #//////////////////////////////////////////////////////////////////////
@@ -122,13 +154,6 @@ def swedish_name(names):
     for i in names:
         if i['Sprakkod'] == 'sv':
             return i['Text']
-
-# set up the output write
-def write_xlsx(file_name, df, sheet_name):
-    writer = pd.ExcelWriter(file_name+'.xlsx', engine='xlsxwriter')
-    df.to_excel(writer, sheet_name=sheet_name)
-    # Close the Pandas Excel writer and output the Excel file.
-    writer.save()
 
 def specialization_info(ls, student_uid):
     s1=ls.studystructure_student_JSON(student_uid)
@@ -155,6 +180,72 @@ def specialization_info(ls, student_uid):
         sss2=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
         sss3=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
         return [program_code, sss1, sss2, sss3]
+
+#//////////////////////////////////////////////////////////////////////
+# utility routines
+#//////////////////////////////////////////////////////////////////////
+# set up the output write
+def write_xlsx(file_name, df, sheet_name):
+    writer = pd.ExcelWriter(file_name+'.xlsx', engine='xlsxwriter')
+    df.to_excel(writer, sheet_name=sheet_name)
+    # Close the Pandas Excel writer and output the Excel file.
+    writer.save()
+
+def course_id_from_assetString(card):
+    global Verbose_Flag
+
+    course_id=card['assetString']
+    if len(course_id) > 7:
+        if course_id.startswith('course_'):
+            course_id=course_id.replace('course_', "", 1)
+            if Verbose_Flag:
+                print("course_id_from_assetString:: course_id={}".format(course_id))
+            return course_id
+    else:
+        print("Error missing assetString for card {}".format(card))
+        return None
+
+# check if the course_id is all digits, matches course code, or matches a short_name
+def process_course_id_from_commandLine(course_id):
+    if not course_id.isdigit():
+        cards=list_dashboard_cards()
+        for c in cards:
+            # look to see if the string is a course_code
+            if course_id == c['courseCode']:
+                course_id=course_id_from_assetString(c)
+                break
+            # check for matched against shortName
+            if course_id == c['shortName']:
+                course_id=course_id_from_assetString(c)
+                break
+            # look for the string at start of the shortName
+            if c['shortName'].startswith(course_id) > 0:
+                course_id=course_id_from_assetString(c)
+                print("picked the course {} based on the starting match".format(c['shortName']))
+                break
+            # look for the substring in the shortName
+            if c['shortName'].find(course_id) > 0:
+                course_id=course_id_from_assetString(c)
+                print("picked the course {} based on partial match".format(c['shortName']))
+                break
+
+            # check for matched against originalName
+            if course_id == c['originalName']:
+                course_id=course_id_from_assetString(c)
+                break
+            # look for the string at start of the shortName
+            if c['originalName'].startswith(course_id) > 0:
+                course_id=course_id_from_assetString(c)
+                print("picked the course {} based on the starting match".format(c['shortName']))
+                break
+            # look for the substring in the shortName
+            if c['originalName'].find(course_id) > 0:
+                course_id=course_id_from_assetString(c)
+                print("picked the course {} based on partial match".format(c['shortName']))
+                break
+
+        print("processing course: {0} with course_id={1}".format(c['originalName'], course_id))
+    return course_id
 
 def main():
     global Verbose_Flag
@@ -203,7 +294,14 @@ def main():
         print("Insuffient arguments - must provide course_id\n")
         sys.exit()
 
-    course_id=remainder[0]
+    course_id=process_course_id_from_commandLine(remainder[0])
+    if not course_id:
+        print("Unable to recognize a course_id, course code, or short name for a course in {}".format(remainder[0]))
+        return
+
+    if options.testing:
+        return
+
     users=users_in_course(course_id)
 
     user_and_program_list=[]
