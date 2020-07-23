@@ -94,41 +94,30 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     def get_student_name(self, person_nr_raw):
 ```
 
+### get_student_data_JSON
 ```python
     #####################################################################
     #
-    # get_student_data_complete
+    # get_student_data_JSON
     #
     # person_nr           - personnummer, flera format accepteras enligt regex:
     #                       (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
     #
     # RETURNERAR JSON of the request for studentinformation/student
 ```
-
-```python
-    #####################################################################
-    #
-    # get_student_data_complete
-    #
-    # person_nr          - personnummer, flera format accepteras enligt regex:
-    #                      (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
-    #
-    # lang               - language code 'en' or 'sv', defaults to 'sv'
-    #
-    # RETURNERAR en dictionary med för- och efternamn and more
-    #
-    # {"first_name" : 'Anna', "last_name : 'Andersson'}
-```
-
+### logout
 ```python
     #####################################################################
     #
     # logout
     #                        Terminate the Ladok session
     #
-    # RETURNERAR en dictionary of the request
+    # RETURNERAR response to the request
+    #
+    # Example:     status=ladok_session.logout()
 ```
 
+### all_grading_scale
 ```python
     #####################################################################
     #
@@ -137,7 +126,17 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     #
     # RETURNERAR en dictionary of the grading scales
 ```
-
+### grading_rights
+```python
+    #####################################################################
+    #
+    # grading_rights
+    #
+    #
+    # RETURNERAR en dictionary of the grading rights (of the logged in user)
+    def grading_rights(self):
+```
+### change_local
 ```python
     #####################################################################
     #
@@ -145,37 +144,43 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     #
     # lang               - language code 'en' or 'sv', defaults to 'sv'
     #
-    # RETURNERAR en dictionary of request
+    # RETURNERAR reponse to the request
+    #
+    # Example:     status=ladok_session.change_local('en')
 ```
+### course_instances_JSON
 
 ```python
     #####################################################################
     #
-    # course_instances
+    # course_instances_JSON
     #
     # course_code        - course code, such as "II2202"
     #
     # lang               - language code 'en' or 'sv', defaults to 'sv'
     #
-    # RETURNERAR en dictionary of course instances
+    # RETURNERAR JSON of resultat/kurstillfalle
+    #
+    # Example: ladok_session.course_instances('II2202', 'en')
 ```
-
+### organization_info_JSON
 ```python
     #####################################################################
     #
-    # organization_info
+    # organization_info_JSON
     #
-    # RETURNERAR en dictionary of organization information
+    # RETURNERAR JSON of resultat/organisation/utanlankar for the entire institution of the logged in user
 ```
 
+### period_info_JSON
 ```python
     #####################################################################
     #
-    # period_info
+    # period_info_JSON
     #
-    # RETURNERAR en dictionary of period information
+    # RETURNERAR JSON of /resultat/grunddata/period
 ```
-
+### instance_info
 ```python
     #####################################################################
     #
@@ -188,16 +193,22 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     # lang               - language code 'en' or 'sv', defaults to 'sv'
     #
     # RETURNERAR en dictionary of course instance information
+    #
+    # Example: info=ladok_session.instance_info('II2202', instance_code, 'en')
 ```
+### course_instance_JSON
 ```python
     #####################################################################
     #
-    # course_instance
+    # course_instance_JSON
     #
     # uid                -  uid of c course instance
     #
-    # RETURNERAR en dictionary of course instance information
+    # RETURNERAR JSON of resultat/utbildningsinstans/kursinstans
+    #
+    # Example: kurs=ladok_session.course_instance_JSON(ii['Utbildningsinstans']['Uid']
 ```
+### participants_JSON
 ```python
     #####################################################################
     #
@@ -205,12 +216,17 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     #
     # uid                -  uid of c course instance
     #
-    # RETURNERAR en dictionary of participants in a given course instance
+    # RETURNERAR JSON of participants in a given course instance
+    # 
+    # Example:         instance_code='50287'
+    #                  ii=ladok_session.instance_info('II2202', instance_code, 'en')
+    #                  pl=ladok_session.participants(ii['Uid'])
 ```
+### studystructure_student_JSON
 ```python
     #####################################################################
     #
-    # studystructure_student
+    # studystructure_student_JSON
     #
     # uid                -  uid of a student
     #

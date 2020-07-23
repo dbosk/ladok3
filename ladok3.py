@@ -305,29 +305,6 @@ class LadokSession():
         student_data = self.__get_student_data(person_nr)
         return student_data
 
-
-
-    # added by GQMJr
-    #####################################################################
-    #
-    # get_student_data_complete
-    #
-    # person_nr           - personnummer, flera format accepteras enligt regex:
-    #                       (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
-    #
-    # RETURNERAR JSON of the request for studentinformation/student
-
-    def get_student_data_complete(self, person_nr_raw):
-        if not self.signed_in: raise Exception('Not signed in.')
-        person_nr =  self.__validate_person_nr(person_nr_raw)
-        
-        if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
-        
-        #r = self.__session.get(url = base_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.__headers).json()['Resultat']
-        r = self.__session.get(url = base_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.__headers).json()
-        
-        return r
-
     #####################################################################
     #
     # get_student_name
@@ -339,7 +316,6 @@ class LadokSession():
     #
     # {"first_name" : 'Anna', "last_name : 'Andersson'}
     #
-    
     def get_student_name(self, person_nr_raw):
         if not self.signed_in: raise Exception('Not signed in.')
         person_nr =  self.__validate_person_nr(person_nr_raw)
@@ -353,7 +329,7 @@ class LadokSession():
     # added by GQMJr
     #####################################################################
     #
-    # get_student_data_complete
+    # get_student_data_JSON
     #
     # person_nr          - personnummer, flera format accepteras enligt regex:
     #                      (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
@@ -361,15 +337,12 @@ class LadokSession():
     # lang               - language code 'en' or 'sv', defaults to 'sv'
     #
     # RETURNERAR en dictionary med för- och efternamn and more
-    #
-    # {"first_name" : 'Anna', "last_name : 'Andersson'}
-    def get_student_data_complete(self, person_nr_raw, lang = 'sv'):
-        if not self.signed_in: raise Exception('Not signed in.')
+    def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
+        if not self.signed: raise Exception('Not signed in.')
         person_nr =  self.__validate_person_nr(person_nr_raw)
         
         if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
 
-        #r = self.__session.get(url = base_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.__headers).json()['Resultat']
         r = self.__session.get(url = base_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
         
         return r
@@ -380,7 +353,9 @@ class LadokSession():
     # logout
     #                        Terminate the Ladok session
     #
-    # RETURNERAR en dictionary of the request
+    # RETURNERAR response to the request
+    #
+    # Example:     status=ladok_session.logout()
     def logout(self):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/logout', headers = self.__headers)
@@ -412,7 +387,7 @@ class LadokSession():
     # grading_rights
     #
     #
-    # RETURNERAR en dictionary of the grading rights
+    # RETURNERAR en dictionary of the grading rights (of the logged in user)
     def grading_rights(self):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/resultat/resultatrattighet/listaforinloggadanvandare', headers = self.__headers).json()
@@ -426,8 +401,8 @@ class LadokSession():
     #
     # lang               - language code 'en' or 'sv', defaults to 'sv'
     #
-    # RETURNERAR en dictionary of request
-    def change_local(self, lang, lang = 'sv'):
+    # RETURNERAR reponse to the request
+    def change_local(self, lang = 'sv'):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = 'https://www.start.ladok.se/gui/services/i18n/changeLocale?lang='+lang, headers = self.__headers).json()
         return r
@@ -435,13 +410,15 @@ class LadokSession():
     # added by GQMJr
     #####################################################################
     #
-    # course_instances
+    # course_instances_JSON
     #
     # course_code        - course code, such as "II2202"
     #
     # lang               - language code 'en' or 'sv', defaults to 'sv'
     #
-    # RETURNERAR en dictionary of course instances
+    # RETURNERAR JSON of resultat/kurstillfalle
+    #
+    # Example: ladok_session.course_instances('II2202', 'en')
     def course_instances(self, course_code, lang = 'sv'):
         if not self.signed_in: raise Exception('Not signed in.')
         # note that there seems to be a limit of 403 for the number of pages
@@ -451,9 +428,9 @@ class LadokSession():
     # added by GQMJr
     #####################################################################
     #
-    # organization_info
+    # organization_info_JSON
     #
-    # RETURNERAR en dictionary of organization information
+    # RETURNERAR en dictionary of organization information for the entire institution of the logged in user
     def organization_info(self):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/resultat/organisation/utanlankar', headers = self.__headers).json()
@@ -462,9 +439,9 @@ class LadokSession():
     # added by GQMJr
     #####################################################################
     #
-    # period_info
+    # period_info_JSON
     #
-    # RETURNERAR en dictionary of period information
+    # RETURNERAR JSON of /resultat/grunddata/period
     def period_info(self):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/resultat/grunddata/period', headers = self.__headers).json()
@@ -482,6 +459,8 @@ class LadokSession():
     # lang               - language code 'en' or 'sv', defaults to 'sv'
     #
     # RETURNERAR en dictionary of course instance information
+    #
+    # Example: ii=ladok_session.instance_info('II2202', instance_code, 'en')
     def instance_info(self, course_code, instance_code, lang = 'sv'):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=25&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
@@ -494,11 +473,13 @@ class LadokSession():
     # added by GQMJr
     #####################################################################
     #
-    # course_instance
+    # course_instance_JSON
     #
     # uid                -  uid of c course instance
     #
-    # RETURNERAR en dictionary of course instance information
+    # RETURNERAR JSON of resultat/utbildningsinstans/kursinstans
+    #
+    # Example: kurs=ladok_session.course_instance_JSON(ii['Utbildningsinstans']['Uid'])
     def course_instance(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/resultat/utbildningsinstans/kursinstans/'+uid, headers = self.__headers).json()
@@ -507,12 +488,17 @@ class LadokSession():
     # added by GQMJr
     #####################################################################
     #
-    # participants
+    # participants_JSON
     #
     # uid                -  uid of c course instance
     #
-    # RETURNERAR en dictionary of participants in a given course instance
-    def participants(self, uid):
+    # RETURNERAR JSON of participants in a given course instance
+    #
+    # Example:         instance_code='50287'
+    #                  ii=ladok_session.instance_info('II2202', instance_code, 'en')
+    #                  pl=ladok_session.participants(ii['Uid'])
+
+    def participants_JSON(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
         headers = self.__headers.copy()
         headers['Content-Type'] = 'application/vnd.ladok-studiedeltagande+json'
@@ -594,12 +580,12 @@ class LadokSession():
     # added by GQMJr
     #####################################################################
     #
-    # studystructure_student
+    # studystructure_student_JSON
     #
     # uid                -  uid of a student
     #
     # RETURNERAR en dictionary of student information
-    def studystructure_student(self, uid):
+    def studystructure_student_JSON(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/studiedeltagande/studiestruktur/student/'+uid, headers = self.__headers).json()
         return r

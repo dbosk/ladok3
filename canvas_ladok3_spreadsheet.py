@@ -128,7 +128,7 @@ def write_xlsx(file_name, df, sheet_name):
     writer.save()
 
 def specialization_info(ls, student_uid):
-    s1=ls.studystructure_student(student_uid)
+    s1=ls.studystructure_student_JSON(student_uid)
     ss1=s1['Studiestrukturer']
 
     # a student who is not in a program will have s1 == {'Studiestrukturer': [], 'link': []}
@@ -193,7 +193,7 @@ def main():
 
     ladok_session=initialize(options)
 
-    # s1=ladok_session.studystructure_student('f9da68d5-e0f1-11e7-8131-683643294f39')
+    # s1=ladok_session.studystructure_student_JSON('f9da68d5-e0f1-11e7-8131-683643294f39')
     # print("s1={}".format(s1))
 
     if (len(remainder) < 1):
