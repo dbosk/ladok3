@@ -94,3 +94,39 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     def get_student_name(self, person_nr_raw):
 ```
 
+### canvas_ladok3_spreadsheet.py
+
+Purpose: Use the data in a Canvas course room together with the data from Ladok3 to create a spreadsheet of students in the course
+and include their Canvas user_id, name, Ladok3 Uid, program_code, program name, etc.
+
+
+Input: 
+```
+canvas_ladok3_spreadsheet.py canvas_course_id
+```
+
+Output: outputs a file ('users_programs-COURSE_ID.xlsx) containing a spreadsheet of the users information
+
+```
+canvas_ladok3_spreadsheet.py 12162
+```
+### ladok3_course_instance_to_spreadsheet.py
+
+Purpose: Use the data in Ladok3 together with the data from Canvas to create a spreadsheet of students in a course
+instance and include their Canvas user_id (or "not in Canvas" if they do not have a Canvas user_id), name, Ladok3 Uid, program_code, program name, etc.
+
+Optionally include their personnumber with the flag -p or --personnumbers 
+
+
+Input: 
+```
+ladok3_course_instance_to_spreadsheet.py course_code course_instance
+```
+
+Output: outputs a file ('users_programs-COURSE_ID.xlsx) containing a spreadsheet of the users information
+
+```
+# for the P1 instance in 2019 the course instance is 50287
+ladok3_course_instance_to_spreadsheet.py II2202 50287
+```
+

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import re, html, datetime, urllib.parse
+import re, html, datetime, urllib.parse, json
 
 try:
     import requests
@@ -23,6 +23,9 @@ base_url = 'https://www.start.ladok.se/gui/proxy'
 # __init__         konstruktor som loggar in och hämtar grunddata
 # get_results      returnerar en dictionary med momentnamn och resultat
 # save_result      sparar resultat för en student som utkast
+#
+# The original LadokSession code is from Alexander Baltatzis <alba@kth.se> on 2020-07-20
+# I (Gerald Q. Maguire Jr.) have extended on 2020-07-21 and later with the code as noted below.
 class LadokSession():
 
     #####################################################################
@@ -286,6 +289,38 @@ class LadokSession():
 
     #####################################################################
     #
+    # get_student_data
+    #
+    # person_nr           - personnummer, flera format accepteras enligt regex:
+    #                       (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
+    #
+    # RETURNERAR {'id': 'xxxx', 'first_name': 'x', 'last_name': 'y', 'person_nr': 'xxx', 'alive': True}
+
+    def get_student_data(self, person_nr_raw):
+        if not self.signed_in: raise Exception('Not signed in.')
+        person_nr =  self.__validate_person_nr(person_nr_raw)
+        
+        if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+        
+        student_data = self.__get_student_data(person_nr)
+        return student_data
+
+
+
+    # added by GQMJr
+    def get_student_data_complete(self, person_nr_raw):
+        if not self.signed_in: raise Exception('Not signed in.')
+        person_nr =  self.__validate_person_nr(person_nr_raw)
+        
+        if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+        
+        #r = self.__session.get(url = base_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.__headers).json()['Resultat']
+        r = self.__session.get(url = base_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.__headers).json()
+        
+        return r
+
+    #####################################################################
+    #
     # get_student_name
     #
     # person_nr          - personnummer, flera format accepteras enligt regex:
@@ -305,6 +340,172 @@ class LadokSession():
         student_data = self.__get_student_data(person_nr)
         return { "first_name": student_data["first_name"], "last_name" : student_data["last_name"] }
 
+
+    # added by GQMJr
+    def get_student_data_complete_en(self, person_nr_raw):
+        if not self.signed_in: raise Exception('Not signed in.')
+        person_nr =  self.__validate_person_nr(person_nr_raw)
+        
+        if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+
+        #r = self.__session.get(url = base_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.__headers).json()['Resultat']
+        r = self.__session.get(url = base_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=en', headers = self.__headers).json()
+        
+        return r
+
+    # added by GQMJr
+    def logout(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = base_url + '/logout', headers = self.__headers)
+
+        if r.status_code == 200:
+            # successfully logged out
+            self.__session.close()
+            self.signed_in = False
+            self.__session = None
+        return r
+
+
+    # added by GQMJr
+    def all_grading_scale(self):
+        # for grade_scale in self.__grade_scales:
+        #     print("grade_scale={}".format(grade_scale))
+        return self.__grade_scales
+
+
+    # added by GQMJr
+    def grading_rights(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = base_url + '/resultat/resultatrattighet/listaforinloggadanvandare', headers = self.__headers).json()
+        return r['Resultatrattighet']
+        
+
+    # added by GQMJr
+    def change_local(self, lang):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = 'https://www.start.ladok.se/gui/services/i18n/changeLocale?lang='+lang, headers = self.__headers).json()
+        return r
+
+    # added by GQMJr
+    def course_instances(self, course_code, lang):
+        if not self.signed_in: raise Exception('Not signed in.')
+        # note that there seems to be a limit of 403 for the number of pages
+        r = self.__session.get(url = base_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=100&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
+        return r
+
+    # added by GQMJr
+    def organization_info(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = base_url + '/resultat/organisation/utanlankar', headers = self.__headers).json()
+        return r
+
+    # added by GQMJr
+    def period_info(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = base_url + '/resultat/grunddata/period', headers = self.__headers).json()
+        return r
+
+    # added by GQMJr
+    def instance_info(self, course_code, instance_code, lang):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = base_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=25&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
+        for course in r['Resultat']:
+            if course['TillfallesKod'] == instance_code:
+                return course
+        return r
+
+
+    # added by GQMJr
+    def course_instance(self, uid):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = base_url + '/resultat/utbildningsinstans/kursinstans/'+uid, headers = self.__headers).json()
+        return r
+
+    # added by GQMJr
+    def participants(self, uid):
+        if not self.signed_in: raise Exception('Not signed in.')
+        headers = self.__headers.copy()
+        headers['Content-Type'] = 'application/vnd.ladok-studiedeltagande+json'
+        headers['X-XSRF-TOKEN'] = self.__get_xsrf_token()
+        headers['Origin'] = 'https://www.start.ladok.se'
+
+        put_data = {'page': 1,
+                    'limit': 400,
+                    'orderby': ['EFTERNAMN_ASC',
+                                'FORNAMN_ASC',
+                                'PERSONNUMMER_ASC',
+                                'KONTROLLERAD_KURS_ASC'],
+                    'deltagaretillstand': ['EJ_PABORJAD', # include students how have not yet started the course
+                                           'REGISTRERAD', # include registered students
+                                           'AVKLARAD'], # include students who have completed the course
+                    'utbildningstillfalleUID': [uid]
+        }
+            
+        # the constants above come from schemas.ladok.se-studiedeltagande.xsd
+        #
+        # <xs:simpleType name="DeltagareKurstillfalleOrderByEnum">
+        #   <xs:restriction base="xs:string">
+        #     <xs:enumeration value="EFTERNAMN_DESC"/>
+        #     <xs:enumeration value="PERSONNUMMER_DESC"/>
+        #     <xs:enumeration value="PERSONNUMMER_ASC"/>
+        #     <xs:enumeration value="EFTERNAMN_ASC"/>
+        #     <xs:enumeration value="FORNAMN_DESC"/>
+        #     <xs:enumeration value="FORNAMN_ASC"/>
+        #   </xs:restriction>
+        # </xs:simpleType>
+        #
+        # or perhaps it comes from:
+        #
+        # <xs:simpleType name="DeltagareKurspaketeringstillfalleOrderByEnum">
+        #   <xs:restriction base="xs:string">
+        #     <xs:enumeration value="EFTERNAMN_ASC"/>
+        #     <xs:enumeration value="EFTERNAMN_DESC"/>
+        #     <xs:enumeration value="PERIOD_I_ORDNING_DESC"/>
+        #     <xs:enumeration value="KONTROLLERAD_KURS_DESC"/>
+        #     <xs:enumeration value="SUMMERAD_GODKAND_OMFATTNING_DESC"/>
+        #     <xs:enumeration value="PERSONNUMMER_ASC"/>
+        #     <xs:enumeration value="FORNAMN_ASC"/>
+        #     <xs:enumeration value="KONTROLLERAD_KURS_ASC"/>
+        #     <xs:enumeration value="SUMMERAD_GODKAND_OMFATTNING_ASC"/>
+        #     <xs:enumeration value="FORNAMN_DESC"/>
+        #     <xs:enumeration value="PERIOD_I_ORDNING_ASC"/>
+        #     <xs:enumeration value="PERSONNUMMER_DESC"/>
+        #   </xs:restriction>
+        # </xs:simpleType>
+
+        # <xs:simpleType name="DeltagaretillstandEnum">
+        #   <xs:restriction base="xs:string">
+        #     <xs:enumeration value="EJ_PAGAENDE_TILLFALLESBYTE"/>
+        #     <xs:enumeration value="EJ_PABORJAD"/>
+        #     <xs:enumeration value="AVKLARAD"/>
+        #     <xs:enumeration value="ATERBUD"/>
+        #     <xs:enumeration value="AVBROTT"/>
+        #     <xs:enumeration value="PAGAENDE_MED_SPARR"/>
+        #     <xs:enumeration value="PAGAENDE"/>
+        #     <xs:enumeration value="PABORJAD"/>
+        #     <xs:enumeration value="FORVANTAD_DELTAGARE"/>
+        #     <xs:enumeration value="REGISTRERAD"/>
+        #     <xs:enumeration value="UPPEHALL"/>
+        #   </xs:restriction>
+        # </xs:simpleType>
+
+
+        txt=json.dumps(put_data)
+        #print("txt={}".format(txt))
+        # note that I could not use json = put_data, as this changed the 'Content-Type' and broke the functionality
+        # For thie reason, I manually do the conversion of the JSON to a string and manually set the 'Content-Type'.
+        r = self.__session.put(url = base_url + '/studiedeltagande/deltagare/kurstillfalle', data = txt, headers = headers)
+        if r.status_code == 200:
+            participant_info=json.loads(r.text)
+            return participant_info
+        return r
+
+
+    # added by GQMJr
+    def studystructure_student(self, uid):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = base_url + '/studiedeltagande/studiestruktur/student/'+uid, headers = self.__headers).json()
+        return r
 
 #################################################################
 ##
@@ -366,7 +567,26 @@ class LadokSession():
         if len(r) != 1: return None
         
         r = r[0]
-        
+        # from schemas/schemas.ladok.se-studentinformation.xsd
+        #   <xs:complexType name="Student">
+        #   <xs:complexContent>
+        #     <xs:extension base="base:BaseEntitet">
+        #       <xs:sequence>
+        #         <xs:element name="Avliden" type="xs:boolean"/>
+        #         <xs:element minOccurs="0" name="Efternamn" type="xs:string"/>
+        #         <xs:element minOccurs="0" name="ExterntUID" type="xs:string"/>
+        #         <xs:element name="FelVidEtableringExternt" type="xs:boolean"/>
+        #         <xs:element minOccurs="0" name="Fodelsedata" type="xs:string"/>
+        #         <xs:element minOccurs="0" name="Fornamn" type="xs:string"/>
+        #         <xs:element minOccurs="0" name="KonID" type="xs:int"/>
+        #         <xs:element minOccurs="0" name="Personnummer" type="xs:string"/>
+        #         <xs:element minOccurs="0" name="Skyddsstatus" type="xs:string"/>
+        #         <xs:element minOccurs="0" ref="si:UnikaIdentifierare"/>
+        #       </xs:sequence>
+        #     </xs:extension>
+        #   </xs:complexContent>
+        # </xs:complexType>
+
         return {
             'id': r['Uid'], # Ladok-ID
             'first_name': r['Fornamn'],
@@ -433,5 +653,3 @@ class LadokSession():
                 } for result in r['ResultatPaUtbildningar']
             ]
         }
-    
-
