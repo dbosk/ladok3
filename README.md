@@ -280,4 +280,17 @@ Output: outputs a file ('users_programs-instance-COURSE_INSTANCE.xlsx) containin
 ladok3_course_instance_to_spreadsheet.py II2202 50287
 ```
 
+### canvas_students_missing_integration_ids.py
+
+Purpose: Use the data in a Canvas course room to create a spreadsheet of students in the course who are missing an integration ID.
+
+
+Input: 
+```
+canvas_students_missing_integration_ids.py canvas_course_id
+```
+
+Output: outputs a file ('users_without_integration_ids-COURSE_ID.xlsx) containing a spreadsheet of the users information
+
+```
 
