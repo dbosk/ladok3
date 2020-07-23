@@ -338,7 +338,7 @@ class LadokSession():
     #
     # RETURNERAR en dictionary med för- och efternamn and more
     def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
-        if not self.signed: raise Exception('Not signed in.')
+        if not self.signed_in: raise Exception('Not signed in.')
         person_nr =  self.__validate_person_nr(person_nr_raw)
         
         if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
@@ -419,7 +419,7 @@ class LadokSession():
     # RETURNERAR JSON of resultat/kurstillfalle
     #
     # Example: ladok_session.course_instances('II2202', 'en')
-    def course_instances(self, course_code, lang = 'sv'):
+    def course_instances_JSON(self, course_code, lang = 'sv'):
         if not self.signed_in: raise Exception('Not signed in.')
         # note that there seems to be a limit of 403 for the number of pages
         r = self.__session.get(url = base_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=100&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
@@ -431,7 +431,7 @@ class LadokSession():
     # organization_info_JSON
     #
     # RETURNERAR en dictionary of organization information for the entire institution of the logged in user
-    def organization_info(self):
+    def organization_info_JSON(self):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/resultat/organisation/utanlankar', headers = self.__headers).json()
         return r
@@ -442,7 +442,7 @@ class LadokSession():
     # period_info_JSON
     #
     # RETURNERAR JSON of /resultat/grunddata/period
-    def period_info(self):
+    def period_info_JSON(self):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/resultat/grunddata/period', headers = self.__headers).json()
         return r
@@ -480,7 +480,7 @@ class LadokSession():
     # RETURNERAR JSON of resultat/utbildningsinstans/kursinstans
     #
     # Example: kurs=ladok_session.course_instance_JSON(ii['Utbildningsinstans']['Uid'])
-    def course_instance(self, uid):
+    def course_instance_JSON(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = base_url + '/resultat/utbildningsinstans/kursinstans/'+uid, headers = self.__headers).json()
         return r

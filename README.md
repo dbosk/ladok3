@@ -165,8 +165,8 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     #
     # RETURNERAR JSON of resultat/kurstillfalle
     #
-    # Example: ladok_session.course_instances('II2202', 'en')
-    def course_instances(self, course_code, lang = 'sv'):
+    # Example: ladok_session.course_instances_JSON('II2202', 'en')
+    def course_instances_JSON(self, course_code, lang = 'sv'):
 ```
 ### organization_info_JSON
 ```python
@@ -175,7 +175,7 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     # organization_info_JSON
     #
     # RETURNERAR JSON of resultat/organisation/utanlankar for the entire institution of the logged in user
-    def organization_info(self):
+    def organization_info_JSON(self):
 ```
 
 ### period_info_JSON
@@ -185,7 +185,7 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     # period_info_JSON
     #
     # RETURNERAR JSON of /resultat/grunddata/period
-    def period_info(self):
+    def period_info_JSON(self):
 ```
 ### instance_info
 ```python
@@ -215,7 +215,7 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     # RETURNERAR JSON of resultat/utbildningsinstans/kursinstans
     #
     # Example: kurs=ladok_session.course_instance_JSON(ii['Utbildningsinstans']['Uid']
-    def course_instance(self, uid):
+    def course_instance_JSON(self, uid):
 ```
 ### participants_JSON
 ```python
