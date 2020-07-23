@@ -397,12 +397,12 @@ class LadokSession():
     # added by GQMJr
     #####################################################################
     #
-    # change_local
+    # change_locale
     #
     # lang               - language code 'en' or 'sv', defaults to 'sv'
     #
     # RETURNERAR reponse to the request
-    def change_local(self, lang = 'sv'):
+    def change_locale(self, lang = 'sv'):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = 'https://www.start.ladok.se/gui/services/i18n/changeLocale?lang='+lang, headers = self.__headers).json()
         return r
@@ -497,7 +497,6 @@ class LadokSession():
     # Example:         instance_code='50287'
     #                  ii=ladok_session.instance_info('II2202', instance_code, 'en')
     #                  pl=ladok_session.participants(ii['Uid'])
-
     def participants_JSON(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
         headers = self.__headers.copy()
