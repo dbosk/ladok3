@@ -63,13 +63,16 @@ def initialize(options):
 
             # set up Ladok access
             username=configuration["ladok"]["username"]
-            password=configuration["ladok"]["password"]
-            ls=ladok3.LadokSession(username, password)
-            return ls
+            password=configuration["ladok"].get("password", [])
     except:
         print("Unable to open configuration file named {}".format(config_file))
         print("Please create a suitable configuration file, the default name is config.json")
         sys.exit()
+
+    if not password:
+        password=getpass.getpass(prompt='Password (for Ladok access): ')
+    ls=ladok3.LadokSession(username, password)
+    return ls
 
 
 #//////////////////////////////////////////////////////////////////////
