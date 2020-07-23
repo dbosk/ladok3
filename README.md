@@ -292,5 +292,4 @@ canvas_students_missing_integration_ids.py canvas_course_id
 
 Output: outputs a file ('users_without_integration_ids-COURSE_ID.xlsx) containing a spreadsheet of the users information
 
-```
 
