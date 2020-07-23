@@ -249,6 +249,7 @@ Det här är ett gränssnitt för att läsa och skriva resultat
 Purpose: Use the data in a Canvas course room together with the data from Ladok3 to create a spreadsheet of students in the course
 and include their Canvas user_id, name, Ladok3 Uid, program_code, program name, etc.
 
+Note that the course_id can be given as a numeric value or a string which will be matched against the courses in the user's dashboard cards. It will first match against course codes, then short name, then original names.
 
 Input: 
 ```
@@ -259,6 +260,8 @@ Output: outputs a file ('users_programs-COURSE_ID.xlsx) containing a spreadsheet
 
 ```
 canvas_ladok3_spreadsheet.py 12162
+
+canvas_ladok3_spreadsheet.py -t 'II2202 HT20-1'
 ```
 ### ladok3_course_instance_to_spreadsheet.py
 
