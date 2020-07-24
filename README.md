@@ -312,7 +312,7 @@ If you know the Ladok_id, i.e., the integration_id - then you do not need to spe
 
 Output:\
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;from Canvas: sortable name, user_id, and integration_id\
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if you specified a course_id, you will also get KTHID and login_id
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if you specified a course_id, you will also get KTHID and login_id\
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;from Ladok:  pnr (personnumber) and [program_code, program_name, specialization/track code, admissions info]
 
 
