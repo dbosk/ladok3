@@ -21,11 +21,14 @@
 # The course ID can be a Canvas course_id or
 # if you have dashboard cards, you can specific a course code, a nickname, unique part of the short name or original course name
 #
-# This program gets the list of users enrolled in a Canvas course and then uses their integration-id to ask Ladok for the information about the student.
+# This program gets the integration_id via the user's profile. If this fails then it gets it via the list of users enrolled in a Canvas course (where this user is enrolled as a student)
+# Once the integration_id is known it uses this to ask Ladok for information about the student.
+#
+# Note that to get the KTHID (i.e., the sis_user_id), then you have to add a course to the command line.
 #
 # It requires a config.json file with (1) the Canvas url and access token and (2) the user's username and password (for access to Ladok)
 #
-# last modified: 2020-07-24
+# last modified: 2020-07-25
 #
 
 import ladok3,  pprint
@@ -81,6 +84,37 @@ def initialize(options):
 # Canvas related routines
 #//////////////////////////////////////////////////////////////////////
 def users_in_course(course_id):
+    users_found_thus_far=[]
+    # Use the Canvas API to get the list of users enrolled in this course
+    #GET /api/v1/courses/:course_id/enrollments
+
+    url = "{0}/courses/{1}/enrollments".format(canvas_baseUrl,course_id)
+    if Verbose_Flag:
+        print("url: {}".format(url))
+
+    extra_parameters={'per_page': '100',
+                      'type': ['StudentEnrollment', 'TeacherEnrollment']
+    }
+    r = requests.get(url, params=extra_parameters, headers = canvas_header)
+    if Verbose_Flag:
+        print("result of getting enrollments: {}".format(r.text))
+
+    if r.status_code == requests.codes.ok:
+        page_response=r.json()
+
+        for p_response in page_response:  
+            users_found_thus_far.append(p_response)
+
+        # the following is needed when the reponse has been paginated
+        while r.links.get('next', False):
+            r = requests.get(r.links['next']['url'], headers=canvas_header)
+            page_response = r.json()  
+            for p_response in page_response:  
+                users_found_thus_far.append(p_response)
+
+    return users_found_thus_far
+
+def students_in_course(course_id):
     users_found_thus_far=[]
     # Use the Canvas API to get the list of users enrolled in this course
     #GET /api/v1/courses/:course_id/enrollments
@@ -191,6 +225,23 @@ def user_info(user_id):
     if r.status_code == requests.codes.ok:
         return r.json()
     return None
+
+def user_profile_info(user_id):
+    # Use the Canvas API to get the list of users enrolled in this course
+    #GET /api/v1/users/:id
+
+    url = "{0}/users/{1}/profile".format(canvas_baseUrl, user_id)
+    if Verbose_Flag:
+        print("url: {}".format(url))
+
+    r = requests.get(url, headers = canvas_header)
+    if Verbose_Flag:
+        print("result of getting user profile: {}".format(r.text))
+
+    if r.status_code == requests.codes.ok:
+        return r.json()
+    return None
+
 
 def list_dashboard_cards():
     cards_found_thus_far=[]
@@ -358,6 +409,14 @@ def main():
                       help="execute test code"
     )
 
+    parser.add_option('-k', '--kthid',
+                      dest="kthid",
+                      default=False,
+                      action="store_true",
+                      help="execute test code"
+    )
+
+
     options, remainder = parser.parse_args()
 
     Verbose_Flag=options.verbose
@@ -396,20 +455,31 @@ def main():
     print("sortable name={}".format(info['sortable_name']))
     print("Canvas user_id={}".format(user_id))
 
-    if integration_id:
+    # try to get the user's integration_id via their profile
+    user_profile=user_profile_info(user_id)
+    integration_id=user_profile.get('integration_id', None)
+    login_id=user_profile.get('login_id', None)
+    if login_id:
+        print("login_id={}".format(login_id))
+
+
+    if integration_id and not options.kthid: # if you want to get the KTHID (i.e., the sis_user_id), then you have to add a course to the command line
+        if Verbose_Flag:
+            print("integration_id={}".format(integration_id))
+
         student_info=ladok_session.get_student_data_by_uid_JSON(integration_id)
         if Verbose_Flag:
             pp.pprint("student_info={}".format(student_info))
+
         pnr=student_info['Personnummer']
         if pnr:
             print("pnr={}".format(pnr))
             si=specialization_info(ladok_session, integration_id)
-            print("integration_id={}".format(integration_id))
             print("program: {}".format(si))
             return
 
     if (len(remainder) == 1) and not integration_id:
-        print("To get the personnumber, specify a course_id|course code|short name in which the users in enrolled as 2nd argument to the program")
+        print("To get the personnumber, try to specify a course_id|course code|short name in which the user is in enrolled as a student as 2nd argument to the program")
         return
 
 
@@ -448,7 +518,6 @@ def main():
                     if pnr:
                         print("pnr={}".format(pnr))
                     si=specialization_info(ladok_session, integration_id)
-                    print("integration_id={}".format(integration_id))
                     print("program: {}".format(si))
 
                     # as a user will be in the list of users for each enrollment
