@@ -310,7 +310,7 @@ The course_id can be a Canvas course_id **or** if you have dashboard cards, you 
 
 If you know the Ladok_id, i.e., the integration_id - then you do not need to specify a course_id.
 
-Output: from Canvas: sortable name, user_id, and integration_id
+Output: from Canvas: sortable name, user_id, and integration_id\
         from Ladok:  pnr, and [program_code, program_name, specialization/track code, admissions info]
 
 
