@@ -24,7 +24,7 @@
 # This program gets the integration_id via the user's profile. If this fails then it gets it via the list of users enrolled in a Canvas course (where this user is enrolled as a student)
 # Once the integration_id is known it uses this to ask Ladok for information about the student.
 #
-# Note that to get the KTHID (i.e., the sis_user_id), then you have to add a course to the command line.
+# Note that to get the KTHID (i.e., the 'sis_user_id), then you have to add a course to the command line.
 #
 # It requires a config.json file with (1) the Canvas url and access token and (2) the user's username and password (for access to Ladok)
 #
