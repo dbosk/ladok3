@@ -228,7 +228,7 @@ def user_info(user_id):
 
 def user_profile_info(user_id):
     # Use the Canvas API to get the list of users enrolled in this course
-    #GET /api/v1/users/:id
+    #GET /api/v1/users/:id/profile
 
     url = "{0}/users/{1}/profile".format(canvas_baseUrl, user_id)
     if Verbose_Flag:
