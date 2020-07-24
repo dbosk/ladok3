@@ -350,6 +350,22 @@ class LadokSession():
     # added by GQMJr
     #####################################################################
     #
+    # get_student_data_by_uid_JSON
+    #
+    # uid                - Ladok ID
+    #
+    # RETURNERAR en dictionary med för- och efternamn and more
+    def get_student_data_by_uid_JSON(self, uid):
+        if not self.signed_in: raise Exception('Not signed in.')
+
+        r = self.__session.get(url = base_url + '/studentinformation/student/'+uid, headers = self.__headers).json()
+        
+        return r
+
+
+    # added by GQMJr
+    #####################################################################
+    #
     # logout
     #                        Terminate the Ladok session
     #

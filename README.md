@@ -296,3 +296,21 @@ canvas_students_missing_integration_ids.py canvas_course_id
 Output: outputs a file ('users_without_integration_ids-COURSE_ID.xlsx) containing a spreadsheet of the users information
 
 
+### cl_user_info.py
+
+Purpose: Use the data in a Canvas course room together with the data from Ladok3 to find information about a user.
+
+
+Input: 
+```
+Input 
+cl_user_info.py Canvas_user_id|KTHID|Ladok_id [course_id]
+```
+The course_id can be a Canvas course_id **or** if you have dashboard cards, you can specific a course code, a nickname, unique part of the short name or original course name.
+
+If you know the Ladok_id, i.e., the integration_id - then you do not need to specify a course_id.
+
+Output: from Canvas: sortable name, user_id, and integration_id
+        from Ladok:  pnr, and [program_code, program_name, specialization/track code, admissions info]
+
+
