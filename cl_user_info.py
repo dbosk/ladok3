@@ -404,7 +404,8 @@ def main():
         if pnr:
             print("pnr={}".format(pnr))
             si=specialization_info(ladok_session, integration_id)
-            print("integration_id={0};program: {1}".format(integration_id, si))
+            print("integration_id={}".format(integration_id))
+            print("program: {}".format(si))
             return
 
     if (len(remainder) == 1) and not integration_id:
@@ -427,6 +428,13 @@ def main():
 
         for u in users:
             if u['user']['id'] == user_id:
+                kthid=u['user'].get('sis_user_id', None)
+                if kthid:
+                    print("KTHID={}".format(kthid))
+                login_id=u['user'].get('login_id', None)
+                if login_id:
+                    print("login_id={}".format(login_id))
+
                 integration_id=u['user'].get('integration_id', None)
                 if not integration_id:
                     print("user without integration_id - user_id={0}, {1}".format(user_id, u['user']['sortable_name']))
