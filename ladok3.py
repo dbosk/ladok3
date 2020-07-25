@@ -33,6 +33,7 @@ class LadokSession():
     #
     # username          - ditt loginid t.ex. alba
     # password          - lösenord
+    # testenvironment_flag  - set to True to run in the Ladok test environment, by default it is False
     
     def __init__(self, username, password, testenvironment_flag = False):
         if testenvironment_flag:

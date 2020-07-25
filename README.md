@@ -22,8 +22,9 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     #
     # username            - ditt loginid t.ex. alba
     # password            - lösenord
-
-    def __init__(self, username, password):
+    # testenvironment_flag  - set to True to run in the Ladok test environment, by default it is False
+   
+    def __init__(self, username, password, testenvironment_flag = False):
 ```
 
 ### get_results
@@ -308,6 +309,8 @@ cl_user_info.py Canvas_user_id|KTHID|Ladok_id [course_id]
 The course_id can be a Canvas course_id **or** if you have dashboard cards, you can specific a course code, a nickname, unique part of the short name or original course name.
 
 Add the "-k" or '--kthid' flag to get the KTHID (i.e., the 'sis_user_id) you need to specify a course_id for a course (where this user is a teacher or student) on the command line.
+
+Add the "-T" flag to run in the Ladok test environment.
 
 If you know the Ladok_id, i.e., the integration_id - then you do not need to specify a course_id.
 
