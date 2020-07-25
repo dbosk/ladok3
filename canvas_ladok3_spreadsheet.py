@@ -20,6 +20,8 @@
 # This program gets the list of users enrolled in a Canvas course and then uses their integration-id to ask Ladok for the information about the student's
 # program of study.
 #
+# Add the "-T" flag to run in the Ladok test environment.
+#
 # It requires a config.json file with (1) the Canvas url and access token and (2) the user's username and password (for access to Ladok)
 #
 # It assumes that the code in ladok3.py extends the ladok3.py code from Alexander Baltatzis <alba@kth.se> - https://gits-15.sys.kth.se/kthskript/ladok3​ from 2020-07-20.
