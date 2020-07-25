@@ -145,13 +145,6 @@ def swedish_name(names):
         if i['Sprakkod'] == 'sv':
             return i['Text']
 
-# set up the output write
-def write_xlsx(file_name, df, sheet_name):
-    writer = pd.ExcelWriter(file_name+'.xlsx', engine='xlsxwriter')
-    df.to_excel(writer, sheet_name=sheet_name)
-    # Close the Pandas Excel writer and output the Excel file.
-    writer.save()
-
 def specialization_info(ls, student_uid):
     s1=ls.studystructure_student_JSON(student_uid)
     ss1=s1['Studiestrukturer']
@@ -179,6 +172,16 @@ def specialization_info(ls, student_uid):
         sss3=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
         sss4=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfallestyp']['Kod']
         return [program_code, sss1, sss2, sss3, sss4]
+
+#//////////////////////////////////////////////////////////////////////
+# utility routines
+#//////////////////////////////////////////////////////////////////////
+# set up the output write
+def write_xlsx(file_name, df, sheet_name):
+    writer = pd.ExcelWriter(file_name+'.xlsx', engine='xlsxwriter')
+    df.to_excel(writer, sheet_name=sheet_name)
+    # Close the Pandas Excel writer and output the Excel file.
+    writer.save()
 
 def main():
     global Verbose_Flag
