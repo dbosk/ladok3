@@ -12,6 +12,8 @@ Python-paketet requests behöver installeras för att nå ladok
     sys.exit()
 
 base_url = 'https://www.start.ladok.se/gui/proxy'
+# according to https://ladok.se/drift-och-support/produktionsmiljo-for-nya-ladok
+# the test environment is at https://www.test.ladok.se
 
 ##############################################################
 #

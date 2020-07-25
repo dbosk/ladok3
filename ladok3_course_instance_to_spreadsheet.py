@@ -163,7 +163,8 @@ def specialization_info(ls, student_uid):
         sss1=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
         sss2=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
         sss3=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
-        return [program_code, sss1, sss2, sss3]
+        sss4=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfallestyp']['Kod']
+        return [program_code, sss1, sss2, sss3, sss4]
     else:
         check_for_english_program_name=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning'].get('en', False)
         if check_for_english_program_name:
@@ -174,7 +175,8 @@ def specialization_info(ls, student_uid):
 
         sss2=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
         sss3=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
-        return [program_code, sss1, sss2, sss3]
+        sss4=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfallestyp']['Kod']
+        return [program_code, sss1, sss2, sss3, sss4]
 
 def main():
     global Verbose_Flag
@@ -255,6 +257,7 @@ def main():
             d['program_name']=si[1]
             d['track_code']=si[2]
             d['admission']=si[3]
+            d['type_ of_instance']=si[4]
         user_and_program_list.append(d)
         
     user_and_program_df=pd.json_normalize(user_and_program_list)

@@ -36,6 +36,8 @@ import requests, time
 import json
 import optparse
 import sys
+import re
+
 import pandas as pd
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -441,7 +443,7 @@ def main():
     # check for numeric string, in which case this a Canvas user_id
     if person_id.isdigit():
         info=user_info(person_id)
-    elif person_id.count('-') == 4:     # Ladok ID, i.e., a sis_integration_id
+    elif person_id.count('-') == 4 and re.match('^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}', person_id):     # Ladok ID, i.e., a sis_integration_id
         info=user_info('sis_integration_id:'+person_id)
         integration_id=person_id        # since we have the Ladok ID, save it for later
     elif person_id.find('@') > 1:       # if an e-mail address
