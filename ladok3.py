@@ -11,14 +11,6 @@ Python-paketet requests behöver installeras för att nå ladok
     print(e)
     sys.exit()
 
-# To run against the test environment, change the definition of the base_url
-# according to https://ladok.se/drift-och-support/produktionsmiljo-for-nya-ladok
-# the test environment is at https://www.test.ladok.se
-#base_url = 'https://www.test.ladok.se'
-
-base_url = 'https://www.start.ladok.se'
-base_gui_url = base_url+'/gui'
-base_gui_proxy_url = base_gui_url+'/proxy'
 
 ##############################################################
 #
@@ -42,7 +34,19 @@ class LadokSession():
     # username          - ditt loginid t.ex. alba
     # password          - lösenord
     
-    def __init__(self, username, password):
+    def __init__(self, username, password, testenvironment_flag = False):
+        if testenvironment_flag:
+            # To run against the test environment, change the definition of the base_url
+            # according to https://ladok.se/drift-och-support/produktionsmiljo-for-nya-ladok
+            # the test environment is at https://www.test.ladok.se
+            base_url = 'https://www.test.ladok.se'
+            print("Using test environment: {}".format(base_url))
+        else:
+            base_url= 'https://www.start.ladok.se'
+        self.base_url = base_url
+        self.base_gui_url = self.base_url+'/gui'
+        self.base_gui_proxy_url = self.base_gui_url+'/proxy'
+
         self.signed_in = False
         self.__session = None
         self.__headers = { 'Accept' : 'application/vnd.ladok-resultat+json, application/vnd.ladok-kataloginformation+json, application/vnd.ladok-studentinformation+json, application/vnd.ladok-studiedeltagande+json, application/vnd.ladok-utbildningsinformation+json, application/vnd.ladok-examen+json, application/vnd.ladok-extintegration+json, application/vnd.ladok-uppfoljning+json, application/vnd.ladok-extra+json, application/json, text/plain' }
@@ -50,8 +54,8 @@ class LadokSession():
         self.__grade_by_id = {}
         s = requests.session()
         
-        r = s.get(url = base_gui_url+'/loggain')
-        r = s.get(url = base_gui_url+'/shiblogin')
+        r = s.get(url = self.base_gui_url+'/loggain')
+        r = s.get(url = self.base_gui_url+'/shiblogin')
         
         shibstate = re.search('return=(.*?)(&|$)', r.url).group(1)
         url = urllib.parse.unquote(shibstate)
@@ -105,7 +109,7 @@ class LadokSession():
         
         if 'Din användare finns inte i Ladok' in r.text: raise Exception('Signed in successfully, but not as a teacher.')
 
-        r = s.get(url = base_gui_proxy_url + '/resultat/grunddata/betygsskala', headers = self.__headers)
+        r = s.get(url = self.base_gui_proxy_url + '/resultat/grunddata/betygsskala', headers = self.__headers)
         
         for grade_scale in r.json()['Betygsskala']:
             self.__grade_scales.append({
@@ -161,7 +165,7 @@ class LadokSession():
         student_course = next(x for x in self.__get_student_courses(student_data['id']) if x['code'] == course_code)
 
         # get attested results
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/studentresultat/attesterade/student/' + student_data['id'], headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/studentresultat/attesterade/student/' + student_data['id'], headers = self.__headers).json()
         
         results_attested_current_course = None
         results = {}  # return value
@@ -183,10 +187,10 @@ class LadokSession():
                     pass  # tillgodoräknanden har inga betyg och då är result['Utbildningskod'] == None
 
         # get pending results
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/resultat/resultat/student/' + student_data['id'] + '/kurs/' + student_course['education_id'] + '?resultatstatus=UTKAST&resultatstatus=KLARMARKERAT', headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/resultat/resultat/student/' + student_data['id'] + '/kurs/' + student_course['education_id'] + '?resultatstatus=UTKAST&resultatstatus=KLARMARKERAT', headers = self.__headers).json()
         
         for result in r['Resultat']:
-            r = self.__session.get(url = base_gui_proxy_url + '/resultat/utbildningsinstans/' + result['UtbildningsinstansUID'], headers = self.__headers).json()
+            r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/utbildningsinstans/' + result['UtbildningsinstansUID'], headers = self.__headers).json()
             d_grade     = result['Betygsgradsobjekt']['Kod']
             d_status = "pending(" + str(result['ProcessStatus']) + ")"
             # utkast har inte datum tydligen ...
@@ -250,7 +254,7 @@ class LadokSession():
         headers = self.__headers.copy()
         headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
         headers['X-XSRF-TOKEN'] = self.__get_xsrf_token()
-        headers['Referer'] = base_gui_url
+        headers['Referer'] = self.base_gui_url
         
         previous_result = None
         
@@ -273,7 +277,7 @@ class LadokSession():
                 }]
             }
             
-            r = self.__session.put(url = base_gui_proxy_url + '/resultat/studieresultat/uppdatera', json = put_data, headers = headers)
+            r = self.__session.put(url = self.base_gui_proxy_url + '/resultat/studieresultat/uppdatera', json = put_data, headers = headers)
         
         # lägg in nytt betygsutkast
         else:
@@ -287,7 +291,7 @@ class LadokSession():
                     'Examinationsdatum': result_date
                 }]
             }
-            r = self.__session.post(url = base_gui_proxy_url + '/resultat/studieresultat/skapa', json = post_data, headers = headers)
+            r = self.__session.post(url = self.base_gui_proxy_url + '/resultat/studieresultat/skapa', json = post_data, headers = headers)
         
         if not 'Resultat' in r.json(): raise Exception("Kunde inte mata in " + person_nr_raw + " " + course_moment + " : " + grade_raw + " " + result_date_raw + "\n" + r.text)
         
@@ -350,7 +354,7 @@ class LadokSession():
         
         if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
 
-        r = self.__session.get(url = base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
         
         return r
 
@@ -365,7 +369,7 @@ class LadokSession():
     def get_student_data_by_uid_JSON(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
 
-        r = self.__session.get(url = base_gui_proxy_url + '/studentinformation/student/'+uid, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/studentinformation/student/'+uid, headers = self.__headers).json()
         
         return r
 
@@ -381,7 +385,7 @@ class LadokSession():
     # Example:     status=ladok_session.logout()
     def logout(self):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = base_gui_proxy_url + '/logout', headers = self.__headers)
+        r = self.__session.get(url = self.base_gui_proxy_url + '/logout', headers = self.__headers)
 
         if r.status_code == 200:
             # successfully logged out
@@ -413,7 +417,7 @@ class LadokSession():
     # RETURNERAR en dictionary of the grading rights (of the logged in user)
     def grading_rights(self):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/resultatrattighet/listaforinloggadanvandare', headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/resultatrattighet/listaforinloggadanvandare', headers = self.__headers).json()
         return r['Resultatrattighet']
         
 
@@ -427,7 +431,7 @@ class LadokSession():
     # RETURNERAR reponse to the request
     def change_locale(self, lang = 'sv'):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = base_gui_url+'/services/i18n/changeLocale?lang='+lang, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_url+'/services/i18n/changeLocale?lang='+lang, headers = self.__headers).json()
         return r
 
     # added by GQMJr
@@ -445,7 +449,7 @@ class LadokSession():
     def course_instances_JSON(self, course_code, lang = 'sv'):
         if not self.signed_in: raise Exception('Not signed in.')
         # note that there seems to be a limit of 403 for the number of pages
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=100&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=100&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
         return r
 
     # added by GQMJr
@@ -456,7 +460,7 @@ class LadokSession():
     # RETURNERAR en dictionary of organization information for the entire institution of the logged in user
     def organization_info_JSON(self):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/organisation/utanlankar', headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/organisation/utanlankar', headers = self.__headers).json()
         return r
 
     # added by GQMJr
@@ -467,7 +471,7 @@ class LadokSession():
     # RETURNERAR JSON of /resultat/grunddata/period
     def period_info_JSON(self):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/grunddata/period', headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/grunddata/period', headers = self.__headers).json()
         return r
 
     # added by GQMJr
@@ -486,7 +490,7 @@ class LadokSession():
     # Example: ii=ladok_session.instance_info('II2202', instance_code, 'en')
     def instance_info(self, course_code, instance_code, lang = 'sv'):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=25&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=25&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
         for course in r['Resultat']:
             if course['TillfallesKod'] == instance_code:
                 return course
@@ -505,7 +509,7 @@ class LadokSession():
     # Example: kurs=ladok_session.course_instance_JSON(ii['Utbildningsinstans']['Uid'])
     def course_instance_JSON(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/utbildningsinstans/kursinstans/'+uid, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/utbildningsinstans/kursinstans/'+uid, headers = self.__headers).json()
         return r
 
     # added by GQMJr
@@ -525,7 +529,7 @@ class LadokSession():
         headers = self.__headers.copy()
         headers['Content-Type'] = 'application/vnd.ladok-studiedeltagande+json'
         headers['X-XSRF-TOKEN'] = self.__get_xsrf_token()
-        headers['Origin'] = base_url
+        headers['Origin'] = self.base_url
 
         put_data = {'page': 1,
                     'limit': 400,
@@ -592,7 +596,7 @@ class LadokSession():
         #print("txt={}".format(txt))
         # note that I could not use json = put_data, as this changed the 'Content-Type' and broke the functionality
         # For thie reason, I manually do the conversion of the JSON to a string and manually set the 'Content-Type'.
-        r = self.__session.put(url = base_gui_proxy_url + '/studiedeltagande/deltagare/kurstillfalle', data = txt, headers = headers)
+        r = self.__session.put(url = self.base_gui_proxy_url + '/studiedeltagande/deltagare/kurstillfalle', data = txt, headers = headers)
         if r.status_code == 200:
             participant_info=json.loads(r.text)
             return participant_info
@@ -609,7 +613,7 @@ class LadokSession():
     # RETURNERAR en dictionary of student information
     def studystructure_student_JSON(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = base_gui_proxy_url + '/studiedeltagande/studiestruktur/student/'+uid, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/studiedeltagande/studiestruktur/student/'+uid, headers = self.__headers).json()
         return r
 
 #################################################################
@@ -667,7 +671,7 @@ class LadokSession():
     
     
     def __get_student_data(self, person_nr):
-        r = self.__session.get(url = base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.__headers).json()['Resultat']
+        r = self.__session.get(url = self.base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.__headers).json()['Resultat']
         
         if len(r) != 1: return None
         
@@ -702,7 +706,7 @@ class LadokSession():
     
     # detta är egentligen kurstillfällen, inte kurser (ID-numret är alltså ett ID-nummer för ett kurstillfälle)
     def __get_student_courses(self, student_id):
-        r = self.__session.get(url = base_gui_proxy_url + '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/' + student_id, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/' + student_id, headers = self.__headers).json()
         
         results = []
         
@@ -722,7 +726,7 @@ class LadokSession():
     
     
     def __get_student_course_moments(self, course_round_id, student_id):
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/kurstillfalle/' + str(course_round_id) + '/student/' + str(student_id) + '/moment', headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/' + str(course_round_id) + '/student/' + str(student_id) + '/moment', headers = self.__headers).json()
         
         return [{
             'course_moment_id': moment['UtbildningsinstansUID'],
@@ -733,7 +737,7 @@ class LadokSession():
     
     
     def __get_student_course_results(self, course_round_id, student_id):
-        r = self.__session.get(url = base_gui_proxy_url + '/resultat/studieresultat/student/' + student_id + '/utbildningstillfalle/' + course_round_id, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/studieresultat/student/' + student_id + '/utbildningstillfalle/' + course_round_id, headers = self.__headers).json()
         
         return {
             'id': r['Uid'],

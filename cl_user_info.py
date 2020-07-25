@@ -24,7 +24,9 @@
 # This program gets the integration_id via the user's profile. If this fails then it gets it via the list of users enrolled in a Canvas course (where this user is enrolled as a student)
 # Once the integration_id is known it uses this to ask Ladok for information about the student.
 #
-# Note that to get the KTHID (i.e., the 'sis_user_id), then you have to add a course to the command line.
+# Note that to get the KTHID (i.e., the 'sis_user_id), then you have to use the flag "-k" and add a course to the command line.
+#
+# Add the "-T" flag to run in the Ladok test environment.
 #
 # It requires a config.json file with (1) the Canvas url and access token and (2) the user's username and password (for access to Ladok)
 #
@@ -78,7 +80,7 @@ def initialize(options):
 
     if not password:
         password=getpass.getpass(prompt='Password (for Ladok access): ')
-    ls=ladok3.LadokSession(username, password)
+    ls=ladok3.LadokSession(username, password, options.testenvironment)
     return ls
 
 
@@ -410,6 +412,14 @@ def main():
                       action="store_true",
                       help="execute test code"
     )
+
+    parser.add_option('-T', '--testenvironment',
+                      dest="testenvironment",
+                      default=False,
+                      action="store_true",
+                      help="execute test code"
+    )
+
 
     parser.add_option('-k', '--kthid',
                       dest="kthid",

@@ -141,6 +141,14 @@ def main():
                       help="execute test code"
     )
 
+    parser.add_option('-T', '--testenvironment',
+                      dest="testenvironment",
+                      default=False,
+                      action="store_true",
+                      help="execute test code"
+    )
+
+
     options, remainder = parser.parse_args()
 
     Verbose_Flag=options.verbose

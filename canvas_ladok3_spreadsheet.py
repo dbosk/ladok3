@@ -72,7 +72,7 @@ def initialize(options):
 
     if not password:
         password=getpass.getpass(prompt='Password (for Ladok access): ')
-    ls=ladok3.LadokSession(username, password)
+    ls=ladok3.LadokSession(username, password, options.testenvironment)
     return ls
 
 
@@ -275,6 +275,14 @@ def main():
                       action="store_true",
                       help="execute test code"
     )
+
+    parser.add_option('-T', '--testenvironment',
+                      dest="testenvironment",
+                      default=False,
+                      action="store_true",
+                      help="execute test code"
+    )
+
 
     options, remainder = parser.parse_args()
 

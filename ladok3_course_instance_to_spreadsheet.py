@@ -21,7 +21,9 @@
 #
 # If run with the flag -p or --personnumbers - it includes the personnumber of each student.
 #
-# The code in ladok3.py extends the ladok3.py code from Alexander Baltatzis <alba@kth.se> - https://gits-15.sys.kth.se/kthskript/ladok3​ from 2020-07-20.
+# Add the "-T" flag to run in the Ladok test environment.
+#
+## The code in ladok3.py extends the ladok3.py code from Alexander Baltatzis <alba@kth.se> - https://gits-15.sys.kth.se/kthskript/ladok3​ from 2020-07-20.
 #
 # last modified: 2020-07-23
 #
@@ -71,7 +73,7 @@ def initialize(options):
 
     if not password:
         password=getpass.getpass(prompt='Password (for Ladok access): ')
-    ls=ladok3.LadokSession(username, password)
+    ls=ladok3.LadokSession(username, password, options.testenvironment)
     return ls
 
 
@@ -212,6 +214,13 @@ def main():
                       default=False,
                       action="store_true",
                       help="include person numbers"
+    )
+
+    parser.add_option('-T', '--testenvironment',
+                      dest="testenvironment",
+                      default=False,
+                      action="store_true",
+                      help="execute test code"
     )
 
     options, remainder = parser.parse_args()

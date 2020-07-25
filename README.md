@@ -255,6 +255,7 @@ Input:
 ```
 canvas_ladok3_spreadsheet.py canvas_course_id
 ```
+Add the "-T" flag to run in the Ladok test environment.
 
 Output: outputs a file ('users_programs-COURSE_ID.xlsx) containing a spreadsheet of the users information
 
@@ -268,13 +269,13 @@ canvas_ladok3_spreadsheet.py -t 'II2202 HT20-1'
 Purpose: Use the data in Ladok3 together with the data from Canvas to create a spreadsheet of students in a course
 instance and include their Canvas user_id (or "not in Canvas" if they do not have a Canvas user_id), name, Ladok3 Uid, program_code, program name, etc.
 
-Optionally include their personnumber with the flag -p or --personnumbers 
-
-
 Input: 
 ```
 ladok3_course_instance_to_spreadsheet.py course_code course_instance
 ```
+Optionally include their personnumber with the flag -p or --personnumbers 
+
+Add the "-T" flag to run in the Ladok test environment.
 
 Output: outputs a file ('users_programs-instance-COURSE_INSTANCE.xlsx) containing a spreadsheet of the users information
 
@@ -287,7 +288,6 @@ ladok3_course_instance_to_spreadsheet.py II2202 50287
 
 Purpose: Use the data in a Canvas course room to create a spreadsheet of students in the course who are missing an integration ID.
 
-
 Input: 
 ```
 canvas_students_missing_integration_ids.py canvas_course_id
@@ -299,7 +299,6 @@ Output: outputs a file ('users_without_integration_ids-COURSE_ID.xlsx) containin
 ### cl_user_info.py
 
 Purpose: Use the data in a Canvas course room together with the data from Ladok3 to find information about a user.
-
 
 Input: 
 ```
