@@ -417,6 +417,45 @@ Example use is:
     # RETURNERAR JSON of study regulation
     def studieordning_JSON(self):
 ```
+### organisation_by_uid_JSON
+```python
+    #####################################################################
+    #
+    # organisation_by_uid_JSON
+    #
+    # organisationUid           -- organization's UID
+    #
+    # RETURNERAR JSON of selected organization
+    def organisation_by_uid_JSON(self, organisationUid):
+```
+### utbildningstyp_JSON
+```python
+    #####################################################################
+    #
+    # utbildningstyp_JSON
+    #
+    # RETURNERAR JSON of types of education
+    def utbildningstyp_JSON(self):
+```
+
+### aktivitetstillfallestyp_JSON
+```python
+    #####################################################################
+    #
+    # aktivitetstillfallestyp_JSON
+    #
+    # RETURNERAR JSON of activities
+    def aktivitetstillfallestyp_JSON(self):
+```
+### catalog_service_index__JSON
+```python
+    #####################################################################
+    #
+    # catalog_service_index__JSON
+    #
+    # RETURNERAR JSON of admission round
+    def catalog_service_index__JSON(self):
+```
 
 
 ### canvas_ladok3_spreadsheet.py

@@ -2775,6 +2775,7 @@ class LadokSession():
     #                  'link': []}],
     # 'link': []}
 
+    # added by GQMJr
     #####################################################################
     #
     # studielokalisering_JSON
@@ -3184,12 +3185,259 @@ class LadokSession():
     #                                                   'uri': 'https://api.ladok.se:443/kataloginformation/svenskort/18'}]}],
     #     'link': []}
 
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # antagningsomgang_JSON
+    #
+    # RETURNERAR JSON of admission round
+    def antagningsomgang_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/antagningsomgang', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Antagningsomgang': [   {   'Benamning': {   'en': 'Application to courses '
+    #                                                    'within programme at '
+    #                                                    'KTH HT2020',
+    #                                              'sv': 'Anmälan till kurs inom '
+    #                                                    'program på KTH HT2020'},
+    #                             'Beskrivning': {},
+    #                             'Giltighetsperiod': {'link': []},
+    #                             'ID': '150233',
+    #                             'Kod': '29AKPHT20',
+    #                             'LarosateID': 29,
+    #                             'SistaAnmalningsdag': '2020-05-15',
+    #                             'SistaAnnonseringsdag': '2021-05-15',
+    #                             'Studieavgiftsbelagd': True,
+    #                             'link': []},
+    #                         {   'Benamning': {   'en': 'Application to courses '
+    #                                                    'within programme at '
+    #                                                    'KTH VT2019',
+    #                                              'sv': 'Antagning till kurs '
+    #                                                    'inom program KTH '
+    #                                                    'VT2019'},
+    #                             'Beskrivning': {},
+    #                             'Giltighetsperiod': {'link': []},
+    #                             'ID': '142134',
+    #                             'Kod': '29AKPVT19',
+    #                             'LarosateID': 29,
+    #                             'SistaAnmalningsdag': '2018-11-15',
+    #                             'SistaAnnonseringsdag': '2019-02-28',
+    #                             'Studieavgiftsbelagd': True,
+    #                             'link': []},
+    # ... ],
+    # 'link': []}
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # organisation_by_uid_JSON
+    #
+    # organisationUid           -- organization's UID
+    #
+    # RETURNERAR JSON of selected organization
+    def organisation_by_uid_JSON(self, organisationUid):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/organisation/'+organisationUid, headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Benamning': {'en': 'EECS/Computer Science', 'sv': 'EECS/Datavetenskap'},
+    # 'Giltighetsperiod': {'Startdatum': '2019-01-01', 'link': []},
+    # 'Organisationsenhetstyp': 1,
+    # 'Organisationskod': 'JH',
+    # 'Uid': '2474f616-dc41-11e8-8cc1-eaeeb71b497f',
+    # 'link': [   {   'mediaType': 'application/vnd.ladok+xml,application/vnd.ladok-kataloginformation+xml,application/vnd.ladok-kataloginformation+json',
+    #                 'method': 'GET',
+    #                 'rel': 'self',
+    #                 'uri': 'https://api.ladok.se:443/kataloginformation/organisation/2474f616-dc41-11e8-8cc1-eaeeb71b497f'}]}
+
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # utbildningstyp_JSON
+    #
+    # RETURNERAR JSON of types of education
+    def utbildningstyp_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/utbildningstyp', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Utbildningstyp': [   {   'AvserTillfalle': False,
+    #                               'Benamning': {   'en': 'Module without scope',
+    #                                                'sv': 'Modul utan omfattning'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'Grundtyp': 'MODUL',
+    #                               'ID': '3',
+    #                               'Kod': '2007MUO',
+    #                               'LarosateID': -1,
+    #                               'Regelverk': {   'Regelvarden': [   {   'Regelnamn': 'commons.domain.regel.ingar.i.grupp.overfors.till.nya',
+    #                                                                       'Uid': 'd31a4080-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'true',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.informationsbehorighet.forskarutbildning',
+    #                                                                       'Uid': 'd31a4084-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'true',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.sjalvstandig',
+    #                                                                       'Uid': 'd31a4086-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'false',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.informationsbehorighet.grundavancerad',
+    #                                                                       'Uid': 'd31a4085-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'true',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.har.omfattning',
+    #                                                                       'Uid': 'd31a4082-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'false',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.grupp.for.utsokning',
+    #                                                                       'Uid': 'd31a196f-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'grupp.for.utsokning.forskarniva',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.grupp.for.utsokning',
+    #                                                                       'Uid': 'd31a4081-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'grupp.for.utsokning.grundavanceradniva',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.versionshanteras',
+    #                                                                       'Uid': 'd31a4083-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'false',
+    #                                                                       'link': [   ]}],
+    #                                                'Uid': '0441f5ba-1b3f-11e6-aff0-464044604cb6',
+    #                                                'link': []},
+    #                               'Sorteringsordning': 50,
+    #                               'StudieordningID': 1,
+    #                               'TillfalleInomUtbildningstyper': [],
+    #                               'UtbildningstyperInomUtbildningstyp': [],
+    #                               'link': []},
+    #                           {   'AvserTillfalle': False,
+    #                               'Benamning': {'en': 'Module', 'sv': 'Modul'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'Grundtyp': 'MODUL',
+    #                               'ID': '4',
+    #                               'Kod': '2007MOD',
+    #                               'LarosateID': -1,
+    #                               'Regelverk': {   'Regelvarden': [   {   'Regelnamn': 'commons.domain.regel.versionshanteras',
+    #                                                                       'Uid': 'b18301be-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'false',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.informationsbehorighet.forskarutbildning',
+    #                                                                       'Uid': 'b18301c1-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'true',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.ingar.i.grupp.overfors.till.nya',
+    #                                                                       'Uid': 'b18301bb-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'true',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.sjalvstandig',
+    #                                                                       'Uid': 'b18301bf-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'false',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.grupp.for.utsokning',
+    #                                                                       'Uid': 'b18301bd-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'grupp.for.utsokning.grundavanceradniva',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.informationsbehorighet.grundavancerad',
+    #                                                                       'Uid': 'b18301bc-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'true',
+    #                                                                       'link': [   ]},
+    #                                                                   {   'Regelnamn': 'commons.domain.regel.grupp.for.utsokning',
+    #                                                                       'Uid': 'b18301c0-e80a-11e8-b1f1-65de97d74aa5',
+    #                                                                       'Varde': 'grupp.for.utsokning.forskarniva',
+    #                                                                       'link': [   ]}],
+    #                                                'Uid': '0461b2c4-1b3f-11e6-aff0-464044604cb6',
+    #                                                'link': []},
+    #                               'Sorteringsordning': 50,
+    #                               'StudieordningID': 1,
+    #                               'TillfalleInomUtbildningstyper': [],
+    #                               'UtbildningstyperInomUtbildningstyp': [],
+    #                               'link': []},
+    # ...
+    # ],
+    #     'link': []}
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # aktivitetstillfallestyp_JSON
+    #
+    # RETURNERAR JSON of activities
+    def aktivitetstillfallestyp_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/aktivitetstillfallestyp', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Aktivitetstillfallestyp': [   {   'Benamning': {   'en': 'Partial Exam',
+    #                                                     'sv': 'Kontrollskrivning'},
+    #                                    'Beskrivning': {},
+    #                                    'Giltighetsperiod': {   'Startdatum': '2018-06-20', 'link': []},
+    #                                    'ID': '135201',
+    #                                    'Kod': 'KS',
+    #                                    'LarosateID': 29, 'link': []},
+    #                                {   'Benamning': {   'en': 'Re-examination',
+    #                                                     'sv': 'Omtentamen'},
+    #                                    'Beskrivning': {},
+    #                                    'Giltighetsperiod': {   'Startdatum': '2018-06-20', 'link': []},
+    #                                    'ID': '135200',
+    #                                    'Kod': 'OMTENTA',
+    #                                    'LarosateID': 29, 'link': []},
+    #                                {   'Benamning': {   'en': 'Examination',
+    #                                                     'sv': 'Tentamen'},
+    #                                    'Beskrivning': {},
+    #                                    'Giltighetsperiod': {   'Startdatum': '2018-06-20', 'link': []},
+    #                                    'ID': '135199',
+    #                                    'Kod': 'TENTAMEN',
+    #                                    'LarosateID': 29, 'link': []},
+    #                                {   'Benamning': {   'en': 'Unspecified '
+    #                                                           'activity',
+    #                                                     'sv': 'Övrigt '
+    #                                                           'aktivitetstillfälle'},
+    #                                    'Beskrivning': {},
+    #                                    'Giltighetsperiod': {'link': []},
+    #                                    'ID': '1',
+    #                                    'Kod': 'ÖV',
+    #                                    'LarosateID': -1, 'link': []}],
+    # 'link': []}
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # catalog_service_index__JSON
+    #
+    # RETURNERAR JSON of admission round
+    def catalog_service_index__JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/service/index', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'ServiceName': 'Ladok3 REST-tjänst för kataloginformation',
+    # 'link': [   {   'mediaType': 'application/vnd.ladok+xml,application/vnd.ladok-kataloginformation+xml,application/vnd.ladok-kataloginformation+json',
+    #                 'method': 'GET',
+    #                 'rel': 'http://relations.ladok.se/kataloginformation/utbildningstyp',
+    #                 'uri': 'https://api.ladok.se:443/kataloginformation/grunddata/utbildningstyp'},
+    #             {   'mediaType': 'application/vnd.ladok+xml,application/vnd.ladok-kataloginformation+xml,application/vnd.ladok-kataloginformation+json',
+    #                 'method': 'GET',
+    #                 'rel': 'http://relations.ladok.se/kataloginformation/betygsskala',
+    #                 'uri': 'https://api.ladok.se:443/kataloginformation/grunddata/betygsskala'},
+    # ...
+    #             {   'mediaType': 'application/vnd.ladok+xml,application/vnd.ladok-kataloginformation+xml,application/vnd.ladok-kataloginformation+json',
+    #                 'method': 'GET',
+    #                 'rel': 'http://relations.ladok.se/kataloginformation/anvandarbehorighetlista',
+    #                 'uri': 'https://api.ladok.se:443/kataloginformation/behorigheter'}]}
+
 #################################################################
 ##
 ## private methods
 ##
-    
-    
+
     def __get_xsrf_token(self):
         cookies = self.__session.cookies.get_dict()
         return next(cookies[cookie] for cookie in cookies if cookie == 'XSRF-TOKEN')
