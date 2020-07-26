@@ -456,6 +456,15 @@ Example use is:
     # RETURNERAR JSON of admission round
     def catalog_service_index__JSON(self):
 ```
+### omradesbehorighet_JSON
+```python
+    #####################################################################
+    #
+    # omradesbehorighet_JSON
+    #
+    # RETURNERAR JSON of "omradesbehorighet"
+    def omradesbehorighet_JSON(self):
+```
 
 
 ### canvas_ladok3_spreadsheet.py

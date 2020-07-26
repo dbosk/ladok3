@@ -3433,6 +3433,18 @@ class LadokSession():
     #                 'rel': 'http://relations.ladok.se/kataloginformation/anvandarbehorighetlista',
     #                 'uri': 'https://api.ladok.se:443/kataloginformation/behorigheter'}]}
 
+    # added by GQMJr
+    #####################################################################
+    #
+    # omradesbehorighet_JSON
+    #
+    # RETURNERAR JSON of "omradesbehorighet"
+    def omradesbehorighet_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/omradesbehorighet', headers = self.__headers).json()
+        return r
+
+
 #################################################################
 ##
 ## private methods
