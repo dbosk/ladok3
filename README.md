@@ -253,7 +253,7 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     # RETURNERAR en dictionary of languages used for instruction
     def undervisningssprak_JSON(self):
 ```
-### 
+### i18n_translation_JSON
 ```python
     #####################################################################
     #
@@ -283,6 +283,94 @@ Example use is:
 
     output_file="ladoki18n-translations"
     write_xlsx(output_file, translations_df, 'i18n')
+```
+### svenskort_JSON
+```python
+    #####################################################################
+    #
+    # svenskort_JSON
+    #
+    # RETURNERAR JSON of places in Sweden with their KommunID
+    def svenskort_JSON(self):
+```
+
+### kommuner_JSON
+```python
+    #####################################################################
+    #
+    # kommuner_JSON
+    #
+    # RETURNERAR JSON of Kommun in Sweden
+    def kommuner_JSON(self):
+```
+
+### lander_JSON
+```python
+    #####################################################################
+    #
+    # lander_JSON
+    #
+    # RETURNERAR JSON of countries
+    def lander_JSON(self):
+```
+### undervisningstid_JSON
+```python
+    #####################################################################
+    #
+    # undervisningstid_JSON
+    #
+    # RETURNERAR JSON of teaching times
+    def undervisningstid_JSON(self):
+```
+
+### successivfordjupning_JSON
+```python
+    #####################################################################
+    #
+    # successivfordjupning_JSON
+    #
+    # RETURNERAR JSON of Successive Specializations
+    def successivfordjupning_JSON(self):
+```
+
+### undervisningsform_JSON
+```python
+    #####################################################################
+    #
+    # undervisningsform_JSON
+    #
+    # RETURNERAR JSON of forms of education
+    def undervisningsform_JSON(self):
+```
+
+### LokalaPerioder_JSON
+```python
+    #####################################################################
+    #
+    # LokalaPerioder_JSON
+    #
+    # RETURNERAR JSON of local periods
+    def LokalaPerioder_JSON(self):
+```
+
+### nivainomstudieordning_JSON
+```python
+    #####################################################################
+    #
+    # nivainomstudieordning_JSON
+    #
+    # RETURNERAR JSON of education levels
+    def nivainomstudieordning_JSON(self):
+```
+
+### amnesgrupp_JSON
+```python
+    #####################################################################
+    #
+    # amnesgrupp_JSON
+    #
+    # RETURNERAR JSON of subject area groups
+    def amnesgrupp_JSON(self):
 ```
 
 

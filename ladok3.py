@@ -804,6 +804,440 @@ class LadokSession():
     #     'Text': 'Part of group: Transferred to NyA',
     #     'link': []},
 
+    # added by GQMJr
+    #####################################################################
+    #
+    # svenskorter_JSON
+    #
+    # RETURNERAR JSON of places in Sweden with their KommunID
+    def svenskorter_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/svenskort', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'SvenskOrt': [   {   'Benamning': {   'en': 'Stockholm (Botkyrka)',
+    #                                           'sv': 'Stockholm (Botkyrka)'},
+    #                          'Beskrivning': {},
+    #                          'Giltighetsperiod': {'link': []},
+    #                          'ID': '110990',
+    #                          'Kod': 'L0127',
+    #                          'KommunID': '8',
+    #                          'LarosateID': -1,
+    #                          'link': []},
+    # ... ], 'link': []}
+
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # kommuner_JSON
+    #
+    # RETURNERAR JSON of places in Sweden with their KommunID
+    def kommuner_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/kommun', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Kommun': [   {   'Benamning': {'en': 'Knivsta', 'sv': 'Knivsta'},
+    #                   'Beskrivning': {},
+    #                   'Giltighetsperiod': {'link': []},
+    #                   'ID': '29',
+    #                   'Kod': '0330',
+    #                   'LanID': 2,
+    #                   'LarosateID': -1,
+    #                   'link': []},
+    #               {   'Benamning': {'en': 'Heby', 'sv': 'Heby'},
+    #                   'Beskrivning': {   'sv': 'Överförd från Västmanlands '
+    #                                            'till Uppsala län'},
+    #                   'Giltighetsperiod': {   'Startdatum': '2007-01-01',
+    #                                           'link': []},
+    #                   'ID': '30',
+    #                   'Kod': '0331',
+    #                   'LanID': 2,
+    #                   'LarosateID': -1,
+    #                   'link': []},
+    # ], 'link': []}
+
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # lander_JSON
+    #
+    # RETURNERAR JSON of countries
+    def lander_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/land', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Land': [   {   'Benamning': {'en': 'Bolivia', 'sv': 'Bolivia'},
+    #                     'Beskrivning': {},
+    #                     'Giltighetsperiod': {'link': []},
+    #                     'ID': '20',
+    #                     'Kod': 'BO',
+    #                     'LarosateID': -1,
+    #                     'link': []},
+    #                 {   'Benamning': {'en': 'Brazil', 'sv': 'Brasilien'},
+    #                     'Beskrivning': {},
+    #                     'Giltighetsperiod': {'link': []},
+    #                     'ID': '21',
+    #                     'Kod': 'BR',
+    #                     'LarosateID': -1,
+    #                     'link': []},
+    # ... ],    'link': []}
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # undervisningstid_JSON
+    #
+    # RETURNERAR JSON of teaching times
+    def undervisningstid_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/undervisningstid', headers = self.__headers).json()
+        return r
+
+    #returns:
+    {   'Undervisningstid': [   {   'Benamning': {   'en': 'Mixed-time',
+                                                     'sv': 'Blandad '
+                                                     'undervisningstid'},
+                                    'Beskrivning': {},
+                                    'Giltighetsperiod': {'link': []},
+                                    'ID': '101051',
+                                    'Kod': 'BLA',
+                                    'LarosateID': -1,
+                                    'link': []},
+                                {   'Benamning': {'en': 'Day-time', 'sv': 'Dagtid'},
+                                    'Beskrivning': {},
+                                    'Giltighetsperiod': {'link': []},
+                                    'ID': '101052',
+                                    'Kod': 'DAG',
+                                    'LarosateID': -1,
+                                    'link': []},
+                                {   'Benamning': {   'en': 'Afternoon-time',
+                                                     'sv': 'Eftermiddagstid'},
+                                    'Beskrivning': {},
+                                    'Giltighetsperiod': {'link': []},
+                                    'ID': '101053',
+                                    'Kod': 'EFT',
+                                    'LarosateID': -1,
+                                    'link': []},
+                                {   'Benamning': {   'en': 'No teaching',
+                                                     'sv': 'Ingen '
+                                                     'undervisningstid'},
+                                    'Beskrivning': {},
+                                    'Giltighetsperiod': {   'Slutdatum': '2016-04-30',
+                                                            'link': []},
+                                    'ID': '101054',
+                                    'Kod': 'ING',
+                                    'LarosateID': -1,
+                                    'link': []},
+                                {   'Benamning': {   'en': 'Evening-time',
+                                                     'sv': 'Kvällstid'},
+                                    'Beskrivning': {},
+                                    'Giltighetsperiod': {'link': []},
+                                    'ID': '101055',
+                                    'Kod': 'KVÄ',
+                                    'LarosateID': -1,
+                                    'link': []},
+                                {   'Benamning': {   'en': 'Weekends',
+                                                     'sv': 'Veckoslut'},
+                                    'Beskrivning': {},
+                                    'Giltighetsperiod': {'link': []},
+                                    'ID': '101056',
+                                    'Kod': 'VSL',
+                                    'LarosateID': -1,
+                                    'link': []}],
+        'link': []}
+
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # successivfordjupning_JSON
+    #
+    # RETURNERAR JSON of Successive Specializations
+    def successivfordjupning_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/successivfordjupning', headers = self.__headers).json()
+        return r
+
+    #returns:
+    # {   'SuccessivFordjupning': [   {   'Benamning': {   'en': 'Second cycle, '
+    #                                                            'contains degree '
+    #                                                            'project for Master '
+    #                                                            'of Arts/Master of '
+    #                                                            'Science (60 '
+    #                                                            'credits)',
+    #                                                      'sv': 'Avancerad nivå, '
+    #                                                            'innehåller '
+    #                                                            'examensarbete för '
+    #                                                            'magisterexamen'},
+    #                                     'Beskrivning': {},
+    #                                     'Giltighetsperiod': {'link': []},
+    #                                     'ID': '1',
+    #                                     'Kod': 'A1E',
+    #                                     'LarosateID': -1,
+    #                                     'NivaInomStudieordningID': 2,
+    #                                     'link': []},
+    #                                 {   'Benamning': {   'en': 'Second cycle, has '
+    #                                                            'second-cycle '
+    #                                                            'course/s as entry '
+    #                                                            'requirements',
+    #                                                      'sv': 'Avancerad nivå, '
+    #                                                            'har kurs/er på '
+    #                                                            'avancerad nivå som '
+    #                                                            'förkunskapskrav'},
+    #                                     'Beskrivning': {},
+    #                                     'Giltighetsperiod': {'link': []},
+    #                                     'ID': '2',
+    #                                     'Kod': 'A1F',
+    #                                     'LarosateID': -1,
+    #                                     'NivaInomStudieordningID': 2,
+    #                                     'link': []},
+    # ... ], 'link': []}
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # undervisningsform_JSON
+    #
+    # RETURNERAR JSON of forms of education
+    def undervisningsform_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/undervisningsform', headers = self.__headers).json()
+        return r
+
+    #returns:
+    # {   'Undervisningsform': [   {   'Benamning': {   'en': '- No translation '
+    #                                                         'available -',
+    #                                                   'sv': 'IT-baserad distans'},
+    #                                  'Beskrivning': {},
+    #                                  'Giltighetsperiod': {   'Slutdatum': '2018-06-19',
+    #                                                          'link': []},
+    #                                  'ID': '133253',
+    #                                  'Kod': 'ITD',
+    #                                  'LarosateID': 29,
+    #                                  'link': []},
+    #                              {   'Benamning': {   'en': '- No translation '
+    #                                                         'available -',
+    #                                                   'sv': 'Undervisningsområdet'},
+    #                                  'Beskrivning': {},
+    #                                  'Giltighetsperiod': {   'Slutdatum': '2018-06-19',
+    #                                                          'link': []},
+    #                                  'ID': '133252',
+    #                                  'Kod': 'LU',
+    #                                  'LarosateID': 29,
+    #                                  'link': []},
+    #                              {   'Benamning': {   'en': 'Distance learning',
+    #                                                   'sv': 'Distans'},
+    #                                  'Beskrivning': {   'sv': 'Obligatoriska '
+    #                                                           'träffar kan '
+    #                                                           'förekomma'},
+    #                                  'Giltighetsperiod': {'link': []},
+    #                                  'ID': '2',
+    #                                  'Kod': 'DST',
+    #                                  'LarosateID': -1,
+    #                                  'link': []},
+    #                              {   'Benamning': {   'en': 'No teaching',
+    #                                                   'sv': 'Ingen undervisning'},
+    #                                  'Beskrivning': {},
+    #                                  'Giltighetsperiod': {   'Slutdatum': '2016-04-30',
+    #                                                          'link': []},
+    #                                  'ID': '4',
+    #                                  'Kod': 'ING',
+    #                                  'LarosateID': -1,
+    #                                  'link': []},
+    #                              {   'Benamning': {   'en': 'Web-based distance '
+    #                                                         'learning',
+    #                                                   'sv': 'IT-baserad '
+    #                                                         'distansutbildning'},
+    #                                  'Beskrivning': {   'sv': 'Ingen platsbunden '
+    #                                                           'undervisning'},
+    #                                  'Giltighetsperiod': {   'Slutdatum': '2016-04-30',
+    #                                                          'link': []},
+    #                                  'ID': '3',
+    #                                  'Kod': 'ITD',
+    #                                  'LarosateID': -1,
+    #                                  'link': []},
+    #                              {   'Benamning': {   'en': 'Normal teaching',
+    #                                                   'sv': 'Normal'},
+    #                                  'Beskrivning': {},
+    #                                  'Giltighetsperiod': {'link': []},
+    #                                  'ID': '1',
+    #                                  'Kod': 'NML',
+    #                                  'LarosateID': -1,
+    #                                  'link': []}],
+    #     'link': []}
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # LokalaPerioder_JSON
+    #
+    # RETURNERAR JSON of local periods
+    def LokalaPerioder_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/period', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Period': [
+    #...
+    #                {   'Benamning': {   'en': 'Calendar year 2020',
+    #                                    'sv': 'Kalenderår 2020'},
+    #                   'Beskrivning': {},
+    #                   'FromDatum': '2020-01-01',
+    #                   'Giltighetsperiod': {   'Slutdatum': '2020-12-31',
+    #                                           'Startdatum': '2020-01-01',
+    #                                           'link': []},
+    #                   'ID': '29151',
+    #                   'Kod': '2020',
+    #                   'LarosateID': 29,
+    #                   'PeriodtypID': 1,
+    #                   'TomDatum': '2020-12-31',
+    #                   'link': []},
+    #               {   'Benamning': {   'en': 'Last six months of 2020',
+    #                                    'sv': 'Andra halvår 2020'},
+    #                   'Beskrivning': {},
+    #                   'FromDatum': '2020-07-01',
+    #                   'Giltighetsperiod': {   'Slutdatum': '2020-12-31',
+    #                                           'Startdatum': '2020-07-01',
+    #                                           'link': []},
+    #                   'ID': '29252',
+    #                   'Kod': '2020H',
+    #                   'LarosateID': 29,
+    #                   'PeriodtypID': 3,
+    #                   'TomDatum': '2020-12-31',
+    #                   'link': []},
+    #               {   'Benamning': {   'en': 'First six months of 2020',
+    #                                    'sv': 'Första halvår 2020'},
+    #                   'Beskrivning': {},
+    #                   'FromDatum': '2020-01-01',
+    #                   'Giltighetsperiod': {   'Slutdatum': '2020-06-30',
+    #                                           'Startdatum': '2020-01-01',
+    #                                           'link': []},
+    #                   'ID': '29324',
+    #                   'Kod': '2020V',
+    #                   'LarosateID': 29,
+    #                   'PeriodtypID': 3,
+    #                   'TomDatum': '2020-06-30',
+    #                   'link': []},
+    #...
+    # 'link': []}
+
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # nivainomstudieordning_JSON
+    #
+    # RETURNERAR JSON of education levels
+    def nivainomstudieordning_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/nivainomstudieordning', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'NivaInomStudieordning': [   {   'Benamning': {   'en': 'First cycle',
+    #                                                       'sv': 'Grundnivå'},
+    #                                      'Beskrivning': {},
+    #                                      'Giltighetsperiod': {   'Startdatum': '2007-07-01', 'link': []},
+    #                                      'ID': '1',
+    #                                      'Kod': '1',
+    #                                      'LarosateID': -1,
+    #                                      'link': []},
+    #                                  {   'Benamning': {   'en': 'Second cycle',
+    #                                                       'sv': 'Avancerad nivå'},
+    #                                      'Beskrivning': {},
+    #                                      'Giltighetsperiod': {   'Startdatum': '2007-07-01', 'link': []},
+    #                                      'ID': '2',
+    #                                      'Kod': '2',
+    #                                      'LarosateID': -1,
+    #                                      'link': []},
+    #                                  {   'Benamning': {   'en': 'Third cycle',
+    #                                                       'sv': 'Forskarnivå'},
+    #                                      'Beskrivning': {},
+    #                                      'Giltighetsperiod': {   'Startdatum': '2007-07-01', 'link': []},
+    #                                      'ID': '3',
+    #                                      'Kod': '3',
+    #                                      'LarosateID': -1,
+    #                                      'link': []},
+    #                                  {   'Benamning': {   'en': 'Postgraduate '
+    #                                                             'level',
+    #                                                       'sv': 'Forskarutbildning'},
+    #                                      'Beskrivning': {},
+    #                                      'Giltighetsperiod': {   'Slutdatum': '2007-06-30',
+    #                                                              'Startdatum': '1977-07-01', 'link': []},
+    #                                      'ID': '5',
+    #                                      'Kod': 'F',
+    #                                      'LarosateID': -1,
+    #                                      'link': []},
+    #                                  {   'Benamning': {   'en': 'Undergraduate '
+    #                                                             'level',
+    #                                                       'sv': 'Grundutbildning'},
+    #                                      'Beskrivning': {},
+    #                                      'Giltighetsperiod': {   'Slutdatum': '2007-06-30',
+    #                                                              'Startdatum': '1977-07-01', 'link': []},
+    #                                      'ID': '4',
+    #                                      'Kod': 'G',
+    #                                      'LarosateID': -1,
+    #                                      'link': []}],
+    #     'link': []}
+
+    #####################################################################
+    #
+    # amnesgrupp_JSON
+    #
+    # RETURNERAR JSON of subject area groups
+    def amnesgrupp_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/amnesgrupp', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Amnesgrupp': [   {   'Benamning': {   'en': 'Archival Science',
+    #                                            'sv': 'Arkivvetenskap'},
+    #                           'Beskrivning': {},
+    #                           'Giltighetsperiod': {'link': []},
+    #                           'ID': '10',
+    #                           'Kod': 'AV1',
+    #                           'LarosateID': -1,
+    #                           'link': []},
+    # ...
+    #                       {   'Benamning': {'en': 'Philosophy', 'sv': 'Filosofi'},
+    #                           'Beskrivning': {},
+    #                           'Giltighetsperiod': {'link': []},
+    #                           'ID': '42',
+    #                           'Kod': 'FI2',
+    #                           'LarosateID': -1,
+    #                           'link': []},
+    # ...
+    #                       {   'Benamning': {   'en': 'Informatics/Computer and '
+    #                                                  'Systems Sciences',
+    #                                            'sv': 'Informatik/data- och '
+    #                                                  'systemvetenskap'},
+    #                           'Beskrivning': {},
+    #                           'Giltighetsperiod': {'link': []},
+    #                           'ID': '68',
+    #                           'Kod': 'IF1',
+    #                           'LarosateID': -1,
+    #                           'link': []},
+    # ...
+    #                       {   'Benamning': {   'en': 'Electronics',
+    #                                            'sv': 'Elektronik'},
+    #                           'Beskrivning': {},
+    #                           'Giltighetsperiod': {'link': []},
+    #                           'ID': '30',
+    #                           'Kod': 'EL1',
+    #                           'LarosateID': -1,
+    #                           'link': []},
+    # ... ],
+    #     'link': []}
+
 
 #################################################################
 ##
