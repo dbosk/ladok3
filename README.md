@@ -372,6 +372,33 @@ Example use is:
     # RETURNERAR JSON of subject area groups
     def amnesgrupp_JSON(self):
 ```
+### studietakt_JSON
+```python
+    #####################################################################
+    #
+    # studietakt_JSON
+    #
+    # RETURNERAR JSON of study tempos
+    def studietakt_JSON(self):
+```
+### finansieringsform_JSON
+```python
+    #####################################################################
+    #
+    # finansieringsform_JSON
+    #
+    # RETURNERAR JSON forms of financing
+    def finansieringsform_JSON(self):
+```
+### utbildningsomrade_JSON
+```python
+    #####################################################################
+    #
+    # utbildningsomrade_JSON
+    #
+    # RETURNERAR JSON of subjects
+    def utbildningsomrade_JSON(self):
+```
 
 
 ### canvas_ladok3_spreadsheet.py
