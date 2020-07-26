@@ -244,6 +244,47 @@ Det här är ett gränssnitt för att läsa och skriva resultat
     # RETURNERAR en dictionary of student information
     def studystructure_student_JSON(self, uid):
 ```
+### undervisningssprak_JSON
+```python
+    #####################################################################
+    #
+    # undervisningssprak
+    #
+    # RETURNERAR en dictionary of languages used for instruction
+    def undervisningssprak_JSON(self):
+```
+### 
+```python
+    #####################################################################
+    #
+    # i18n_translation_JSON
+    #
+    # lang               - language code 'en' or 'sv', defaults to 'sv'
+    # RETURNERAR JSON of i18n translations used in Ladok3
+    def i18n_translation_JSON(self, lang = 'sv'):
+```
+Example use is:
+```python
+    translation_table_English=dict()
+    for i in translations_English['Oversattningar']:
+        translation_table_English[i['I18nNyckel']]=i['Text']
+
+    translation_table_Swedish=dict()
+    for i in translations_Swedish['Oversattningar']:
+        translation_table_Swedish[i['I18nNyckel']]=i['Text']
+
+    translations_table=[]
+    for i in translations_English['Oversattningar']:
+        translations_table.append({'key': i['I18nNyckel'],
+                                  'en': translation_table_English[i['I18nNyckel']],
+                                  'sv': translation_table_Swedish[i['I18nNyckel']]})
+
+    translations_df=pd.json_normalize(translations_table)
+
+    output_file="ladoki18n-translations"
+    write_xlsx(output_file, translations_df, 'i18n')
+```
+
 
 ### canvas_ladok3_spreadsheet.py
 

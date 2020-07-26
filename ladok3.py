@@ -617,6 +617,194 @@ class LadokSession():
         r = self.__session.get(url = self.base_gui_proxy_url + '/studiedeltagande/studiestruktur/student/'+uid, headers = self.__headers).json()
         return r
 
+    # added by GQMJr
+    #####################################################################
+    #
+    # larosatesinformation_JSON
+    #
+    # RETURNERAR JSON of the university or college information
+    def larosatesinformation_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/larosatesinformation', headers = self.__headers).json()
+        return r
+
+    # {   'Larosatesinformation': [   {   'Benamning': {   'en': 'Royal Institute of '
+    #                                                            'Technology',
+    #                                                      'sv': 'Kungliga Tekniska '
+    #                                                            'högskolan'},
+    #                                     'Beskrivning': {},
+    #                                     'Giltighetsperiod': {'link': []},
+    #                                     'ID': '29',
+    #                                     'Kod': 'KTH',
+    #                                     'LarosateID': 29,
+    #                                     'OrtID': 18,
+    #                                     'link': []}],
+    #     'link': []}
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # undervisningssprak
+    #
+    # RETURNERAR en dictionary of languages used for instruction
+    def undervisningssprak_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/undervisningssprak', headers = self.__headers).json()
+        return r
+    # {   'Undervisningssprak': [   {   'Benamning': {   'en': 'English',
+    #                                                'sv': 'Engelska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '2',
+    #                               'Kod': 'ENG',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {'en': 'Russian', 'sv': 'Ryska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '4',
+    #                               'Kod': 'RUS',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Sign Language',
+    #                                                'sv': 'Teckenspråk'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '5',
+    #                               'Kod': 'SGN',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Spanish',
+    #                                                'sv': 'Spanska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '3',
+    #                               'Kod': 'SPA',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Swedish',
+    #                                                'sv': 'Svenska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '1',
+    #                               'Kod': 'SWE',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {'en': 'Danish', 'sv': 'Danska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '109804',
+    #                               'Kod': 'DAN',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Finnish',
+    #                                                'sv': 'Finska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '109805',
+    #                               'Kod': 'FIN',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Italian',
+    #                                                'sv': 'Italienska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '109806',
+    #                               'Kod': 'ITA',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Japanese',
+    #                                                'sv': 'Japanska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '109807',
+    #                               'Kod': 'JPN',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Norwegian',
+    #                                                'sv': 'Norska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '109808',
+    #                               'Kod': 'NOR',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Portugese',
+    #                                                'sv': 'Portugisiska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '109809',
+    #                               'Kod': 'POR',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'French',
+    #                                                'sv': 'Franska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '109810',
+    #                               'Kod': 'FRE',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {'en': 'German', 'sv': 'Tyska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '109811',
+    #                               'Kod': 'GER',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Chinese',
+    #                                                'sv': 'Kinesiska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '111033',
+    #                               'Kod': 'CHI',
+    #                               'LarosateID': -1,
+    #                               'link': []},
+    #                           {   'Benamning': {   'en': 'Arabic',
+    #                                                'sv': 'Arabiska'},
+    #                               'Beskrivning': {},
+    #                               'Giltighetsperiod': {'link': []},
+    #                               'ID': '111032',
+    #                               'Kod': 'ARA',
+    #                               'LarosateID': -1,
+    #                               'link': []}],
+    # 'link': []}
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # i18n_translation_JSON
+    #
+    # lang               - language code 'en' or 'sv', defaults to 'sv'
+    # RETURNERAR JSON of i18n translations used in Ladok3
+    def i18n_translation_JSON(self, lang = 'sv'):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/i18n/oversattningar/sprakkod/'+lang, headers = self.__headers).json()
+        return r
+
+    # the above i18n translations are used for example in:
+    # 'Utbildningstillfallestyp': {   'Benamningar': {   'en': 'Course instance', 'sv': 'Kurstillfälle'},
+    #                                                    'Giltighetsperiod': {   'link': [   ]},
+    #                                                    'Grundtyp': 'KURS',
+    #                                                    'ID': 52,
+    #                                                    'Kod': '2007KTF',
+    #                                                    'RegelverkForUtbildningstyp': {   'Regelvarden': [   {   'Regelnamn': 'commons.domain.regel.ingar.i.grupp.overfors.till.nya', 'link': [   ]},
+    #                                                                                                         {   'Regelnamn': 'commons.domain.regel.informationsbehorighet.grundavancerad', 'Varde': 'true', 'link': [   ]},
+    #                                                                                                         {   'Regelnamn': 'commons.domain.regel.kan.utannonseras', 'Varde': 'true', 'link': [   ]},
+    #                                                                                                         {   'Regelnamn': 'commons.domain.regel.grupp.for.utsokning',
+    #                                                                                                             'Varde': 'grupp.for.utsokning.grundavanceradniva', 'link': [   ]}],
+    # All of the things of the form "commons-domain.*" are i18n keys to look the actual text to be used.
+    # for example:
+    # in Swedish:
+    #{   'I18nNyckel': 'commons.domain.regel.ingar.i.grupp.overfors.till.nya',
+    #    'Text': 'Ingår i grupp: Överförs till NyA',
+    #    'link': []},
+    # In English:
+    # {   'I18nNyckel': 'commons.domain.regel.ingar.i.grupp.overfors.till.nya',
+    #     'Text': 'Part of group: Transferred to NyA',
+    #     'link': []},
+
+
 #################################################################
 ##
 ## private methods
