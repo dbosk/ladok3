@@ -3439,6 +3439,7 @@ class LadokSession():
     # omradesbehorighet_JSON
     #
     # RETURNERAR JSON of "omradesbehorighet"
+    # for information see https://antagning.se/globalassets/omradesbehorigheter-hogskolan.pdf
     def omradesbehorighet_JSON(self):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/omradesbehorighet', headers = self.__headers).json()
