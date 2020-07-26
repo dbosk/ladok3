@@ -3261,6 +3261,7 @@ class LadokSession():
     # utbildningstyp_JSON
     #
     # RETURNERAR JSON of types of education
+    # for information about these see https://ladok.se/wp-content/uploads/2018/01/Funktionsbeskrivning_095.pdf
     def utbildningstyp_JSON(self):
         if not self.signed_in: raise Exception('Not signed in.')
         r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/utbildningstyp', headers = self.__headers).json()
@@ -3445,6 +3446,42 @@ class LadokSession():
         r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/omradesbehorighet', headers = self.__headers).json()
         return r
 
+    # added by GQMJr
+    #####################################################################
+    #
+    # hamtaStudieResultatForStudent_JSON 
+    #
+    # studentUID             -- student's UID
+    # RETURNERAR JSON of results
+
+    # NOTE: These are a work in progress and not ready yet
+    # def hamtaStudieResultatForStudent_JSON (self, studentUID):
+    #     if not self.signed_in: raise Exception('Not signed in.')
+    #     r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/studieresultat/resultat/student/'+studentUID, headers = self.__headers).json()
+    #     return r
+
+    # def student_participation_JSON (self, studentUID):
+    #     if not self.signed_in: raise Exception('Not signed in.')
+    #     headers = self.__headers.copy()
+    #     headers['Content-Type'] = 'application/vnd.ladok-studiedeltagande'
+    #     headers['Accept'] = headers['Accept']+', application/vnd.ladok-studiedeltagande'
+    #     r = self.__session.get(url = self.base_gui_proxy_url + '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/'+studentUID, headers = self.__headers)
+    #     return {r.status_code, r.text}
+
+
+
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # examen_student_uid_JSON
+    #
+    # studentUID             -- student's UID
+    # RETURNERAR JSON of admission round
+    def examen_student_uid_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + 'examen/student/+studentUID', headers = self.__headers).json()
+        return r
 
 #################################################################
 ##

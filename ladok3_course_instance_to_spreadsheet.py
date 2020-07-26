@@ -244,6 +244,14 @@ def main():
     course_code=remainder[0]
     instance_code=remainder[1]
 
+    utbildningstyp=ladok_session.utbildningstyp_JSON()
+    types_of_education=dict()
+    for i in utbildningstyp['Utbildningstyp']:
+        types_of_education[i['Kod']]={
+            'en': i['Benamning']['en'],
+            'sv': i['Benamning']['sv'],
+        }
+
     user_and_program_list=[]
     ii=ladok_session.instance_info(course_code, instance_code, 'en')
     pl=ladok_session.participants_JSON(ii['Uid'])
@@ -269,7 +277,7 @@ def main():
             d['program_name']=si[1]
             d['track_code']=si[2]
             d['admission']=si[3]
-            d['type_ of_instance']=si[4]
+            d['type_ of_instance']=types_of_education[si[4]]['en']
         user_and_program_list.append(d)
         
     user_and_program_df=pd.json_normalize(user_and_program_list)
