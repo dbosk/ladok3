@@ -276,8 +276,8 @@ def main():
         if len(si) > 1:
             d['program_name']=si[1]
             d['track_code']=si[2]
-            d['admission']=si[3]
-            # the type of education is associated with an admissions code (from the 'admission' field)
+            d['application_code']=si[3]
+            # the type of education is associated with an application code (anmälningskod)
             d['type_ of_education']=types_of_education[si[4]]['en']
         user_and_program_list.append(d)
         
