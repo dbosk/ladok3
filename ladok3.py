@@ -2281,6 +2281,7 @@ class LadokSession():
     # ...
 
 
+    # added by GQMJr
     #####################################################################
     #
     # utbildningsomrade_JSON
@@ -2351,6 +2352,427 @@ class LadokSession():
     #                              'LarosateID': -1,
     #                              'link': []},
     # ... ],
+    # 'link': []}
+
+    
+    # added by GQMJr
+    #####################################################################
+    #
+    # kravpatidigarestudier_JSON
+    #
+    # RETURNERAR JSON of krequirements for earlier studies
+    def kravpatidigarestudier_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/kravpatidigarestudier', headers = self.__headers).json()
+        return r
+
+    # returns
+    # {   'KravPaTidigareStudier': [   {   'Benamning': {   'en': 'University '
+    #                                                         'studies required',
+    #                                                   'sv': 'Tidigare '
+    #                                                         'högskolestudier '
+    #                                                         'krävs'},
+    #                                  'Beskrivning': {},
+    #                                  'Emilvarde': 'uh',
+    #                                  'Giltighetsperiod': {'link': []},
+    #                                  'ID': '1',
+    #                                  'Kod': 'UH',
+    #                                  'LarosateID': -1,
+    #                                  'link': []},
+    #                              {   'Benamning': {   'en': 'Upper secondary '
+    #                                                         'or equivalent',
+    #                                                   'sv': 'Inga tidigare '
+    #                                                         'högskolestudier '
+    #                                                         'krävs'},
+    #                                  'Beskrivning': {},
+    #                                  'Emilvarde': 'grundlaggande',
+    #                                  'Giltighetsperiod': {'link': []},
+    #                                  'ID': '2',
+    #                                  'Kod': 'GR',
+    #                                  'LarosateID': -1,
+    #                                  'link': []},
+    #                              {   'Benamning': {   'en': 'No general entry '
+    #                                                         'requirements '
+    #                                                         'needed',
+    #                                                   'sv': 'Ingen '
+    #                                                         'grundläggande '
+    #                                                         'behörighet krävs'},
+    #                                  'Beskrivning': {},
+    #                                  'Emilvarde': 'inga',
+    #                                  'Giltighetsperiod': {'link': []},
+    #                                  'ID': '3',
+    #                                  'Kod': 'IN',
+    #                                  'LarosateID': -1,
+    #                                  'link': []}],
+    # 'link': []}
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # studieordning_JSON
+    #
+    # RETURNERAR JSON of study regulation
+    def studieordning_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/studieordning', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Studieordning': [   {   'Benamning': {   'en': 'Higher education, study '
+    #                                                     'regulation of 1993',
+    #                                               'sv': 'Högskoleutbildning, 1993 '
+    #                                                     'års studieordning'},
+    #                              'Beskrivning': {   'sv': 'Avser i Ladok 1993 års '
+    #                                                       'studieordning inklusive '
+    #                                                       'dess föregångare'},
+    #                              'EnhetID': 9,
+    #                              'Giltighetsperiod': {'link': []},
+    #                              'ID': '2',
+    #                              'Kod': 'HÖ93',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 1,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Higher education, study '
+    #                                                     'regulation of 2007',
+    #                                               'sv': 'Högskoleutbildning, 2007 '
+    #                                                     'års studieordning'},
+    #                              'Beskrivning': {},
+    #                              'EnhetID': 2,
+    #                              'Giltighetsperiod': {   'Startdatum': '2007-07-01',
+    #                                                      'link': []},
+    #                              'ID': '1',
+    #                              'Kod': 'HÖ07',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 1,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Access education (hours)',
+    #                                               'sv': 'Behörighetsgivande '
+    #                                                     'förutbildning (timmar)'},
+    #                              'Beskrivning': {},
+    #                              'EnhetID': 5,
+    #                              'Giltighetsperiod': {'link': []},
+    #                              'ID': '12',
+    #                              'Kod': 'ÖVBT',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100970,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Access education (fup)',
+    #                                               'sv': 'Behörighetsgivande '
+    #                                                     'förutbildning (poäng)'},
+    #                              'Beskrivning': {   'sv': 'Utbildning enligt '
+    #                                                       'förordning (2018:1519) '
+    #                                                       'om behörighetsgivande '
+    #                                                       'och '
+    #                                                       'högskoleintroducerande '
+    #                                                       'utbildning resp. '
+    #                                                       'tidigare gällande '
+    #                                                       'förordning (2007:432) '
+    #                                                       'om behörighetsgivande '
+    #                                                       'förutbildning vid '
+    #                                                       'universitet och '
+    #                                                       'högskolor'},
+    #                              'EnhetID': 4,
+    #                              'Giltighetsperiod': {'link': []},
+    #                              'ID': '3',
+    #                              'Kod': 'FÖPO',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 2,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Access education (weeks)',
+    #                                               'sv': 'Behörighetsgivande '
+    #                                                     'förutbildning (veckor)'},
+    #                              'Beskrivning': {   'sv': 'Utbildning enligt '
+    #                                                       'förordning (2018:1519) '
+    #                                                       'om behörighetsgivande '
+    #                                                       'och '
+    #                                                       'högskoleintroducerande '
+    #                                                       'utbildning resp. '
+    #                                                       'tidigare gällande '
+    #                                                       'förordning (2007:432) '
+    #                                                       'om behörighetsgivande '
+    #                                                       'förutbildning vid '
+    #                                                       'universitet och '
+    #                                                       'högskolor'},
+    #                              'EnhetID': 1,
+    #                              'Giltighetsperiod': {'link': []},
+    #                              'ID': '4',
+    #                              'Kod': 'FÖVE',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 2,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Internal education (ORU)',
+    #                                               'sv': 'Högskoleintern utbildning '
+    #                                                     '(ORU)'},
+    #                              'Beskrivning': {   'sv': 'Intern utbildning vid '
+    #                                                       'Örebro universitet'},
+    #                              'EnhetID': 6,
+    #                              'Giltighetsperiod': {   'Slutdatum': '2007-06-30',
+    #                                                      'Startdatum': '2004-01-01',
+    #                                                      'link': []},
+    #                              'ID': '15',
+    #                              'Kod': 'ÖVHI',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100970,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Older defence education',
+    #                                               'sv': 'Äldre utbildning vid '
+    #                                                     'Försvarshögskolan'},
+    #                              'Beskrivning': {   'sv': 'Utbildning enligt '
+    #                                                       'förordningen '
+    #                                                       '(1996:1476) med '
+    #                                                       'instruktion för '
+    #                                                       'Försvarshögskolan'},
+    #                              'EnhetID': 10,
+    #                              'Giltighetsperiod': {   'Slutdatum': '2007-12-31',
+    #                                                      'link': []},
+    #                              'ID': '16',
+    #                              'Kod': 'ÖVFU',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100970,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Post-secondary vocational '
+    #                                                     'education and training',
+    #                                               'sv': 'Kvalificerad '
+    #                                                     'yrkesutbildning'},
+    #                              'Beskrivning': {   'sv': 'Utbildning enligt '
+    #                                                       'förordningen '
+    #                                                       '(2001:1131) om '
+    #                                                       'kvalificerad '
+    #                                                       'yrkesutbildning '
+    #                                                       '(upphävd 2009-04-15)'},
+    #                              'EnhetID': 7,
+    #                              'Giltighetsperiod': {   'Slutdatum': '2013-12-31',
+    #                                                      'link': []},
+    #                              'ID': '13',
+    #                              'Kod': 'KY02',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100968,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Preparatory education',
+    #                                               'sv': 'Preparandutbildning'},
+    #                              'Beskrivning': {   'sv': 'Utbildning enligt '
+    #                                                       'förordningen (1985:681) '
+    #                                                       'om preparandutbildning '
+    #                                                       'i svenska (upphävd '
+    #                                                       '1993-07-01)'},
+    #                              'EnhetID': 6,
+    #                              'Giltighetsperiod': {   'Slutdatum': '1993-06-30',
+    #                                                      'link': []},
+    #                              'ID': '14',
+    #                              'Kod': 'ÖVPR',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100970,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Contract education '
+    #                                                     '(hours)',
+    #                                               'sv': 'Uppdragsutbildning, Övrig '
+    #                                                     'utbildning (timmar)'},
+    #                              'Beskrivning': {},
+    #                              'EnhetID': 5,
+    #                              'Giltighetsperiod': {   'Slutdatum': '2018-12-31',
+    #                                                      'link': []},
+    #                              'ID': '9',
+    #                              'Kod': 'ÖVUT',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100970,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Higher vocational '
+    #                                                     'education',
+    #                                               'sv': 'Yrkeshögskoleutbildning'},
+    #                              'Beskrivning': {   'sv': 'Utbildning enligt '
+    #                                                       'förordning (2009:130) '
+    #                                                       'om yrkeshögskolan'},
+    #                              'EnhetID': 8,
+    #                              'Giltighetsperiod': {   'Startdatum': '2009-07-01',
+    #                                                      'link': []},
+    #                              'ID': '5',
+    #                              'Kod': 'YH09',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 4,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Contract education '
+    #                                                     '(credits)',
+    #                                               'sv': 'Uppdragsutbildning '
+    #                                                     '(högskolepoäng)'},
+    #                              'Beskrivning': {},
+    #                              'EnhetID': 2,
+    #                              'Giltighetsperiod': {   'Startdatum': '2007-07-01',
+    #                                                      'link': []},
+    #                              'ID': '17',
+    #                              'Kod': 'UPHP',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100928,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Contract education '
+    #                                                     '(weeks)',
+    #                                               'sv': 'Uppdragsutbildning '
+    #                                                     '(veckor)'},
+    #                              'Beskrivning': {},
+    #                              'EnhetID': 1,
+    #                              'Giltighetsperiod': {'link': []},
+    #                              'ID': '18',
+    #                              'Kod': 'UPVE',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100928,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Police education',
+    #                                               'sv': 'Polisutbildning'},
+    #                              'Beskrivning': {   'sv': 'Polisutbildning som ej '
+    #                                                       'uppfyller alla '
+    #                                                       'kvalitetskrav för '
+    #                                                       'högskoleutbildning.'},
+    #                              'EnhetID': 2,
+    #                              'Giltighetsperiod': {'link': []},
+    #                              'ID': '109831',
+    #                              'Kod': 'PU99',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100969,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Police education, equal '
+    #                                                     'to Higher education',
+    #                                               'sv': 'Polisutbildning, '
+    #                                                     'motsvarande '
+    #                                                     'högskoleutbildning'},
+    #                              'Beskrivning': {   'sv': 'Polisutbildning som '
+    #                                                       'uppfyller '
+    #                                                       'kvalitetskraven för '
+    #                                                       'högskoleutbildning'},
+    #                              'EnhetID': 2,
+    #                              'Giltighetsperiod': {   'Startdatum': '2018-07-01',
+    #                                                      'link': []},
+    #                              'ID': '135370',
+    #                              'Kod': 'PU18',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100969,
+    #                              'link': []},
+    #                          {   'Benamning': {'en': 'Ö-Fel', 'sv': 'Ö-Fel'},
+    #                              'Beskrivning': {},
+    #                              'EnhetID': 1,
+    #                              'Giltighetsperiod': {   'Slutdatum': '1900-01-01',
+    #                                                      'link': []},
+    #                              'ID': '138710',
+    #                              'Kod': 'FEL',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100970,
+    #                              'link': []},
+    #                          {   'Benamning': {   'en': 'Contract education '
+    #                                                     '(hours)',
+    #                                               'sv': 'Uppdragsutbildning '
+    #                                                     '(timmar)'},
+    #                              'Beskrivning': {},
+    #                              'EnhetID': 5,
+    #                              'Giltighetsperiod': {   'Startdatum': '2019-01-01',
+    #                                                      'link': []},
+    #                              'ID': '147898',
+    #                              'Kod': 'UPTI',
+    #                              'LarosateID': -1,
+    #                              'UtbildningsformID': 100928,
+    #                              'link': []}],
+    #     'link': []}
+
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # enhet_JSON
+    #
+    # RETURNERAR JSON of units
+    def enhet_JSON(self):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/enhet', headers = self.__headers).json()
+        return r
+
+    # returns:
+    # {   'Enhet': [   {   'Benamning': {   'en': 'Credit points',
+    #                                   'sv': 'Poäng (Övrig utbildning)'},
+    #                  'Beskrivning': {},
+    #                  'Giltighetsperiod': {   'Slutdatum': '2018-01-01',
+    #                                          'link': []},
+    #                  'Helarsvarde': 40,
+    #                  'ID': '6',
+    #                  'Kod': 'AUP',
+    #                  'LarosateID': -1,
+    #                  'link': []},
+    #              {   'Benamning': {   'en': 'Pre-education credits',
+    #                                   'sv': 'Förutbildningspoäng'},
+    #                  'Beskrivning': {},
+    #                  'Giltighetsperiod': {'link': []},
+    #                  'Helarsvarde': 60,
+    #                  'ID': '4',
+    #                  'Kod': 'FUP',
+    #                  'LarosateID': -1,
+    #                  'link': []},
+    #              {   'Benamning': {'en': 'Credits', 'sv': 'Högskolepoäng'},
+    #                  'Beskrivning': {   'sv': 'Översattes 2007-2010 med Higher '
+    #                                           'education credits'},
+    #                  'Giltighetsperiod': {   'Startdatum': '2007-07-01',
+    #                                          'link': []},
+    #                  'Helarsvarde': 60,
+    #                  'ID': '2',
+    #                  'Kod': 'HP',
+    #                  'LarosateID': -1,
+    #                  'link': []},
+    #              {   'Benamning': {   'en': 'Converted credits',
+    #                                   'sv': 'Konverterade högskolepoäng'},
+    #                  'Beskrivning': {   'sv': 'Enheten poäng konverterades '
+    #                                           'till högskolepoäng i Ladok för '
+    #                                           '1993 års studieordning i '
+    #                                           'samband med övergången till '
+    #                                           '2007 års studieordning'},
+    #                  'Giltighetsperiod': {   'Slutdatum': '2007-06-30',
+    #                                          'link': []},
+    #                  'Helarsvarde': 60,
+    #                  'ID': '9',
+    #                  'Kod': 'HP-K',
+    #                  'LarosateID': -1,
+    #                  'link': []},
+    #              {   'Benamning': {   'en': 'Internal credits',
+    #                                   'sv': 'Interna poäng'},
+    #                  'Beskrivning': {   'sv': 'Har enbart använts av '
+    #                                           'Försvarshögskolan'},
+    #                  'Giltighetsperiod': {   'Slutdatum': '2016-07-01',
+    #                                          'link': []},
+    #                  'Helarsvarde': 60,
+    #                  'ID': '10',
+    #                  'Kod': 'IP',
+    #                  'LarosateID': -1,
+    #                  'link': []},
+    #              {   'Benamning': {'en': 'KY credits', 'sv': 'KY-poäng'},
+    #                  'Beskrivning': {},
+    #                  'Giltighetsperiod': {   'Slutdatum': '2013-12-31',
+    #                                          'Startdatum': '2002-01-01',
+    #                                          'link': []},
+    #                  'Helarsvarde': 40,
+    #                  'ID': '7',
+    #                  'Kod': 'KYP',
+    #                  'LarosateID': -1,
+    #                  'link': []},
+    #              {   'Benamning': {'en': 'Hours', 'sv': 'Timmar'},
+    #                  'Beskrivning': {},
+    #                  'Giltighetsperiod': {'link': []},
+    #                  'Helarsvarde': 1600,
+    #                  'ID': '5',
+    #                  'Kod': 'T',
+    #                  'LarosateID': -1,
+    #                  'link': []},
+    #              {   'Benamning': {'en': 'Weeks', 'sv': 'Veckor'},
+    #                  'Beskrivning': {},
+    #                  'Giltighetsperiod': {'link': []},
+    #                  'Helarsvarde': 40,
+    #                  'ID': '1',
+    #                  'Kod': 'V',
+    #                  'LarosateID': -1,
+    #                  'link': []},
+    #              {   'Benamning': {   'en': 'HVE credits',
+    #                                   'sv': 'Yrkeshögskolepoäng'},
+    #                  'Beskrivning': {},
+    #                  'Giltighetsperiod': {   'Startdatum': '2009-07-01',
+    #                                          'link': []},
+    #                  'Helarsvarde': 200,
+    #                  'ID': '8',
+    #                  'Kod': 'YHP',
+    #                  'LarosateID': -1,
+    #                  'link': []}],
     # 'link': []}
 
 #################################################################

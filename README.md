@@ -399,6 +399,24 @@ Example use is:
     # RETURNERAR JSON of subjects
     def utbildningsomrade_JSON(self):
 ```
+### kravpatidigarestudier_JSON
+```python
+    #####################################################################
+    #
+    # kravpatidigarestudier_JSON
+    #
+    # RETURNERAR JSON of krequirements for earlier studies
+    def kravpatidigarestudier_JSON(self):
+```
+### studieordning_JSON
+```python
+    #####################################################################
+    #
+    # studieordning_JSON
+    #
+    # RETURNERAR JSON of study regulation
+    def studieordning_JSON(self):
+```
 
 
 ### canvas_ladok3_spreadsheet.py
