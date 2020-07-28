@@ -3,9 +3,13 @@
 # Input:
 #    ./ladok3_course_instance_to_spreadsheet.py course_code course_instance
 #
-# 3xamples:
-#   P1 in 2019 is course instance 50287
+# Examples:
+#  II2202 P1 in 2019 is course instance 50287
 # ./ladok3_course_instance_to_spreadsheet.py II2202 50287
+#
+# II2202 P1 and P1P2 in 2020
+# ./ladok3_course_instance_to_spreadsheet.py II2202 51127
+# ./ladok3_course_instance_to_spreadsheet.py II2202 51491
 #
 # will produce a file: users_programs-12162.xlsx
 # This file will contain the columns:
@@ -254,6 +258,11 @@ def main():
 
     user_and_program_list=[]
     ii=ladok_session.instance_info(course_code, instance_code, 'en')
+    if not ii.get('Uid', False):
+        print("It seems the instance code is not a Ladok instance ('tillfalleskod'), ii:")
+        pp.pprint(ii)
+        return
+
     pl=ladok_session.participants_JSON(ii['Uid'])
     for s in pl['Resultat']:
         d=dict()
@@ -276,7 +285,7 @@ def main():
         if len(si) > 1:
             d['program_name']=si[1]
             d['track_code']=si[2]
-            d['application_code']=si[3]
+            d['Session_code']=si[3]               # utbildningstillfalleskod
             # the type of education is associated with an application code (anmälningskod)
             d['type_ of_education']=types_of_education[si[4]]['en']
         user_and_program_list.append(d)
