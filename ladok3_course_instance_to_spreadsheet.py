@@ -242,7 +242,7 @@ def main():
     ladok_session=initialize(options)
 
     if (len(remainder) < 2):
-        print("Insuffient arguments - must provide course_code course_instance_id (i.e. the KOPPS Tillfellskod)\n")
+        print("Insuffient arguments - must provide course_code course_instance_id (i.e. the KOPPS Tillfällskod)\n")
         sys.exit()
 
     course_code=remainder[0]
@@ -259,7 +259,7 @@ def main():
     user_and_program_list=[]
     ii=ladok_session.instance_info(course_code, instance_code, 'en')
     if not ii.get('Uid', False):
-        print("It seems the instance code is not a Ladok instance ('tillfalleskod'), ii:")
+        print("It seems the instance code is not a Ladok instance ('tillfälleskod'), ii:")
         pp.pprint(ii)
         return
 
@@ -285,7 +285,7 @@ def main():
         if len(si) > 1:
             d['program_name']=si[1]
             d['track_code']=si[2]
-            d['Session_code']=si[3]               # utbildningstillfalleskod
+            d['Session_code']=si[3]               # utbildningstillfälleskod
             # the type of education is associated with an application code (anmälningskod)
             d['type_ of_education']=types_of_education[si[4]]['en']
         user_and_program_list.append(d)
