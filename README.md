@@ -496,6 +496,11 @@ Input:
 ```
 ladok3_course_instance_to_spreadsheet.py course_code course_instance
 ```
+or
+```
+ladok3_course_instance_to_spreadsheet.py canvas_course_id
+```
+
 Optionally include their personnumber with the flag -p or --personnumbers 
 
 Add the "-T" flag to run in the Ladok test environment.
@@ -503,8 +508,13 @@ Add the "-T" flag to run in the Ladok test environment.
 Output: outputs a file ('users_programs-instance-COURSE_INSTANCE.xlsx) containing a spreadsheet of the users information
 
 ```
-# for the P1 instance in 2019 the course instance is 50287
+# for II2202 the P1 instance in 2019 the course instance is 50287
 ladok3_course_instance_to_spreadsheet.py II2202 50287
+```
+or
+```
+# Canvas course_id for II2202 in P1 is 20979
+ladok3_course_instance_to_spreadsheet.py 20979
 ```
 
 ### canvas_students_missing_integration_ids.py
@@ -515,7 +525,6 @@ Input:
 ```
 canvas_students_missing_integration_ids.py canvas_course_id
 ```
-
 Output: outputs a file ('users_without_integration_ids-COURSE_ID.xlsx) containing a spreadsheet of the users information
 
 

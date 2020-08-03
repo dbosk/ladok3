@@ -3483,6 +3483,24 @@ class LadokSession():
         r = self.__session.get(url = self.base_gui_proxy_url + 'examen/student/+studentUID', headers = self.__headers).json()
         return r
 
+
+    # added by GQMJr
+    #####################################################################
+    #
+    # instance_info_uid
+    #
+    # instance_uid       -- course's Uid (from course_integration_id)
+    # 
+    # RETURNERAR en dictionary of course instance information
+    #
+    # Example: ii=ladok_session.instance_info_uid(instance_uid)
+    def instance_info_uid(self, instance_uid):
+        if not self.signed_in: raise Exception('Not signed in.')
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/'+instance_uid, headers = self.__headers).json()
+        return r
+
+
+
 #################################################################
 ##
 ## private methods

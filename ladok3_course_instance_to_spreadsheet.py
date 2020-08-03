@@ -2,6 +2,8 @@
 #
 # Input:
 #    ./ladok3_course_instance_to_spreadsheet.py course_code course_instance
+# or
+#    ./ladok3_course_instance_to_spreadsheet.py canvas_course_id
 #
 # Examples:
 #  II2202 P1 in 2019 is course instance 50287
@@ -10,6 +12,9 @@
 # II2202 P1 and P1P2 in 2020
 # ./ladok3_course_instance_to_spreadsheet.py II2202 51127
 # ./ladok3_course_instance_to_spreadsheet.py II2202 51491
+#
+# II2202 P1 is Canvas course_id 20979
+#    ./ladok3_course_instance_to_spreadsheet.py 20979
 #
 # will produce a file: users_programs-12162.xlsx
 # This file will contain the columns:
@@ -134,6 +139,53 @@ def canvas_user_from_integration_id(integration_id):
 
     return None
 
+def teachers_in_course(course_id):
+    users_found_thus_far=[]
+    # Use the Canvas API to get the list of users enrolled in this course
+    #GET /api/v1/courses/:course_id/enrollments
+
+    url = "{0}/courses/{1}/enrollments".format(canvas_baseUrl,course_id)
+    if Verbose_Flag:
+        print("url: {}".format(url))
+
+    extra_parameters={'per_page': '100',
+                      'type': ['TeacherEnrollment']
+    }
+    r = requests.get(url, params=extra_parameters, headers = canvas_header)
+    if Verbose_Flag:
+        print("result of getting enrollments: {}".format(r.text))
+
+    if r.status_code == requests.codes.ok:
+        page_response=r.json()
+
+        for p_response in page_response:  
+            users_found_thus_far.append(p_response)
+
+        # the following is needed when the reponse has been paginated
+        while r.links.get('next', False):
+            r = requests.get(r.links['next']['url'], headers=canvas_header)
+            page_response = r.json()  
+            for p_response in page_response:  
+                users_found_thus_far.append(p_response)
+
+    return users_found_thus_far
+
+def course_info(course_id):
+    # Use the Canvas API to get information for the course
+    #GET /api/v1/courses/:course_id
+
+    url = "{0}/courses/{1}".format(canvas_baseUrl,course_id)
+    if Verbose_Flag:
+        print("url: {}".format(url))
+
+    r = requests.get(url, headers = canvas_header)
+    if Verbose_Flag:
+        print("result of getting course: {}".format(r.text))
+
+    if r.status_code == requests.codes.ok:
+        page_response=r.json()
+        return page_response
+    return None
 
 
 #//////////////////////////////////////////////////////////////////////
@@ -241,12 +293,32 @@ def main():
 
     ladok_session=initialize(options)
 
-    if (len(remainder) < 2):
+    if (len(remainder) == 2):
+        course_code=remainder[0]
+        instance_code=remainder[1]
+    elif (len(remainder) == 1):
+        course_id=remainder[0]
+        # get the "sis_course_id"
+        course_information=course_info(course_id)
+        course_code=course_information.get('sis_course_id', None)
+        if not course_code:
+            print("Unable to find course_code information for Canva course={}".format(course_id))
+        course_code=course_code[0:6]
+
+        course_integration_id=course_information.get('integration_id', None)
+        if not course_integration_id:
+            print("Unable to find course_integration information for Canva course={}".format(course_id))
+        instance_info=ladok_session.instance_info_uid(course_integration_id)
+        if instance_info:
+            instance_code=instance_info['TillfallesKod']
+            if Verbose_Flag:
+                print("instance_code={}".format(instance_code))
+        else:
+            print("Insuffient arguments - must provide at least a course_code")
+            return
+    else:
         print("Insuffient arguments - must provide course_code course_instance_id (i.e. the KOPPS Tillfällskod)\n")
         sys.exit()
-
-    course_code=remainder[0]
-    instance_code=remainder[1]
 
     utbildningstyp=ladok_session.utbildningstyp_JSON()
     types_of_education=dict()
