@@ -17,6 +17,7 @@
 # ./cl_user_info.py dddd         course_id
 # ./cl_user_info.py u1xxxxx      course_id
 # ./cl_user_info.py 'x@kth.se'   course_id
+# ./cl_user_info.py  https://canvas.kth.se/courses/course_id/users/user_id
 #
 # The course ID can be a Canvas course_id or
 # if you have dashboard cards, you can specific a course code, a nickname, unique part of the short name or original course name
@@ -39,6 +40,7 @@ import json
 import optparse
 import sys
 import re
+import os
 
 import pandas as pd
 pp = pprint.PrettyPrinter(indent=4)
@@ -453,6 +455,9 @@ def main():
     # check for numeric string, in which case this a Canvas user_id
     if person_id.isdigit():
         info=user_info(person_id)
+    elif person_id.startswith("https://") >0: # case for Canvas People page entry
+        # extract the Canv as user number from following the last "/"
+        info=user_info(os.path.basename(person_id))
     elif person_id.count('-') == 4 and re.match('^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}', person_id):     # Ladok ID, i.e., a sis_integration_id
         info=user_info('sis_integration_id:'+person_id)
         integration_id=person_id        # since we have the Ladok ID, save it for later
