@@ -465,6 +465,18 @@ Example use is:
     # RETURNERAR JSON of "omradesbehorighet"
     def omradesbehorighet_JSON(self):
 ```
+### instance_info_uid
+```python
+    #####################################################################
+    #
+    # instance_info_uid
+    #
+    # instance_uid       -- course's Uid (from course_integration_id)
+    # 
+    # RETURNERAR en dictionary of course instance information
+    #
+    # Example: ii=ladok_session.instance_info_uid(instance_uid)
+```
 
 
 ### canvas_ladok3_spreadsheet.py
