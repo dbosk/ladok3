@@ -504,6 +504,8 @@ canvas_ladok3_spreadsheet.py -t 'II2202 HT20-1'
 Purpose: Use the data in Ladok3 together with the data from Canvas to create a spreadsheet of students in a course
 instance and include their Canvas user_id (or "not in Canvas" if they do not have a Canvas user_id), name, Ladok3 Uid, program_code, program name, etc.
 
+Note that the course_id can be given as a numeric value or a string which will be matched against the courses in the user's dashboard cards. It will first match against course codes, then short name, then original names.
+
 Input: 
 ```
 ladok3_course_instance_to_spreadsheet.py course_code course_instance
@@ -511,6 +513,10 @@ ladok3_course_instance_to_spreadsheet.py course_code course_instance
 or
 ```
 ladok3_course_instance_to_spreadsheet.py canvas_course_id
+```
+or
+```
+./ladok3_course_instance_to_spreadsheet.py course_code
 ```
 
 Optionally include their personnumber with the flag -p or --personnumbers 
@@ -527,6 +533,11 @@ or
 ```
 # Canvas course_id for II2202 in P1 is 20979
 ladok3_course_instance_to_spreadsheet.py 20979
+```
+or
+# P1P2 is a nickname on a dashboard card for II2202 duing P1 and P2
+```
+./ladok3_course_instance_to_spreadsheet.py P1P2
 ```
 
 ### canvas_students_missing_integration_ids.py
