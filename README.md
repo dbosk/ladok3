@@ -536,6 +536,9 @@ Add the "-T" flag to run in the Ladok test environment.
 
 If you know the Ladok_id, i.e., the integration_id - then you do not need to specify a course_id.
 
+The program can also take an argument in the form https://canvas.kth.se/courses/course_id/users/user_id
+- this is the URL when you are on a user's page in a course.
+
 Output:\
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;from Canvas: sortable name, user_id, and integration_id\
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if you specified a course_id, you will also get KTHID and login_id\
