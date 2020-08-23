@@ -43,6 +43,9 @@ import json
 import optparse
 import sys
 import pandas as pd
+
+import datetime
+
 pp = pprint.PrettyPrinter(indent=4)
 
 global canvas_baseUrl	# the base URL used for access to Canvas
@@ -232,6 +235,37 @@ def swedish_name(names):
         if i['Sprakkod'] == 'sv':
             return i['Text']
 
+
+def collect_study_info_from_child(child):
+    bi=list()
+    if Verbose_Flag:
+        print("child={}".format(child))
+    if len(child['Barn']) > 0:
+        if Verbose_Flag:
+            print("length of child is {}".format(len(child['Barn'])))
+        for bb in child['Barn']:
+            bi.extend(collect_study_info_from_child(bb))
+    else:
+        bd=dict()
+        bd['program_code']=child['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
+        check_for_english_program_name=child['Tillfallesdeltagande']['Utbildningsinformation']['Benamning'].get('en', False)
+        if check_for_english_program_name:
+            bd['program_name']=child['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
+        else:
+            bd['program_name']=child['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['sv']
+            print("*** No English program name for {}".format(bd['program_name']))
+
+        bd['program_study_period']=child['Tillfallesdeltagande']['Utbildningsinformation']['Studieperiod']
+        bd['program_session_code']=child['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
+        bd['program_type_code']=child['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfallestyp']['Kod']
+        bd['program_session_cancelled']=child['Tillfallesdeltagande']['Aterbud']
+        bd['program_session_completed']=child['Tillfallesdeltagande']['Avklarad']
+
+        if Verbose_Flag:
+            print("bd={}".format(bd))
+        bi.append(bd)
+    return bi
+
 def specialization_info(ls, student_uid):
     s1=ls.studystructure_student_JSON(student_uid)
     ss1=s1['Studiestrukturer']
@@ -240,26 +274,49 @@ def specialization_info(ls, student_uid):
     if not ss1:
         return ["Self-contained courses - no program"]
 
-    program_code=s1['Studiestrukturer'][0]['Utbildningsinformation']['Utbildningskod']
-    print("program_code={}".format(program_code))
-    if len(s1['Studiestrukturer'][0]['Barn']) > 0:
-        sss1=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
-        sss2=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
-        sss3=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
-        sss4=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfallestyp']['Kod']
-        return [program_code, sss1, sss2, sss3, sss4]
-    else:
-        check_for_english_program_name=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning'].get('en', False)
-        if check_for_english_program_name:
-            sss1=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
-        else:
-            sss1=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['sv']
-            print("*** No English program name for {}".format(sss1))
 
-        sss2=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
-        sss3=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
-        sss4=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfallestyp']['Kod']
-        return [program_code, sss1, sss2, sss3, sss4]
+    #print("s1={}".format(s1))
+    si=list()
+    if len(s1['Studiestrukturer']) > 0:
+        if Verbose_Flag:
+            print("length of Studiestrukturer is {}".format(len(s1['Studiestrukturer'])))
+        for b in s1['Studiestrukturer']: # [0]['Barn']
+            si.extend(collect_study_info_from_child(b))
+        return si
+
+    return si
+
+# def specialization_info(ls, student_uid):
+#     s1=ls.studystructure_student_JSON(student_uid)
+#     ss1=s1['Studiestrukturer']
+
+#     # a student who is not in a program will have s1 == {'Studiestrukturer': [], 'link': []}
+#     if not ss1:
+#         return ["Self-contained courses - no program"]
+
+#     program_code=s1['Studiestrukturer'][0]['Utbildningsinformation']['Utbildningskod']
+#     print("program_code={}".format(program_code))
+#     if len(s1['Studiestrukturer'][0]['Barn']) > 0:
+#         sss1=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
+#         sss2=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
+#         sss3=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
+#         sss4=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfallestyp']['Kod']
+#         return [program_code, sss1, sss2, sss3, sss4]
+#     else:
+#         check_for_english_program_name=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning'].get('en', False)
+#         if check_for_english_program_name:
+#             sss1=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
+#         else:
+#             sss1=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['sv']
+#             print("*** No English program name for {}".format(sss1))
+
+#         sss2=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
+#         sss3=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
+#         sss4=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfallestyp']['Kod']
+#         return [program_code, sss1, sss2, sss3, sss4]
+
+
+
 
 # cleanup the session and then exit
 def clean_exit(ls):
@@ -331,6 +388,17 @@ def process_course_id_from_commandLine(course_id):
 
         print("processing course: {0} with course_id={1}".format(c['originalName'], course_id))
     return course_id
+
+def remove_cancelled_programs_from_student_information(si):
+    # remove the cancelled programs
+    si[:]= [item for item in si if item.get('program_session_cancelled', True) == False]
+    today = datetime.date.today()
+    
+    # remove programs that have ended, i.e., 'Slutdatum' is before today
+    si[:]= [item for item in si if datetime.date.fromisoformat(item['program_study_period'].get('Slutdatum', '1900-01-01')) > today]
+    
+    return si
+
 
 
 def main():
@@ -435,7 +503,6 @@ def main():
         pp.pprint(ii)
         clean_exit(ladok_session)
 
-    # qqq
     pl=ladok_session.participants_JSON(ii['Uid'])
     if not pl or not pl.get('Resultat', False):
         print("It seems there are no participants in this Ladok instance ('tillfälleskod')")
@@ -446,6 +513,7 @@ def main():
 
         ladok_id=s['Student']['Uid']
         si=specialization_info(ladok_session, ladok_id)
+        si=remove_cancelled_programs_from_student_information(si)
         canvas_user_info=canvas_user_from_integration_id(ladok_id)
         if canvas_user_info:
             d['canvas_user_id']=canvas_user_info['id']
@@ -458,13 +526,16 @@ def main():
         if options.pnr:
             d['pnr']=s['Student']['Personnummer']
 
-        d['program_code']=si[0]
-        if len(si) > 1:
-            d['program_name']=si[1]
-            d['track_code']=si[2]
-            d['Session_code']=si[3]               # utbildningstillfälleskod
+        if len(si) > 0:
+            si0=si[0]
+            d['program_code']=si0['program_code']
+            d['program_name']=si0['program_name']
+            d['Session_code']=si0['program_session_code']               # utbildningstillfälleskod
             # the type of education is associated with an application code (anmälningskod)
-            d['type_ of_education']=types_of_education[si[4]]['en']
+            d['type_ of_education']=types_of_education[si0['program_type_code']]['en']
+
+        if len(si) > 1:
+            print("more than one program for student: {0}, {1}".format(d['user'], si))
         user_and_program_list.append(d)
         
     user_and_program_df=pd.json_normalize(user_and_program_list)

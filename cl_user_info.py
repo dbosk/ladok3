@@ -42,9 +42,12 @@ import json
 import optparse
 import sys
 import re
-import os
+import os                       # to make OS calls, here to get time zone info
 
 import pandas as pd
+
+import datetime
+
 pp = pprint.PrettyPrinter(indent=4)
 
 global canvas_baseUrl	# the base URL used for access to Canvas
@@ -420,6 +423,11 @@ def process_course_id_from_commandLine(course_id):
 def remove_cancelled_programs_from_student_information(si):
     # remove the cancelled programs
     si[:]= [item for item in si if item.get('program_session_cancelled', True) == False]
+    today = datetime.date.today()
+    
+    # remove programs that have ended, i.e., 'Slutdatum' is before today
+    si[:]= [item for item in si if datetime.date.fromisoformat(item['program_study_period'].get('Slutdatum', '1900-01-01')) > today]
+    
     return si
 
 def main():
