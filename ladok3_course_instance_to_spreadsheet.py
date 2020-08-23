@@ -241,6 +241,7 @@ def specialization_info(ls, student_uid):
         return ["Self-contained courses - no program"]
 
     program_code=s1['Studiestrukturer'][0]['Utbildningsinformation']['Utbildningskod']
+    print("program_code={}".format(program_code))
     if len(s1['Studiestrukturer'][0]['Barn']) > 0:
         sss1=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
         sss2=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']

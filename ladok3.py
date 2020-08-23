@@ -539,8 +539,15 @@ class LadokSession():
                                 'PERSONNUMMER_ASC',
                                 'KONTROLLERAD_KURS_ASC'],
                     'deltagaretillstand': ['EJ_PABORJAD', # include students how have not yet started the course
-                                           'REGISTRERAD', # include registered students
-                                           'AVKLARAD'], # include students who have completed the course
+                                           'PAGAENDE',  # include started students (ongoing)
+                                           'REGISTRERAD' # include registered students
+                                           # 'ATERBUD', # cancelled
+                                           # 'PAGAENDE_MED_SPARR', # on-going block exists
+                                           # 'AVBROTT',    # Withdrawal
+                                           # 'EJ_PAGAENDE_TILLFALLESBYTE', # not on-going due to instance exchange
+                                           # 'UPPEHALL', # not on-going due to approved leave from studies
+                                           #'AVKLARAD' # include students who have completed the course
+                    ],
                     'utbildningstillfalleUID': [uid]
         }
             
@@ -901,57 +908,57 @@ class LadokSession():
         return r
 
     #returns:
-    {   'Undervisningstid': [   {   'Benamning': {   'en': 'Mixed-time',
-                                                     'sv': 'Blandad '
-                                                     'undervisningstid'},
-                                    'Beskrivning': {},
-                                    'Giltighetsperiod': {'link': []},
-                                    'ID': '101051',
-                                    'Kod': 'BLA',
-                                    'LarosateID': -1,
-                                    'link': []},
-                                {   'Benamning': {'en': 'Day-time', 'sv': 'Dagtid'},
-                                    'Beskrivning': {},
-                                    'Giltighetsperiod': {'link': []},
-                                    'ID': '101052',
-                                    'Kod': 'DAG',
-                                    'LarosateID': -1,
-                                    'link': []},
-                                {   'Benamning': {   'en': 'Afternoon-time',
-                                                     'sv': 'Eftermiddagstid'},
-                                    'Beskrivning': {},
-                                    'Giltighetsperiod': {'link': []},
-                                    'ID': '101053',
-                                    'Kod': 'EFT',
-                                    'LarosateID': -1,
-                                    'link': []},
-                                {   'Benamning': {   'en': 'No teaching',
-                                                     'sv': 'Ingen '
-                                                     'undervisningstid'},
-                                    'Beskrivning': {},
-                                    'Giltighetsperiod': {   'Slutdatum': '2016-04-30',
-                                                            'link': []},
-                                    'ID': '101054',
-                                    'Kod': 'ING',
-                                    'LarosateID': -1,
-                                    'link': []},
-                                {   'Benamning': {   'en': 'Evening-time',
-                                                     'sv': 'Kvällstid'},
-                                    'Beskrivning': {},
-                                    'Giltighetsperiod': {'link': []},
-                                    'ID': '101055',
-                                    'Kod': 'KVÄ',
-                                    'LarosateID': -1,
-                                    'link': []},
-                                {   'Benamning': {   'en': 'Weekends',
-                                                     'sv': 'Veckoslut'},
-                                    'Beskrivning': {},
-                                    'Giltighetsperiod': {'link': []},
-                                    'ID': '101056',
-                                    'Kod': 'VSL',
-                                    'LarosateID': -1,
-                                    'link': []}],
-        'link': []}
+    # {   'Undervisningstid': [   {   'Benamning': {   'en': 'Mixed-time',
+    #                                                  'sv': 'Blandad '
+    #                                                  'undervisningstid'},
+    #                                 'Beskrivning': {},
+    #                                 'Giltighetsperiod': {'link': []},
+    #                                 'ID': '101051',
+    #                                 'Kod': 'BLA',
+    #                                 'LarosateID': -1,
+    #                                 'link': []},
+    #                             {   'Benamning': {'en': 'Day-time', 'sv': 'Dagtid'},
+    #                                 'Beskrivning': {},
+    #                                 'Giltighetsperiod': {'link': []},
+    #                                 'ID': '101052',
+    #                                 'Kod': 'DAG',
+    #                                 'LarosateID': -1,
+    #                                 'link': []},
+    #                             {   'Benamning': {   'en': 'Afternoon-time',
+    #                                                  'sv': 'Eftermiddagstid'},
+    #                                 'Beskrivning': {},
+    #                                 'Giltighetsperiod': {'link': []},
+    #                                 'ID': '101053',
+    #                                 'Kod': 'EFT',
+    #                                 'LarosateID': -1,
+    #                                 'link': []},
+    #                             {   'Benamning': {   'en': 'No teaching',
+    #                                                  'sv': 'Ingen '
+    #                                                  'undervisningstid'},
+    #                                 'Beskrivning': {},
+    #                                 'Giltighetsperiod': {   'Slutdatum': '2016-04-30',
+    #                                                         'link': []},
+    #                                 'ID': '101054',
+    #                                 'Kod': 'ING',
+    #                                 'LarosateID': -1,
+    #                                 'link': []},
+    #                             {   'Benamning': {   'en': 'Evening-time',
+    #                                                  'sv': 'Kvällstid'},
+    #                                 'Beskrivning': {},
+    #                                 'Giltighetsperiod': {'link': []},
+    #                                 'ID': '101055',
+    #                                 'Kod': 'KVÄ',
+    #                                 'LarosateID': -1,
+    #                                 'link': []},
+    #                             {   'Benamning': {   'en': 'Weekends',
+    #                                                  'sv': 'Veckoslut'},
+    #                                 'Beskrivning': {},
+    #                                 'Giltighetsperiod': {'link': []},
+    #                                 'ID': '101056',
+    #                                 'Kod': 'VSL',
+    #                                 'LarosateID': -1,
+    #                                 'link': []}],
+    #     'link': []}
 
 
     # added by GQMJr

@@ -29,9 +29,11 @@
 #
 # Add the "-T" flag to run in the Ladok test environment.
 #
+# The "-a" or "--all" flag will keep the list of all program, even those that are cancelled, otherwise by default cancelled programs are removed
+#
 # It requires a config.json file with (1) the Canvas url and access token and (2) the user's username and password (for access to Ladok)
 #
-# last modified: 2020-07-25
+# last modified: 2020-08-23
 #
 
 import ladok3,  pprint
@@ -294,6 +296,35 @@ def swedish_name(names):
         if i['Sprakkod'] == 'sv':
             return i['Text']
 
+def collect_study_info_from_child(child):
+    bi=list()
+    if Verbose_Flag:
+        print("child={}".format(child))
+    if len(child['Barn']) > 0:
+        if Verbose_Flag:
+            print("length of child is {}".format(len(child['Barn'])))
+        for bb in child['Barn']:
+            bi.extend(collect_study_info_from_child(bb))
+    else:
+        bd=dict()
+        bd['program_code']=child['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
+        check_for_english_program_name=child['Tillfallesdeltagande']['Utbildningsinformation']['Benamning'].get('en', False)
+        if check_for_english_program_name:
+            bd['program_name']=child['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
+        else:
+            bd['program_name']=child['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['sv']
+            print("*** No English program name for {}".format(bd['program_name']))
+
+        bd['program_study_period']=child['Tillfallesdeltagande']['Utbildningsinformation']['Studieperiod']
+        bd['program_session_code']=child['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
+        bd['program_session_cancelled']=child['Tillfallesdeltagande']['Aterbud']
+        bd['program_session_completed']=child['Tillfallesdeltagande']['Avklarad']
+
+        if Verbose_Flag:
+            print("bd={}".format(bd))
+        bi.append(bd)
+    return bi
+
 def specialization_info(ls, student_uid):
     s1=ls.studystructure_student_JSON(student_uid)
     ss1=s1['Studiestrukturer']
@@ -302,23 +333,23 @@ def specialization_info(ls, student_uid):
     if not ss1:
         return ["Self-contained courses - no program"]
 
-    program_code=s1['Studiestrukturer'][0]['Utbildningsinformation']['Utbildningskod']
-    if len(s1['Studiestrukturer'][0]['Barn']) > 0:
-        sss1=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
-        sss2=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
-        sss3=s1['Studiestrukturer'][0]['Barn'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
-        return [program_code, sss1, sss2, sss3]
-    else:
-        check_for_english_program_name=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning'].get('en', False)
-        if check_for_english_program_name:
-            sss1=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['en']
-        else:
-            sss1=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Benamning']['sv']
-            print("*** No English program name for {}".format(sss1))
 
-        sss2=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningskod']
-        sss3=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfalleskod']
-        return [program_code, sss1, sss2, sss3]
+    #print("s1={}".format(s1))
+    si=list()
+    if len(s1['Studiestrukturer']) > 0:
+        if Verbose_Flag:
+            print("length of Studiestrukturer is {}".format(len(s1['Studiestrukturer'])))
+        for b in s1['Studiestrukturer']: # [0]['Barn']
+            si.extend(collect_study_info_from_child(b))
+        return si
+
+    return si
+
+def clean_exit(ls):
+    status=ls.logout()
+    sys.exit()
+
+
 
 #//////////////////////////////////////////////////////////////////////
 # utility routines
@@ -386,6 +417,11 @@ def process_course_id_from_commandLine(course_id):
         print("processing course: {0} with course_id={1}".format(c['originalName'], course_id))
     return course_id
 
+def remove_cancelled_programs_from_student_information(si):
+    # remove the cancelled programs
+    si[:]= [item for item in si if item.get('program_session_cancelled', True) == False]
+    return si
+
 def main():
     global Verbose_Flag
 
@@ -430,6 +466,13 @@ def main():
                       help="execute test code"
     )
 
+    parser.add_option('-a', '--all',
+                      dest="all",
+                      default=False,
+                      action="store_true",
+                      help="inclde all programs, even cancelled ones"
+    )
+
 
     options, remainder = parser.parse_args()
 
@@ -461,6 +504,16 @@ def main():
     elif person_id.count('-') == 4 and re.match('^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}', person_id):     # Ladok ID, i.e., a sis_integration_id
         info=user_info('sis_integration_id:'+person_id)
         integration_id=person_id        # since we have the Ladok ID, save it for later
+        print("Ladok ID case, info={}".format(info))
+        if info == None:
+            student_info=ladok_session.get_student_data_by_uid_JSON(integration_id)
+            pp.pprint("student not in Canvas, student_info={}".format(student_info))
+            si=specialization_info(ladok_session, integration_id)
+            if not options.all:
+                si=remove_cancelled_programs_from_student_information(si)
+            print("student information: {}".format(si))
+            clean_exit(ladok_session)
+
     elif person_id.find('@') > 1:       # if an e-mail address
         info=user_info('sis_login_id:'+person_id)
     else:
@@ -492,12 +545,15 @@ def main():
         if pnr:
             print("pnr={}".format(pnr))
             si=specialization_info(ladok_session, integration_id)
-            print("program: {}".format(si))
-            return
+            if not options.all:
+                si=remove_cancelled_programs_from_student_information(si)
+            print("student information: {}".format(si))
+            #print("program: {}".format(si))
+            clean_exit(ladok_session)
 
     if (len(remainder) == 1) and not integration_id:
         print("To get the personnumber, try to specify a course_id|course code|short name in which the user is in enrolled as a student as 2nd argument to the program")
-        return
+        clean_exit(ladok_session)
 
 
     # if we don't have the integration_id, then we need a course number to look it up
@@ -506,7 +562,7 @@ def main():
         course_id=process_course_id_from_commandLine(course_id)
         if not course_id:
             print("Unable to recognize a course_id, course code, or short name for a course in {}".format(remainder[0]))
-            return
+            clean_exit(ladok_session)
 
         # look for user - then check for integration_id
         users=users_in_course(course_id)
@@ -535,11 +591,13 @@ def main():
                     if pnr:
                         print("pnr={}".format(pnr))
                     si=specialization_info(ladok_session, integration_id)
-                    print("program: {}".format(si))
+                    if not options.all:
+                        si=remove_cancelled_programs_from_student_information(si)
+                    print("student information: {}".format(si))
 
                     # as a user will be in the list of users for each enrollment
                     # (which means for each section they are in), once found return
-                    return
+
 
     # to logout and close the session
     status=ladok_session.logout()
