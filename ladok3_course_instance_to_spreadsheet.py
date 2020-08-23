@@ -261,6 +261,11 @@ def specialization_info(ls, student_uid):
         sss4=s1['Studiestrukturer'][0]['Tillfallesdeltagande']['Utbildningsinformation']['Utbildningstillfallestyp']['Kod']
         return [program_code, sss1, sss2, sss3, sss4]
 
+# cleanup the session and then exit
+def clean_exit(ls):
+    status=ls.logout()
+    sys.exit()
+
 #//////////////////////////////////////////////////////////////////////
 # utility routines
 #//////////////////////////////////////////////////////////////////////
@@ -389,7 +394,7 @@ def main():
         course_id=process_course_id_from_commandLine(remainder[0])
         if not course_id:
             print("Unable to recognize a course_id, course code, or short name for a course in {}".format(remainder[0]))
-            return
+            clean_exit(ladok_session)
 
         # get the "sis_course_id"
         course_information=course_info(course_id)
@@ -408,10 +413,11 @@ def main():
                 print("instance_code={}".format(instance_code))
         else:
             print("Insuffient arguments - must provide at least a course_code")
-            return
+            clean_exit(ladok_session)
+
     else:
         print("Insuffient arguments - must provide course_code course_instance_id (i.e. the KOPPS Tillfällskod)\n")
-        sys.exit()
+        clean_exit(ladok_session)
 
     utbildningstyp=ladok_session.utbildningstyp_JSON()
     types_of_education=dict()
@@ -423,12 +429,18 @@ def main():
 
     user_and_program_list=[]
     ii=ladok_session.instance_info(course_code, instance_code, 'en')
-    if not ii.get('Uid', False):
+    # if the enstance code was not found or there is no Uid in the result, there is an error
+    if not ii or not ii.get('Uid', False):
         print("It seems the instance code is not a Ladok instance ('tillfälleskod'), ii:")
         pp.pprint(ii)
-        return
+        clean_exit(ladok_session)
 
+    # qqq
     pl=ladok_session.participants_JSON(ii['Uid'])
+    if not pl or not pl.get('Resultat', False):
+        print("It seems there are no participants in this Ladok instance ('tillfälleskod')")
+        clean_exit(ladok_session)
+
     for s in pl['Resultat']:
         d=dict()
 

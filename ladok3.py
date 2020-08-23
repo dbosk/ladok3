@@ -493,11 +493,13 @@ class LadokSession():
     # Example: ii=ladok_session.instance_info('II2202', instance_code, 'en')
     def instance_info(self, course_code, instance_code, lang = 'sv'):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=25&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
-        for course in r['Resultat']:
-            if course['TillfallesKod'] == instance_code:
-                return course
-        return r
+        r = self.__session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=25&skipCount=false&sprakkod='+lang, headers = self.__headers)
+        if r.status_code == requests.codes.ok:
+            rj=r.json()
+            for course in rj['Resultat']:
+                if course['TillfallesKod'] == instance_code:
+                    return course
+        return None
 
 
     # added by GQMJr
@@ -610,7 +612,7 @@ class LadokSession():
         if r.status_code == 200:
             participant_info=json.loads(r.text)
             return participant_info
-        return r
+        return None
 
 
     # added by GQMJr
