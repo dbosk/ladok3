@@ -355,9 +355,11 @@ class LadokSession():
         
         if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
 
-        r = self.__session.get(url = self.base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod='+lang, headers = self.__headers).json()
+        r = self.__session.get(url = self.base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod='+lang, headers = self.__headers)
         
-        return r
+        if r.status_code == requests.codes.ok:
+            return r.json()
+        return None
 
     # added by GQMJr
     #####################################################################
@@ -370,10 +372,10 @@ class LadokSession():
     def get_student_data_by_uid_JSON(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
 
-        r = self.__session.get(url = self.base_gui_proxy_url + '/studentinformation/student/'+uid, headers = self.__headers).json()
-        
-        return r
-
+        r = self.__session.get(url = self.base_gui_proxy_url + '/studentinformation/student/'+uid, headers = self.__headers)
+        if r.status_code == 200:
+            return r.json()
+        return None
 
     # added by GQMJr
     #####################################################################
@@ -621,8 +623,10 @@ class LadokSession():
     # RETURNERAR en dictionary of student information
     def studystructure_student_JSON(self, uid):
         if not self.signed_in: raise Exception('Not signed in.')
-        r = self.__session.get(url = self.base_gui_proxy_url + '/studiedeltagande/studiestruktur/student/'+uid, headers = self.__headers).json()
-        return r
+        r = self.__session.get(url = self.base_gui_proxy_url + '/studiedeltagande/studiestruktur/student/'+uid, headers = self.__headers)
+        if r.status_code == 200:
+            return r.json()
+        return None
 
     # added by GQMJr
     #####################################################################
