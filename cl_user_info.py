@@ -426,7 +426,8 @@ def remove_cancelled_programs_from_student_information(si):
     today = datetime.date.today()
     
     # remove programs that have ended, i.e., 'Slutdatum' is before today
-    si[:]= [item for item in si if datetime.date.fromisoformat(item['program_study_period'].get('Slutdatum', '1900-01-01')) > today]
+    if len(si) > 1:             # only do this is there is more than one program, as it might be a student who is late finishing
+        si[:]= [item for item in si if datetime.date.fromisoformat(item['program_study_period'].get('Slutdatum', '1900-01-01')) > today]
     
     return si
 

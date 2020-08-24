@@ -309,7 +309,8 @@ def remove_cancelled_programs_from_student_information(si):
     today = datetime.date.today()
     
     # remove programs that have ended, i.e., 'Slutdatum' is before today
-    si[:]= [item for item in si if datetime.date.fromisoformat(item['program_study_period'].get('Slutdatum', '1900-01-01')) > today]
+    if len(si) > 1:             # only do this is there is more than one program, as it might be a student who is late finishing
+        si[:]= [item for item in si if datetime.date.fromisoformat(item['program_study_period'].get('Slutdatum', '1900-01-01')) > today]
     
     return si
 
@@ -424,9 +425,19 @@ def main():
             d['Session_code']=si0['program_session_code']               # utbildningstillfälleskod
             # the type of education is associated with an application code (anmälningskod)
             d['type_ of_education']=types_of_education[si0['program_type_code']]['en']
+            d['program_study_period_start']=si0['program_study_period']['Startdatum']
 
         if len(si) > 1:
-            print("more than one program for student: {0}, {1}".format(d['user'], si))
+            #print("more than one program for student: {0}, {1}".format(d['user'], si))
+            for i in range(1, len(si)):
+                si0=si[i]
+                d['program_code'+'_'+str(i)]=si0['program_code']
+                d['program_name'+'_'+str(i)]=si0['program_name']
+                d['Session_code'+'_'+str(i)]=si0['program_session_code']               # utbildningstillfälleskod
+                # the type of education is associated with an application code (anmälningskod)
+                d['type_ of_education'+'_'+str(i)]=types_of_education[si0['program_type_code']]['en']
+                d['program_study_period_start'+'_'+str(i)]=si0['program_study_period']['Startdatum']
+
         
         user_and_program_list.append(d)
         
