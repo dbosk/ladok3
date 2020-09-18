@@ -525,6 +525,20 @@ def main():
 
     elif person_id.find('@') > 1:       # if an e-mail address
         info=user_info('sis_login_id:'+person_id)
+    elif person_id.count('-') == 1 and re.match('^[0-9]{8}-[0-9tT]{1}[0-9tT]{3}', person_id):     # looks like a person number
+            print("This ({}) looks like a person number".format(person_id))
+            student_info=ladok_session.get_student_data(person_id)
+            if student_info:
+                pp.pprint("student_info={}".format(student_info))
+
+                integration_id=student_info['id']
+                si=specialization_info(ladok_session, integration_id)
+                if not options.all:
+                    si=remove_cancelled_programs_from_student_information(si)
+                pp.pprint("si={}".format(si))
+            else:
+                print("Could not find student with person number: {}".format(person_id))                
+            clean_exit(ladok_session)
     else:
         # assume it is a KTHID
         info=user_info('sis_user_id:'+person_id)
