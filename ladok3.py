@@ -90,11 +90,15 @@ class LadokSession():
         }
         
         r = s.post(url = 'https://login.kth.se' + action, data = post_data)
+        #print("following login.kth.se, r={0}, text={1}".format(r, r.text))
         
-        action = re.search('<form action="(.*?)" method="post">', r.text)
-        if action is None: raise Exception('Invalid username or password.')
+        #action = re.search('<form action="(.*?)" method="post">', r.text)
+        action = re.search('<form action="(.*?)" method="post"', r.text)
+        # the new page has <form action="/idp/profile/SAML2/Redirect/SSO?execution=e1s3" method="post" style="padding:10px" >
+
+        if action is None: raise Exception('Invalid username or password OR possibly the SAML configuration has changed, manually login an accept the changed information.')
         action = html.unescape(action.group(1))
-        
+
         relay_state = re.search('<input type="hidden" name="RelayState" value="([^"]+)"\/>', r.text)
         relay_state = html.unescape(relay_state.group(1))
         

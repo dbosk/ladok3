@@ -543,6 +543,10 @@ def main():
         # assume it is a KTHID
         info=user_info('sis_user_id:'+person_id)
 
+    if not info:
+        print("No user info found, exiting")
+        clean_exit(ladok_session)
+
     # extract Canvas user-id from the user's info:
     user_id=info['id']
     print("sortable name={}".format(info['sortable_name']))
