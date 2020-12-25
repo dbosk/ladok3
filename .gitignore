@@ -10,5 +10,5 @@ z*
 #ignore all backup files
 *~
 # ingnore .*
-.*
+#.*
 
