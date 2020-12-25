@@ -1,0 +1,8 @@
+appdirs
+argcomplete
+argparse
+cachetools
+os
+re
+sys
+traceback

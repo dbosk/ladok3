@@ -1,0 +1,339 @@
+\documentclass[a4paper]{report}
+\usepackage{noweb}
+% Needed to relax penalty for breaking code chunks across pages, otherwise 
+% there might be a lot of space following a code chunk.
+\def\nwendcode{\endtrivlist \endgroup}
+\let\nwdocspar=\smallbreak
+
+\usepackage[hyphens]{url}
+\usepackage{hyperref}
+\usepackage{authblk}
+
+\input{preamble.tex}
+
+\title{%
+  LADOK3 by the command line
+}
+\author{%
+  Daniel Bosk\thanks{%
+    Based on the work by Alexander Baltatzis and Gerald Q.\ \enquote{Chip} 
+    Maguire Jr., KTH.
+  }
+}
+\affil{%
+  KTH EECS
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  \input{abstract.tex}
+\end{abstract}
+\clearpage
+
+\tableofcontents
+\clearpage
+
+@
+\chapter{Introduction}
+
+This is the documentation of the [[<<ladok.py>>]] (Python 3) module and 
+program.
+This file provides two things: a set of functions and classes and a 
+command-line interface for them.
+
+The command-line interface is divided into subcommands, similar to Git.
+We provide two commands: [[student]] and [[course]].
+\begin{description}
+\item[student]
+% XXX update student command description
+The [[student]] command works with student-related data.
+It can list results of a student or report new results.
+This command is treated in \cref{student-data}.
+
+\item[course]
+% XXX update course command description
+The [[course]] command works with course-related data.
+It can list results in a course.
+This command is treated in \cref{course-data}.
+\end{description}
+
+
+\section{Overview of the source code and dependencies}
+
+We provide some classes and functions in [[<<classess>>]] and 
+[[<<functions>>]], respectively.
+These functions and classes are discussed in relation to their use in 
+\cref{student-data,course-data}.
+
+We use [[argparse]] with [[argcomplete]] to handle the command-line interface.
+We use [[appdirs]] to handle configuration directories on various systems, we 
+set up a global [[dirs]] that we can use.
+Finally, we'll use [[cachetools]] to build a cache ([[ladok_cache]]) to speed 
+up queries.
+<<ladok.py>>=
+#!/bin/env python3
+"""A command-line interface for LADOK 3"""
+
+import appdirs
+import argcomplete, argparse
+import cachetools
+import json
+import os
+import re
+import sys
+import traceback
+
+dirs = appdirs.AppDirs("ladok", "dbosk@kth.se")
+ladok_cache = {}
+
+<<functions>>
+<<command-line interface>>
+@
+
+
+\section{A command-line interface}%
+\label{command-line-interface}
+
+If we run this script as a program, we want to provide a command-line 
+interface.
+This is a standard Pythonic if-main construction.
+<<command-line interface>>=
+def main(argv):
+  <<process command-line options>>
+
+if __name__ == "__main__":
+  try:
+    main(sys.argv)
+    sys.exit(0)
+  except Exception as e:
+    err(-1, e)
+@ We pass the command-line arguments as [[argv]] to the [[main]] function, 
+instead of using [[sys.argv]] directly.
+This way, we can use the main function as a library and filter some of the 
+arguments.
+
+We want uniform error handling.
+We will use the function [[err]] for errors and [[warn]] for warnings, both 
+inspired by err(3) and warn(3) in the BSD world.
+<<functions>>=
+def err(rc, msg):
+  print(f"{sys.argv[0]}: error: {msg}", file=sys.stderr)
+  traceback.print_exc(file=sys.stderr)
+  sys.exit(rc)
+
+def warn(msg):
+  print(f"{sys.argv[0]}: {msg}", file=sys.stderr)
+@
+
+\subsection{Process command-line options}%
+\label{process-command-line-options}
+
+We'll use [[argparse]] to parse the command-line options.
+Remember that we process [[argv]] passed to the function, not [[sys.argv]] 
+directly.
+Then we must first add the global options (to [[argp]]) and then the subparsers 
+(to [[subp]]).
+<<process command-line options>>=
+argp = argparse.ArgumentParser(description="Command-line interface for LADOK3",
+                               epilog="Web: https://github.com/dbosk/ladok")
+<<add configuration options>>
+subp = argp.add_subparsers(required=True)
+<<add subparsers>>
+argcomplete.autocomplete(argp)
+<<parse argv>>
+<<process configuration options>>
+ls = LadokSession(LADOK_USER, LADOK_PASS)
+<<execute subcommand>>
+<<save configuration>>
+@
+
+We must remove the first element of [[argv]] (the command itself).
+However, if this is the only option, we must ensure that the list contains an 
+empty string.
+Otherwise, [[argp.parse_args]] will fail.
+<<parse argv>>=
+argv = argv[1:]
+if not argv:
+  argv = [""]
+args = argp.parse_args(argv)
+@
+
+For each subcommand, we will add a subparser ([[subp.add_parser]]) that will 
+set the [[func]] attribute.
+Then we can execute the correct function and let that function check the 
+remaining arguments.
+We must also pass on a LADOK session object~[[ls]].
+<<execute subcommand>>=
+if args.func:
+  args.func(ls, args)
+@
+
+\subsection{Configuration}
+
+We must read the following configuration:
+\begin{enumerate}
+\item credentials for LADOK, \ie username ([[LADOK_USER]]) and password 
+([[LADOK_PASS]]) of the LADOK user;
+\item the cache from the previous session.
+\end{enumerate}
+
+The credentials will be stored in a configuration file, [[config.json]], in 
+JSON format, \eg:
+\begin{minted}{json}
+{
+  "username": "the username",
+  "password": "the password"
+}
+\end{minted}
+They can alternatively be provided through the environment variables 
+[[LADOK_USER]] and [[LADOK_PASS]].
+The environment has priority over the configuration file.
+The configuration file is located in [[dirs.user_config_dir]].
+This directory varies by platform.
+
+We also want to store the cache.
+We use a JSON file for this too.
+The default location is [[dirs.user_cache_dir/ladok_cache.json]].
+
+We want to allow the user to specify different locations for the configuration 
+and cache files.
+
+\paragraph{Location of configuration files}
+
+We want the user to be able to specify the location of the configuration and 
+the cache file separately.
+<<add configuration options>>=
+argp.add_argument("-f", "--config-file",
+  default=f"{dirs.user_config_dir}/config.json",
+  help=f"Path to configuration file, default: {dirs.user_config_dir}/config.json")
+argp.add_argument("-c", "--cache-file",
+  default=f"{dirs.user_cache_dir}/ladok_cache.json",
+  help=f"Path to cache file, default: {dirs.user_cache_dir}/ladok_cache.json")
+@ Since we provide the default values here, we can always rely on them being 
+available, so we can use [[args.config_file]] directly when we get the 
+credentials.
+(The same for the filename for the cache.)
+
+We want to read the LADOK credentials to construct a LADOK-session 
+object~[[ls]] that will be used throughout.
+<<process configuration options>>=
+LADOK_USER, LADOK_PASS = load_credentials(args.config_file)
+load_cache(ladok_cache, args.cache_file)
+@
+
+Just as we load the cache on start, we must save the cache on termination.
+We let [[<<save configuration>>]] (above) be as follows.
+<<save configuration>>=
+try:
+  save_cache(ladok_cache, args.cache_file)
+except:
+  pass
+@
+
+We will now cover [[load_credentials]], [[load_cache]] and [[save_cache]].
+
+\paragraph{User credentials}
+
+We can read the credentials from two places: the environment or a configuration 
+file.
+We try the environment first and the configuration file second.
+
+The [[load_credentials]] function will try to get the LADOK user credentials 
+from the configuration.
+The environment is given priority, so it tries that first.
+If it succeeds, it returns those credentials.
+Otherwise, it tries to find the credentials in a configuration file.
+<<functions>>=
+def load_credentials(filename):
+  try:
+    user = os.environ["LADOK_USER"]
+    passwd = os.environ["LADOK_PASS"]
+    return user, passwd
+  except:
+    pass
+
+  try:
+    with open(filename) as conf_file:
+      config = json.load(conf_file)
+    return config["username"], config["password"]
+  except:
+    raise Exception("Cannot find credentials.")
+@
+
+\paragraph{The cache object}
+
+We've set the cache object to be the empty directory~[[ladok_cache]].
+If we want to load old values for this cache, we don't want to replace that 
+reference---since that reference has already been used when Python parsed all 
+function definitions (through the [[@cached]] decorator).
+So we must ensure to \emph{modify} the object that [[ladok_cache]] points to.
+<<functions>>=
+def load_cache(cache, filename):
+  try:
+    with open(filename) as cache_file:
+      stored_cache = json.load(cache_file)
+  except:
+    pass
+  else:
+    for key, val in stored_cache.items():
+      cache[key] = val
+@
+
+We also add the corresponding [[save_cache]] function.
+<<functions>>=
+def save_cache(cache, filename):
+  with open(filename, "w") as cache_file:
+    cache_file.write(json.dumps(cache))
+@
+
+
+\subsection{Student and course identifiers}
+
+We must handle identifiers for two entities at several places: identifiers for 
+students and identifiers for courses.
+We'll create a function for setting up the options necessary for identifiers.
+Then we can use these functions for each subcommand that needs the options.
+<<functions>>=
+def add_student_id_options(parser, required=True):
+  <<add student ID options>>
+
+def add_course_id_options(parser, required=True):
+  <<add course ID options>>
+@
+
+\paragraph{The student ID}
+
+We can provide two IDs: the personal identity number (Swedish, 
+\foreignlanguage{swedish}{personnummer}) and the LADOK ID.
+These are distinguishably different, so we can determine which one the user has 
+entered.
+<<add student ID options>>=
+parser.add_argument("-s", "--student", required=required,
+  help="Student ID (personnummer or LADOK ID)")
+@
+
+\paragraph{The course ID}
+
+The course can be identified easiest by the course code.
+<<add course ID options>>=
+parser.add_argument("-c", "--course", required=required,
+  help="Course ID (course code)")
+@
+
+
+\chapter{Working with student data}\label{student-data}
+
+\input{student.tex}
+
+
+\chapter{Working with course data}\label{course-data}
+
+%\input{courses.tex}
+
+
+
+\printbibliography
+
+\end{document}
