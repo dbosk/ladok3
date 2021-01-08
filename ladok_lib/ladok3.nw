@@ -964,7 +964,7 @@ Also, the code has been adapted to use [[self.session]] instead of
 #
 def get_results(self, person_nr_raw, course_code):
     person_nr_raw = str(person_nr_raw)
-    person_nr =  self.__validate_person_nr(person_nr_raw)
+    person_nr =  format_personnummer(person_nr_raw)
     if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
     
     student_data = self.__get_student_data(person_nr)
@@ -1033,7 +1033,7 @@ def save_result(self, person_nr_raw, course_code, course_moment, result_date_raw
     if (grade_raw == 'P' and grade_scale == "AF") or (grade_raw in "ABCDE" and grade_scale == "PF"):
         raise Exception('Invalid grade: ' + grade_raw + ' does not match grade_scale ' + grade_scale) 
     
-    person_nr =  self.__validate_person_nr(person_nr_raw)
+    person_nr =  format_personnummer(person_nr_raw)
     if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
     
     result_date = self.__validate_date(result_date_raw)
@@ -1113,7 +1113,7 @@ def save_result(self, person_nr_raw, course_code, course_moment, result_date_raw
 # RETURNERAR {'id': 'xxxx', 'first_name': 'x', 'last_name': 'y', 'person_nr': 'xxx', 'alive': True}
 
 def get_student_data(self, person_nr_raw):
-    person_nr =  self.__validate_person_nr(person_nr_raw)
+    person_nr =  format_personnummer(person_nr_raw)
     
     if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
     
@@ -1132,7 +1132,7 @@ def get_student_data(self, person_nr_raw):
 # {"first_name" : 'Anna', "last_name : 'Andersson'}
 #
 def get_student_name(self, person_nr_raw):
-    person_nr =  self.__validate_person_nr(person_nr_raw)
+    person_nr =  format_personnummer(person_nr_raw)
     
     if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
     
@@ -1152,7 +1152,7 @@ def get_student_name(self, person_nr_raw):
 #
 # RETURNERAR en dictionary med för- och efternamn and more
 def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
-    person_nr =  self.__validate_person_nr(person_nr_raw)
+    person_nr =  format_personnummer(person_nr_raw)
     
     if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
 
@@ -4280,6 +4280,59 @@ def __get_grade_by_id(self, grade_id):
     return None
 
 
+def __get_student_data(self, person_nr):
+    r = self.__session.get(url = self.base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.headers).json()['Resultat']
+    
+    if len(r) != 1: return None
+    
+    r = r[0]
+    # from schemas/schemas.ladok.se-studentinformation.xsd
+    #   <xs:complexType name="Student">
+    #   <xs:complexContent>
+    #     <xs:extension base="base:BaseEntitet">
+    #       <xs:sequence>
+    #         <xs:element name="Avliden" type="xs:boolean"/>
+    #         <xs:element minOccurs="0" name="Efternamn" type="xs:string"/>
+    #         <xs:element minOccurs="0" name="ExterntUID" type="xs:string"/>
+    #         <xs:element name="FelVidEtableringExternt" type="xs:boolean"/>
+    #         <xs:element minOccurs="0" name="Fodelsedata" type="xs:string"/>
+    #         <xs:element minOccurs="0" name="Fornamn" type="xs:string"/>
+    #         <xs:element minOccurs="0" name="KonID" type="xs:int"/>
+    #         <xs:element minOccurs="0" name="Personnummer" type="xs:string"/>
+    #         <xs:element minOccurs="0" name="Skyddsstatus" type="xs:string"/>
+    #         <xs:element minOccurs="0" ref="si:UnikaIdentifierare"/>
+    #       </xs:sequence>
+    #     </xs:extension>
+    #   </xs:complexContent>
+    # </xs:complexType>
+
+    return {
+        'id': r['Uid'], # Ladok-ID
+        'first_name': r['Fornamn'],
+        'last_name':  r['Efternamn'],
+        'person_nr':  r['Personnummer'], # tolv siffror, utan bindestreck eller plustecken
+        'alive':  not r['Avliden']
+    }
+
+# detta är egentligen kurstillfällen, inte kurser (ID-numret är alltså ett ID-nummer för ett kurstillfälle)
+def __get_student_courses(self, student_id):
+    r = self.__session.get(url = self.base_gui_proxy_url + '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/' + student_id, headers = self.headers).json()
+    
+    results = []
+    
+    for course in r['Tillfallesdeltaganden']:
+        if not course['Nuvarande'] or 'Utbildningskod' not in course['Utbildningsinformation']: continue
+        
+        results.append({
+            'id': course['Uid'],
+            'round_id': course['Utbildningsinformation']['UtbildningstillfalleUID'], # ett Ladok-ID för kursomgången
+            'education_id': course['Utbildningsinformation']['UtbildningUID'], # ett Ladok-ID för något annat som rör kursen
+            'instance_id': course['Utbildningsinformation']['UtbildningsinstansUID'], # ett Ladok-ID för att rapportera in kursresultat
+            'code': course['Utbildningsinformation']['Utbildningskod'], # kurskod KOPPS
+            'name': course['Utbildningsinformation']['Benamning']['sv']
+        })
+    
+    return results
 
 
 def __get_student_course_moments(self, course_round_id, student_id):
