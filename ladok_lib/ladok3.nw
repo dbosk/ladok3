@@ -87,7 +87,10 @@ authenticated session to LADOK's REST API.
 It uses the [[requests]] module.
 
 We can use the class as follows.
-\inputminted{python}{ladok3_test.py}
+\inputminted{python}{example_LadokSession.py}
+
+\Cref{StudentClasses} covers what we can do with the [[me]] object.
+\Cref{CourseClasses} covers what we can do with the [[prgi]] object.
 
 
 \section{The [[LadokSession]] class}\label{LadokSession}
@@ -653,7 +656,12 @@ def get_course(self, code):
 
 
 
-\chapter{Student objects}
+\chapter{Student objects}\label{StudentClasses}
+
+We can use the [[Student]] class as follows.
+\inputminted{python}{example_Student.py}
+
+\section{The [[Student]] class}
 
 We can create a [[Student]] object from an identifier and a [[LadokSession]] 
 object.
@@ -909,6 +917,12 @@ for course in r['Tillfallesdeltaganden']:
 
 return results
 @
+
+
+\chapter{Course objects}\label{CourseClasses}
+
+We can use the [[Course]] class as follows.
+\inputminted{python}{example_Course.py}
 
 
 \chapter{Maguire's and Baltatzis' original methods}

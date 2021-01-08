@@ -4,7 +4,10 @@ all: ladok3.pdf
 LATEXFLAGS+=	-shell-escape
 
 ladok3.pdf: ladok3.tex preamble.tex
-ladok3.pdf: abstract.tex ladok3_test.py
+ladok3.pdf: abstract.tex
+ladok3.pdf: example_LadokSession.py
+ladok3.pdf: example_Student.py
+ladok3.pdf: example_Course.py
 
 ladok3.tex: ladok3.nw
 
