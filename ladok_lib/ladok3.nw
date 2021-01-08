@@ -638,6 +638,26 @@ def get_student(self, id):
   return Student(ladok=self, id=id)
 @
 
+Sometimes we might want to search for a students using other attributes.
+The [[kwargs]] dictionary contains keys that match the attributes of 
+[[Student]] objects.
+The function will then return all students that match on all attributes 
+(conjunction\footnote{%
+  We can achieve a disjunction by calling [[find_student]] several times and 
+  merge the results.
+}).
+<<LadokSession data methods>>=
+@cachetools.cachedmethod(
+  operator.attrgetter("cache"),
+  key=functools.partial(cachetools.keys.hashkey, "find_student"))
+def find_student(self, /, **kwargs):
+  """Search for a student by non-unique Student attributes,
+  returns a list of Student objects"""
+  students = []
+  <<filter students by attributes>>
+  return students
+@
+
 
 \subsection{Courses}
 
