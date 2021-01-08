@@ -12,3 +12,5 @@ z*
 # ingnore .*
 .*
 
+# ignore python files
+__pycache__
