@@ -1,0 +1,3 @@
+[submodule "ladok_lib/makefiles"]
+	path = ladok_lib/makefiles
+	url = https://github.com/dbosk/makefiles.git
