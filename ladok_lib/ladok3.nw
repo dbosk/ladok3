@@ -730,7 +730,7 @@ assume that it is a LADOK ID in the code above.
 <<functions>>=
 def format_personnummer(person_nr_raw):
   """Returns None or a LADOK-formated person nr"""
-  pnrregex = re.compile("(\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)")
+  pnrregex = re.compile("^(\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)$")
   pnr = pnrregex.match(person_nr_raw)
   if pnr:
     now = datetime.datetime.now()
@@ -743,7 +743,8 @@ def format_personnummer(person_nr_raw):
       return pnr.group(1) + pnr.group(2) + pnr.group(3) + pnr.group(4)
   else:
     return None
-@
+@ Note that we must match the start and end in the regex, otherwise we 
+sometimes match parts of LADOK IDs.
 
 \section{Students' personal attributes}
 
