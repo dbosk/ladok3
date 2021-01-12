@@ -18,9 +18,18 @@ all: ladok3.py
 ladok3.py: ladok3.nw
 
 
+.PHONY: all
+all: prgi.pdf
+all: prgi.py
+
+prgi.pdf: prgi.tex
+prgi.py: prgi.nw
+
+
 .PHONY: clean
 clean:
 	${RM} ladok3 ladok3.py ladok3.pdf ladok3.tex
+	${RM} prgi.pdf prgi.py prgi.tex
 
 
 PKG_NAME-main= 			ladok3
