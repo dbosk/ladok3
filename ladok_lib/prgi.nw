@@ -1,34 +1,3 @@
-\documentclass[a4paper]{article}
-\usepackage{noweb}
-% Needed to relax penalty for breaking code chunks across pages, otherwise 
-% there might be a lot of space following a code chunk.
-\def\nwendcode{\endtrivlist \endgroup}
-\let\nwdocspar=\smallbreak
-
-\usepackage[hyphens]{url}
-\usepackage{hyperref}
-\usepackage{authblk}
-
-\input{preamble.tex}
-
-\title{%
-  Report grades from Canvas to LADOK for\\
-  DD1315 Programming Techniques (prgi)
-}
-\author{%
-  Daniel Bosk
-}
-\affil{%
-  KTH EECS
-}
-
-\begin{document}
-\maketitle
-
-\tableofcontents
-\clearpage
-
-@
 \section{Overview}
 
 We want to get results out of Canvas and put them into LADOK.
@@ -275,10 +244,5 @@ return to_report
 
 
 \printbibliography{}
-
-
-\appendix
-\section{An index of the code blocks}
-\nowebchunks
 
 \end{document}
