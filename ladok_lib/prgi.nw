@@ -31,7 +31,6 @@ import collections
 import datetime
 import ladok3
 import os
-import traceback
 
 KTH_LOGIN = os.environ["KTH_LOGIN"]
 KTH_PASSWD = os.environ["KTH_PASSWD"]
