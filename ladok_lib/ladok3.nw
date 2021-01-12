@@ -1194,9 +1194,9 @@ if previous_result:
     put_data = {
         'Resultat': [{
             'ResultatUID': previous_result['id'],
-            'Betygsgrad': grade['id'],
+            'Betygsgrad': grade.id,
             'Noteringar': [],
-            'BetygsskalaID': grade_scale['id'],
+            'BetygsskalaID': grade_scale.id,
             'Examinationsdatum': result_date,
             'SenasteResultatandring': previous_result['last_modified']
         }]
@@ -1210,9 +1210,9 @@ else:
         'Resultat': [{
             'StudieresultatUID': student_course_results['id'],
             'UtbildningsinstansUID': course_moment_id,
-            'Betygsgrad': grade['id'],
+            'Betygsgrad': grade.id,
             'Noteringar': [],
-            'BetygsskalaID': grade_scale['id'],
+            'BetygsskalaID': grade_scale.id,
             'Examinationsdatum': result_date
         }]
     }
@@ -1358,7 +1358,7 @@ def save_result(self, person_nr_raw, course_code, course_moment, result_date_raw
     student_course_results = self.__get_student_course_results(student_course['round_id'], student_data['id'])
     
     grade_scale = self.__get_grade_scale_by_code(grade_scale)
-    grade = next(grade for grade in grade_scale['grades'] if grade['code'] == grade_raw)
+    grade = grade_scale.grades(code=grade_raw)[0]
                 
     headers = self.headers.copy()
     headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
@@ -1378,9 +1378,9 @@ def save_result(self, person_nr_raw, course_code, course_moment, result_date_raw
         put_data = {
             'Resultat': [{
                 'ResultatUID': previous_result['id'],
-                'Betygsgrad': grade['id'],
+                'Betygsgrad': grade.id,
                 'Noteringar': [],
-                'BetygsskalaID': grade_scale['id'],
+                'BetygsskalaID': grade_scale.id,
                 'Examinationsdatum': result_date,
                 'SenasteResultatandring': previous_result['last_modified']
             }]
@@ -1394,9 +1394,9 @@ def save_result(self, person_nr_raw, course_code, course_moment, result_date_raw
             'Resultat': [{
                 'StudieresultatUID': student_course_results['id'],
                 'UtbildningsinstansUID': course_moment_id,
-                'Betygsgrad': grade['id'],
+                'Betygsgrad': grade.id,
                 'Noteringar': [],
-                'BetygsskalaID': grade_scale['id'],
+                'BetygsskalaID': grade_scale.id,
                 'Examinationsdatum': result_date
             }]
         }
@@ -1475,9 +1475,7 @@ def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
 #
 # RETURNERAR en dictionary of the grading scales
 def all_grading_scale(self):
-    # for grade_scale in self.__grade_scales:
-    #     print("grade_scale={}".format(grade_scale))
-    return self.__grade_scales
+    return self.get_grade_scales()
 
 
 # added by GQMJr
@@ -4569,23 +4567,23 @@ def __validate_date(self, date_raw):
         return None
 
 def __get_grade_scale_by_id(self, grade_scale_id):
-    return next(grade_scale for grade_scale in self.__grade_scales if grade_scale['id'] == grade_scale_id)
+    return next(grade_scale for grade_scale in self.get_grade_scales() if grade_scale.id == grade_scale_id)
 
 
 def __get_grade_scale_by_code(self, grade_scale_code):
-    return next(grade_scale for grade_scale in self.__grade_scales if grade_scale['code'] == grade_scale_code)
+    return next(grade_scale for grade_scale in self.get_grade_scales() if grade_scale.code == grade_scale_code)
 
 
 def __get_grade_by_id(self, grade_id):
-    for grade_scale in self.__grade_scales:
-        for grade in grade_scale['grades']:
-            if grade['id'] == grade_id: return grade
+    for grade_scale in self.get_grade_scales():
+        for grade in grade_scale.grades():
+            if grade.id == grade_id: return grade
     
     return None
 
 
 def __get_student_data(self, person_nr):
-    r = self.__session.get(url = self.base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.headers).json()['Resultat']
+    r = self.session.get(url = self.base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.headers).json()['Resultat']
     
     if len(r) != 1: return None
     
@@ -4620,7 +4618,7 @@ def __get_student_data(self, person_nr):
 
 # detta är egentligen kurstillfällen, inte kurser (ID-numret är alltså ett ID-nummer för ett kurstillfälle)
 def __get_student_courses(self, student_id):
-    r = self.__session.get(url = self.base_gui_proxy_url + '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/' + student_id, headers = self.headers).json()
+    r = self.session.get(url = self.base_gui_proxy_url + '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/' + student_id, headers = self.headers).json()
     
     results = []
     
