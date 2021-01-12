@@ -7,14 +7,19 @@ in LADOK.
 we assume that all assignments in the Canvas course instance are grouped; and 
 each group must map exactly to the names of the LADOK components.
 
-The course components in LADOK (and assignment groups in Canvas) are
+The course components in LADOK (and assignment groups in Canvas) for the prgi 
+(DD1315) course are
 \begin{itemize}
 \item LAB1,
 \item LAB2,
 \item LAB3,
-\item MAT1
+\item MAT1.
 \end{itemize}
-in the prgi (DD1315) course.
+The LAB3 component corresponds to a project.
+In Canvas, it has P/F assignments (\eg presentation) and one A--F assignment ( 
+the project itself).
+The component grade is based on the project itself, but the other assignments 
+each must have a P too.
 
 For now we will ignore setting the grade on the full course.
 
