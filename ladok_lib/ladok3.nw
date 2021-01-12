@@ -4677,12 +4677,15 @@ def __get_student_course_results(self, course_round_id, student_id):
 @
 
 
+\chapter{Example: transfer results from Canvas to LADOK}
+
+Here we provide an example program~[[prgi.py]] which exports results from 
+Canvas to LADOK for the introductory programming course~prgi (DD1315).
+
+\input{prgi.tex}
+
 
 \printbibliography{}
 
-
-\appendix
-\chapter{An index of the code blocks}
-\nowebchunks
 
 \end{document}

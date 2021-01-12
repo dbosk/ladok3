@@ -8,6 +8,7 @@ ladok3.pdf: abstract.tex
 ladok3.pdf: example_LadokSession.py
 ladok3.pdf: example_Student.py
 ladok3.pdf: example_Course.py
+ladok3.pdf: prgi.tex
 
 ladok3.tex: ladok3.nw
 
@@ -19,10 +20,8 @@ ladok3.py: ladok3.nw
 
 
 .PHONY: all
-all: prgi.pdf
 all: prgi.py
 
-prgi.pdf: prgi.tex
 prgi.py: prgi.nw
 
 
