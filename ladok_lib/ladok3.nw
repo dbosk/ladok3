@@ -27,6 +27,10 @@
 \begin{document}
 \maketitle
 
+\vspace*{\fill}
+\VerbatimInput{../LICENSE}
+\clearpage
+
 \begin{abstract}
   \input{abstract.tex}
 \end{abstract}
