@@ -1267,50 +1267,64 @@ Also, the code has been adapted to use [[self.session]] instead of
 #           pending(2) - klarmarkerad
 #
 def get_results(self, person_nr_raw, course_code):
-    person_nr_raw = str(person_nr_raw)
-    person_nr =  format_personnummer(person_nr_raw)
-    if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
-    
-    student_data = self.__get_student_data(person_nr)
+  person_nr_raw = str(person_nr_raw)
+  person_nr =  format_personnummer(person_nr_raw)
+  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  
+  student_data = self.__get_student_data(person_nr)
 
-    student_course = next(x for x in self.__get_student_courses(student_data['id']) if x['code'] == course_code)
+  student_course = next(x
+    for x in self.__get_student_courses(student_data['id'])
+      if x['code'] == course_code)
 
-    # get attested results
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/studentresultat/attesterade/student/' + student_data['id'], headers = self.headers).json()
-    
-    results_attested_current_course = None
-    results = {}  # return value
-    
-    for course in r['StudentresultatPerKurs']:
-        if course['KursUID'] == student_course['education_id']:
-            results_attested_current_course = course['Studentresultat']
-            break
+  # get attested results
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/studentresultat/attesterade/student/' +
+        student_data['id'],
+    headers=self.headers).json()
+  
+  results_attested_current_course = None
+  results = {}  # return value
+  
+  for course in r['StudentresultatPerKurs']:
+    if course['KursUID'] == student_course['education_id']:
+      results_attested_current_course = course['Studentresultat']
+      break
 
 
-    if results_attested_current_course:
-        for result in results_attested_current_course:
-            try:
-                d = { 'grade' : result['Betygsgradskod'],
-                      'status': 'attested',
-                      'date'  : result['Examinationsdatum'] }
-                results[ result['Utbildningskod'] ] = d
-            except:
-                pass  # tillgodoräknanden har inga betyg och då är result['Utbildningskod'] == None
+  if results_attested_current_course:
+    for result in results_attested_current_course:
+      try:
+          d = { 'grade' : result['Betygsgradskod'],
+                'status': 'attested',
+                'date'  : result['Examinationsdatum'] }
+          results[ result['Utbildningskod'] ] = d
+      except:
+          pass  # tillgodoräknanden har inga betyg och då är result['Utbildningskod'] == None
 
-    # get pending results
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/resultat/resultat/student/' + student_data['id'] + '/kurs/' + student_course['education_id'] + '?resultatstatus=UTKAST&resultatstatus=KLARMARKERAT', headers = self.headers).json()
-    
-    for result in r['Resultat']:
-        r = self.session.get(url = self.base_gui_proxy_url + '/resultat/utbildningsinstans/' + result['UtbildningsinstansUID'], headers = self.headers).json()
-        d_grade     = result['Betygsgradsobjekt']['Kod']
-        d_status = "pending(" + str(result['ProcessStatus']) + ")"
-        # utkast har inte datum tydligen ...
-        d_date     = "0" if 'Examinationsdatum' not in result else result['Examinationsdatum'] 
-        d = { 'grade' : d_grade ,
-              'status': d_status,
-              'date'  : d_date      } 
-        results[ r['Utbildningskod'] ] = d
-    return results
+  # get pending results
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/resultat/resultat/resultat/student/' +
+      student_data['id'] + '/kurs/' + student_course['education_id'] +
+        '?resultatstatus=UTKAST&resultatstatus=KLARMARKERAT',
+    headers=self.headers).json()
+  
+  for result in r['Resultat']:
+      r = self.session.get(
+        url=self.base_gui_proxy_url + '/resultat/utbildningsinstans/' +
+          result['UtbildningsinstansUID'],
+        headers=self.headers).json()
+      d_grade = result['Betygsgradsobjekt']['Kod']
+      d_status = "pending(" + str(result['ProcessStatus']) + ")"
+      # utkast har inte datum tydligen ...
+      d_date = "0" if 'Examinationsdatum' not in result \
+                    else result['Examinationsdatum']
+      d = { 'grade' : d_grade ,
+            'status': d_status,
+            'date'  : d_date      } 
+      results[ r['Utbildningskod'] ] = d
+  return results
 
 #####################################################################
 #
@@ -1329,82 +1343,98 @@ def get_results(self, person_nr_raw, course_code):
 #
 # RETURNERAR True om det gått bra, kastar (förhoppningsvis) undantag
 #            om det går dåligt. 
+def save_result(self, person_nr_raw, course_code, course_moment,
+  result_date_raw, grade_raw, grade_scale):
+  if grade_raw in ["AF", "PF"]:
+      raise Exception('Invalid grade: ' + grade_raw + ' looks like a grade_scale') 
 
-def save_result(self, person_nr_raw, course_code, course_moment, result_date_raw, grade_raw, grade_scale):
-    if grade_raw in ["AF", "PF"]:
-        raise Exception('Invalid grade: ' + grade_raw + ' looks like a grade_scale') 
-
-    if (grade_raw == 'P' and grade_scale == "AF") or (grade_raw in "ABCDE" and grade_scale == "PF"):
-        raise Exception('Invalid grade: ' + grade_raw + ' does not match grade_scale ' + grade_scale) 
-    
-    person_nr =  format_personnummer(person_nr_raw)
-    if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
-    
-    result_date = self.__validate_date(result_date_raw)
-    if not result_date : raise Exception('Invalid grade date: ' + result_date_raw + ' pnr: ' +  person_nr_raw + ' moment: ' + course_moment)
-    
-    student_data = self.__get_student_data(person_nr)
-    student_course = next(x for x in self.__get_student_courses(student_data['id']) if x['code'] == course_code)
-    
-    # momentkod = kurskod => vi hanterar kursbetyg
-    if course_moment == student_course['code']:
-        course_moment_id = student_course['instance_id']
-    else:
-        #course_moment_id = next(x['course_moment_id'] for x in self.__get_student_course_moments(student_course['round_id'], student_data['id']) if x['code'] == course_moment)
-        for x in self.__get_student_course_moments(student_course['round_id'], student_data['id']):
-            if x['code'] == course_moment:
-                course_moment_id = x['course_moment_id']
-        
-    student_course_results = self.__get_student_course_results(student_course['round_id'], student_data['id'])
-    
-    grade_scale = self.__get_grade_scale_by_code(grade_scale)
-    grade = grade_scale.grades(code=grade_raw)[0]
-                
-    headers = self.headers.copy()
-    headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
-    headers['X-XSRF-TOKEN'] = self.__get_xsrf_token()
-    headers['Referer'] = self.base_gui_url
-    
-    previous_result = None
-    
-    for result in student_course_results['results']:
-        if result['pending'] is not None:
-            if result['pending']['moment_id'] == course_moment_id:
-                previous_result = result['pending']
-                break
-    
-    # uppdatera befintligt utkast
-    if previous_result:
-        put_data = {
-            'Resultat': [{
-                'ResultatUID': previous_result['id'],
-                'Betygsgrad': grade.id,
-                'Noteringar': [],
-                'BetygsskalaID': grade_scale.id,
-                'Examinationsdatum': result_date,
-                'SenasteResultatandring': previous_result['last_modified']
-            }]
-        }
-        
-        r = self.session.put(url = self.base_gui_proxy_url + '/resultat/studieresultat/uppdatera', json = put_data, headers = headers)
-    
-    # lägg in nytt betygsutkast
-    else:
-        post_data = {
-            'Resultat': [{
-                'StudieresultatUID': student_course_results['id'],
-                'UtbildningsinstansUID': course_moment_id,
-                'Betygsgrad': grade.id,
-                'Noteringar': [],
-                'BetygsskalaID': grade_scale.id,
-                'Examinationsdatum': result_date
-            }]
-        }
-        r = self.session.post(url = self.base_gui_proxy_url + '/resultat/studieresultat/skapa', json = post_data, headers = headers)
-    
-    if not 'Resultat' in r.json(): raise Exception("Kunde inte mata in " + person_nr_raw + " " + course_moment + " : " + grade_raw + " " + result_date_raw + "\n" + r.text)
-    
-    return True
+  if (grade_raw == 'P' and grade_scale == "AF") or
+     (grade_raw in "ABCDE" and grade_scale == "PF"):
+    raise Exception('Invalid grade: ' + grade_raw + ' does not match 
+    grade_scale ' + grade_scale) 
+  
+  person_nr =  format_personnummer(person_nr_raw)
+  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  
+  result_date = self.__validate_date(result_date_raw)
+  if not result_date:
+    raise Exception('Invalid grade date: ' + result_date_raw + ' pnr: ' +
+      person_nr_raw + ' moment: ' + course_moment)
+  
+  student_data = self.__get_student_data(person_nr)
+  student_course = next(x
+    for x in self.__get_student_courses(student_data['id'])
+      if x['code'] == course_code)
+  
+  # momentkod = kurskod => vi hanterar kursbetyg
+  if course_moment == student_course['code']:
+      course_moment_id = student_course['instance_id']
+  else:
+      for x in self.__get_student_course_moments(student_course['round_id'], 
+        student_data['id']):
+        if x['code'] == course_moment:
+          course_moment_id = x['course_moment_id']
+      
+  student_course_results = self.__get_student_course_results(
+    student_course['round_id'], student_data['id'])
+  
+  grade_scale = self.__get_grade_scale_by_code(grade_scale)
+  grade = grade_scale.grades(code=grade_raw)[0]
+              
+  headers = self.headers.copy()
+  headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
+  headers['X-XSRF-TOKEN'] = self.__get_xsrf_token()
+  headers['Referer'] = self.base_gui_url
+  
+  previous_result = None
+  
+  for result in student_course_results['results']:
+      if result['pending'] is not None:
+          if result['pending']['moment_id'] == course_moment_id:
+              previous_result = result['pending']
+              break
+  
+  # uppdatera befintligt utkast
+  if previous_result:
+      put_data = {
+          'Resultat': [{
+              'ResultatUID': previous_result['id'],
+              'Betygsgrad': grade.id,
+              'Noteringar': [],
+              'BetygsskalaID': grade_scale.id,
+              'Examinationsdatum': result_date,
+              'SenasteResultatandring': previous_result['last_modified']
+          }]
+      }
+      
+      r = self.session.put(
+        url=self.base_gui_proxy_url + '/resultat/studieresultat/uppdatera',
+        json=put_data,
+        headers=headers)
+  
+  # lägg in nytt betygsutkast
+  else:
+      post_data = {
+          'Resultat': [{
+              'StudieresultatUID': student_course_results['id'],
+              'UtbildningsinstansUID': course_moment_id,
+              'Betygsgrad': grade.id,
+              'Noteringar': [],
+              'BetygsskalaID': grade_scale.id,
+              'Examinationsdatum': result_date
+          }]
+      }
+      r = self.session.post(
+        url=self.base_gui_proxy_url + '/resultat/studieresultat/skapa',
+        json=post_data,
+        headers=headers)
+  
+  if not 'Resultat' in r.json():
+    raise Exception("Kunde inte mata in " + person_nr_raw + " " +
+      course_moment + " : " + grade_raw + " " + result_date_raw + "\n" +
+        r.text)
+  
+  return True
 
 
 #####################################################################
@@ -1417,12 +1447,12 @@ def save_result(self, person_nr_raw, course_code, course_moment, result_date_raw
 # RETURNERAR {'id': 'xxxx', 'first_name': 'x', 'last_name': 'y', 'person_nr': 'xxx', 'alive': True}
 
 def get_student_data(self, person_nr_raw):
-    person_nr =  format_personnummer(person_nr_raw)
-    
-    if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
-    
-    student_data = self.__get_student_data(person_nr)
-    return student_data
+  person_nr =  format_personnummer(person_nr_raw)
+  
+  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  
+  student_data = self.__get_student_data(person_nr)
+  return student_data
 
 #####################################################################
 #
@@ -1436,12 +1466,15 @@ def get_student_data(self, person_nr_raw):
 # {"first_name" : 'Anna', "last_name : 'Andersson'}
 #
 def get_student_name(self, person_nr_raw):
-    person_nr =  format_personnummer(person_nr_raw)
-    
-    if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
-    
-    student_data = self.__get_student_data(person_nr)
-    return { "first_name": student_data["first_name"], "last_name" : student_data["last_name"] }
+  person_nr =  format_personnummer(person_nr_raw)
+  
+  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  
+  student_data = self.__get_student_data(person_nr)
+  return {
+    "first_name": student_data["first_name"],
+    "last_name" : student_data["last_name"]
+  }
 
 
 # added by GQMJr
@@ -1456,15 +1489,19 @@ def get_student_name(self, person_nr_raw):
 #
 # RETURNERAR en dictionary med för- och efternamn and more
 def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
-    person_nr =  format_personnummer(person_nr_raw)
-    
-    if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  person_nr =  format_personnummer(person_nr_raw)
+  
+  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
 
-    r = self.session.get(url = self.base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod='+lang, headers = self.headers)
-    
-    if r.status_code == requests.codes.ok:
-        return r.json()
-    return None
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer='
+        + person_nr + '&skipCount=false&sprakkod='+lang,
+    headers=self.headers)
+  
+  if r.status_code == requests.codes.ok:
+      return r.json()
+  return None
 
 
 # added by GQMJr
@@ -1475,7 +1512,7 @@ def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
 #
 # RETURNERAR en dictionary of the grading scales
 def all_grading_scale(self):
-    return self.get_grade_scales()
+  return self.get_grade_scales()
 
 
 # added by GQMJr
@@ -1486,8 +1523,11 @@ def all_grading_scale(self):
 #
 # RETURNERAR en dictionary of the grading rights (of the logged in user)
 def grading_rights(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/resultatrattighet/listaforinloggadanvandare', headers = self.headers).json()
-    return r['Resultatrattighet']
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/resultatrattighet/listaforinloggadanvandare',
+    headers=self.headers).json()
+  return r['Resultatrattighet']
     
 
 # added by GQMJr
@@ -1499,8 +1539,10 @@ def grading_rights(self):
 #
 # RETURNERAR reponse to the request
 def change_locale(self, lang = 'sv'):
-    r = self.session.get(url = self.base_gui_url+'/services/i18n/changeLocale?lang='+lang, headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_url+'/services/i18n/changeLocale?lang='+lang,
+    headers=self.headers).json()
+  return r
 
 # added by GQMJr
 #####################################################################
@@ -1515,9 +1557,12 @@ def change_locale(self, lang = 'sv'):
 #
 # Example: ladok_session.course_instances('II2202', 'en')
 def course_instances_JSON(self, course_code, lang = 'sv'):
-    # note that there seems to be a limit of 403 for the number of pages
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=100&skipCount=false&sprakkod='+lang, headers = self.headers).json()
-    return r
+  # note that there seems to be a limit of 403 for the number of pages
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod=' +
+      course_code + '&page=1&limit=100&skipCount=false&sprakkod=' + lang,
+    headers=self.headers).json()
+  return r
 
 # added by GQMJr
 #####################################################################
@@ -1526,8 +1571,10 @@ def course_instances_JSON(self, course_code, lang = 'sv'):
 #
 # RETURNERAR en dictionary of organization information for the entire institution of the logged in user
 def organization_info_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/organisation/utanlankar', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/resultat/organisation/utanlankar',
+    headers=self.headers).json()
+  return r
 
 # added by GQMJr
 #####################################################################
@@ -1536,8 +1583,10 @@ def organization_info_JSON(self):
 #
 # RETURNERAR JSON of /resultat/grunddata/period
 def period_info_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/grunddata/period', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/resultat/grunddata/period',
+    headers=self.headers).json()
+  return r
 
 # added by GQMJr
 #####################################################################
@@ -1554,14 +1603,17 @@ def period_info_JSON(self):
 #
 # Example: ii=ladok_session.instance_info('II2202', instance_code, 'en')
 def instance_info(self, course_code, instance_code, lang = 'sv'):
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod='+course_code+'&page=1&limit=25&skipCount=false&sprakkod='+lang, 
-    headers = self.headers)
-    if r.status_code == requests.codes.ok:
-        rj=r.json()
-        for course in rj['Resultat']:
-            if course['TillfallesKod'] == instance_code:
-                return course
-    return None
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/kurstillfalle/filtrera?kurskod=' + course_code +
+        '&page=1&limit=25&skipCount=false&sprakkod=' + lang,
+    headers=self.headers)
+  if r.status_code == requests.codes.ok:
+    rj=r.json()
+    for course in rj['Resultat']:
+      if course['TillfallesKod'] == instance_code:
+        return course
+  return None
 
 
 # added by GQMJr
@@ -1575,8 +1627,11 @@ def instance_info(self, course_code, instance_code, lang = 'sv'):
 #
 # Example: kurs=ladok_session.course_instance_JSON(ii['Utbildningsinstans']['Uid'])
 def course_instance_JSON(self, uid):
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/utbildningsinstans/kursinstans/'+uid, headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/utbildningsinstans/kursinstans/'+uid,
+    headers=self.headers).json()
+  return r
 
 # added by GQMJr
 #####################################################################
@@ -1591,88 +1646,93 @@ def course_instance_JSON(self, uid):
 #                  ii=ladok_session.instance_info('II2202', instance_code, 'en')
 #                  pl=ladok_session.participants(ii['Uid'])
 def participants_JSON(self, uid):
-    headers = self.headers.copy()
-    headers['Content-Type'] = 'application/vnd.ladok-studiedeltagande+json'
-    headers['X-XSRF-TOKEN'] = self.__get_xsrf_token()
-    headers['Origin'] = self.base_url
+  headers = self.headers.copy()
+  headers['Content-Type'] = 'application/vnd.ladok-studiedeltagande+json'
+  headers['X-XSRF-TOKEN'] = self.__get_xsrf_token()
+  headers['Origin'] = self.base_url
 
-    put_data = {'page': 1,
-                'limit': 400,
-                'orderby': ['EFTERNAMN_ASC',
-                            'FORNAMN_ASC',
-                            'PERSONNUMMER_ASC',
-                            'KONTROLLERAD_KURS_ASC'],
-                'deltagaretillstand': ['EJ_PABORJAD', # include students how have not yet started the course
-                                        'PAGAENDE',  # include started students (ongoing)
-                                        'REGISTRERAD' # include registered students
-                                        # 'ATERBUD', # cancelled
-                                        # 'PAGAENDE_MED_SPARR', # on-going block exists
-                                        # 'AVBROTT',    # Withdrawal
-                                        # 'EJ_PAGAENDE_TILLFALLESBYTE', # not on-going due to instance exchange
-                                        # 'UPPEHALL', # not on-going due to approved leave from studies
-                                        #'AVKLARAD' # include students who have completed the course
-                ],
-                'utbildningstillfalleUID': [uid]
-    }
-        
-    # the constants above come from schemas.ladok.se-studiedeltagande.xsd
-    #
-    # <xs:simpleType name="DeltagareKurstillfalleOrderByEnum">
-    #   <xs:restriction base="xs:string">
-    #     <xs:enumeration value="EFTERNAMN_DESC"/>
-    #     <xs:enumeration value="PERSONNUMMER_DESC"/>
-    #     <xs:enumeration value="PERSONNUMMER_ASC"/>
-    #     <xs:enumeration value="EFTERNAMN_ASC"/>
-    #     <xs:enumeration value="FORNAMN_DESC"/>
-    #     <xs:enumeration value="FORNAMN_ASC"/>
-    #   </xs:restriction>
-    # </xs:simpleType>
-    #
-    # or perhaps it comes from:
-    #
-    # <xs:simpleType name="DeltagareKurspaketeringstillfalleOrderByEnum">
-    #   <xs:restriction base="xs:string">
-    #     <xs:enumeration value="EFTERNAMN_ASC"/>
-    #     <xs:enumeration value="EFTERNAMN_DESC"/>
-    #     <xs:enumeration value="PERIOD_I_ORDNING_DESC"/>
-    #     <xs:enumeration value="KONTROLLERAD_KURS_DESC"/>
-    #     <xs:enumeration value="SUMMERAD_GODKAND_OMFATTNING_DESC"/>
-    #     <xs:enumeration value="PERSONNUMMER_ASC"/>
-    #     <xs:enumeration value="FORNAMN_ASC"/>
-    #     <xs:enumeration value="KONTROLLERAD_KURS_ASC"/>
-    #     <xs:enumeration value="SUMMERAD_GODKAND_OMFATTNING_ASC"/>
-    #     <xs:enumeration value="FORNAMN_DESC"/>
-    #     <xs:enumeration value="PERIOD_I_ORDNING_ASC"/>
-    #     <xs:enumeration value="PERSONNUMMER_DESC"/>
-    #   </xs:restriction>
-    # </xs:simpleType>
+  put_data = {
+    'page': 1,
+    'limit': 400,
+    'orderby': ['EFTERNAMN_ASC',
+                'FORNAMN_ASC',
+                'PERSONNUMMER_ASC',
+                'KONTROLLERAD_KURS_ASC'],
+    'deltagaretillstand': [
+      'EJ_PABORJAD', # include students how have not yet started the course
+      'PAGAENDE',  # include started students (ongoing)
+      'REGISTRERAD' # include registered students
+      # 'ATERBUD', # cancelled
+      # 'PAGAENDE_MED_SPARR', # on-going block exists
+      # 'AVBROTT',    # Withdrawal
+      # 'EJ_PAGAENDE_TILLFALLESBYTE', # not on-going due to instance exchange
+      # 'UPPEHALL', # not on-going due to approved leave from studies
+      #'AVKLARAD' # include students who have completed the course
+    ],
+    'utbildningstillfalleUID': [uid]
+  }
+      
+  # the constants above come from schemas.ladok.se-studiedeltagande.xsd
+  #
+  # <xs:simpleType name="DeltagareKurstillfalleOrderByEnum">
+  #   <xs:restriction base="xs:string">
+  #     <xs:enumeration value="EFTERNAMN_DESC"/>
+  #     <xs:enumeration value="PERSONNUMMER_DESC"/>
+  #     <xs:enumeration value="PERSONNUMMER_ASC"/>
+  #     <xs:enumeration value="EFTERNAMN_ASC"/>
+  #     <xs:enumeration value="FORNAMN_DESC"/>
+  #     <xs:enumeration value="FORNAMN_ASC"/>
+  #   </xs:restriction>
+  # </xs:simpleType>
+  #
+  # or perhaps it comes from:
+  #
+  # <xs:simpleType name="DeltagareKurspaketeringstillfalleOrderByEnum">
+  #   <xs:restriction base="xs:string">
+  #     <xs:enumeration value="EFTERNAMN_ASC"/>
+  #     <xs:enumeration value="EFTERNAMN_DESC"/>
+  #     <xs:enumeration value="PERIOD_I_ORDNING_DESC"/>
+  #     <xs:enumeration value="KONTROLLERAD_KURS_DESC"/>
+  #     <xs:enumeration value="SUMMERAD_GODKAND_OMFATTNING_DESC"/>
+  #     <xs:enumeration value="PERSONNUMMER_ASC"/>
+  #     <xs:enumeration value="FORNAMN_ASC"/>
+  #     <xs:enumeration value="KONTROLLERAD_KURS_ASC"/>
+  #     <xs:enumeration value="SUMMERAD_GODKAND_OMFATTNING_ASC"/>
+  #     <xs:enumeration value="FORNAMN_DESC"/>
+  #     <xs:enumeration value="PERIOD_I_ORDNING_ASC"/>
+  #     <xs:enumeration value="PERSONNUMMER_DESC"/>
+  #   </xs:restriction>
+  # </xs:simpleType>
 
-    # <xs:simpleType name="DeltagaretillstandEnum">
-    #   <xs:restriction base="xs:string">
-    #     <xs:enumeration value="EJ_PAGAENDE_TILLFALLESBYTE"/>
-    #     <xs:enumeration value="EJ_PABORJAD"/>
-    #     <xs:enumeration value="AVKLARAD"/>
-    #     <xs:enumeration value="ATERBUD"/>
-    #     <xs:enumeration value="AVBROTT"/>
-    #     <xs:enumeration value="PAGAENDE_MED_SPARR"/>
-    #     <xs:enumeration value="PAGAENDE"/>
-    #     <xs:enumeration value="PABORJAD"/>
-    #     <xs:enumeration value="FORVANTAD_DELTAGARE"/>
-    #     <xs:enumeration value="REGISTRERAD"/>
-    #     <xs:enumeration value="UPPEHALL"/>
-    #   </xs:restriction>
-    # </xs:simpleType>
+  # <xs:simpleType name="DeltagaretillstandEnum">
+  #   <xs:restriction base="xs:string">
+  #     <xs:enumeration value="EJ_PAGAENDE_TILLFALLESBYTE"/>
+  #     <xs:enumeration value="EJ_PABORJAD"/>
+  #     <xs:enumeration value="AVKLARAD"/>
+  #     <xs:enumeration value="ATERBUD"/>
+  #     <xs:enumeration value="AVBROTT"/>
+  #     <xs:enumeration value="PAGAENDE_MED_SPARR"/>
+  #     <xs:enumeration value="PAGAENDE"/>
+  #     <xs:enumeration value="PABORJAD"/>
+  #     <xs:enumeration value="FORVANTAD_DELTAGARE"/>
+  #     <xs:enumeration value="REGISTRERAD"/>
+  #     <xs:enumeration value="UPPEHALL"/>
+  #   </xs:restriction>
+  # </xs:simpleType>
 
 
-    txt=json.dumps(put_data)
-    #print("txt={}".format(txt))
-    # note that I could not use json = put_data, as this changed the 'Content-Type' and broke the functionality
-    # For thie reason, I manually do the conversion of the JSON to a string and manually set the 'Content-Type'.
-    r = self.session.put(url = self.base_gui_proxy_url + '/studiedeltagande/deltagare/kurstillfalle', data = txt, headers = headers)
-    if r.status_code == 200:
-        participant_info=json.loads(r.text)
-        return participant_info
-    return None
+  txt=json.dumps(put_data)
+  # note that I could not use json = put_data, as this changed the 
+  # 'Content-Type' and broke the functionality
+  # For thie reason, I manually do the conversion of the JSON to a string and manually set the 'Content-Type'.
+  r = self.session.put(
+    url=self.base_gui_proxy_url + '/studiedeltagande/deltagare/kurstillfalle',
+    data=txt,
+    headers=headers)
+  if r.status_code == 200:
+    participant_info=json.loads(r.text)
+    return participant_info
+  return None
 
 
 # added by GQMJr
@@ -1684,10 +1744,13 @@ def participants_JSON(self, uid):
 #
 # RETURNERAR en dictionary of student information
 def studystructure_student_JSON(self, uid):
-    r = self.session.get(url = self.base_gui_proxy_url + '/studiedeltagande/studiestruktur/student/'+uid, headers = self.headers)
-    if r.status_code == 200:
-        return r.json()
-    return None
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/studiedeltagande/studiestruktur/student/'+uid,
+    headers=self.headers)
+  if r.status_code == 200:
+    return r.json()
+  return None
 
 # added by GQMJr
 #####################################################################
@@ -1696,8 +1759,11 @@ def studystructure_student_JSON(self, uid):
 #
 # RETURNERAR JSON of the university or college information
 def larosatesinformation_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/larosatesinformation', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/larosatesinformation',
+    headers=self.headers).json()
+  return r
 
 # {   'Larosatesinformation': [   {   'Benamning': {   'en': 'Royal Institute of '
 #                                                            'Technology',
@@ -1719,8 +1785,11 @@ def larosatesinformation_JSON(self):
 #
 # RETURNERAR en dictionary of languages used for instruction
 def undervisningssprak_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/undervisningssprak', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/undervisningssprak',
+    headers=self.headers).json()
+  return r
 # {   'Undervisningssprak': [   {   'Benamning': {   'en': 'English',
 #                                                'sv': 'Engelska'},
 #                               'Beskrivning': {},
@@ -1848,8 +1917,11 @@ def undervisningssprak_JSON(self):
 # lang               - language code 'en' or 'sv', defaults to 'sv'
 # RETURNERAR JSON of i18n translations used in Ladok3
 def i18n_translation_JSON(self, lang = 'sv'):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/i18n/oversattningar/sprakkod/'+lang, headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/i18n/oversattningar/sprakkod/' + lang,
+    headers=self.headers).json()
+  return r
 
 # the above i18n translations are used for example in:
 # 'Utbildningstillfallestyp': {   'Benamningar': {   'en': 'Course instance', 'sv': 'Kurstillfälle'},
@@ -1880,8 +1952,10 @@ def i18n_translation_JSON(self, lang = 'sv'):
 #
 # RETURNERAR JSON of places in Sweden with their KommunID
 def svenskorter_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/svenskort', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/svenskort',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'SvenskOrt': [   {   'Benamning': {   'en': 'Stockholm (Botkyrka)',
@@ -1903,8 +1977,10 @@ def svenskorter_JSON(self):
 #
 # RETURNERAR JSON of places in Sweden with their KommunID
 def kommuner_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/kommun', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/kommun',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Kommun': [   {   'Benamning': {'en': 'Knivsta', 'sv': 'Knivsta'},
@@ -1935,8 +2011,10 @@ def kommuner_JSON(self):
 #
 # RETURNERAR JSON of countries
 def lander_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/land', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/land',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Land': [   {   'Benamning': {'en': 'Bolivia', 'sv': 'Bolivia'},
@@ -1962,8 +2040,11 @@ def lander_JSON(self):
 #
 # RETURNERAR JSON of teaching times
 def undervisningstid_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/undervisningstid', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/undervisningstid',
+    headers=self.headers).json()
+  return r
 
 #returns:
 # {   'Undervisningstid': [   {   'Benamning': {   'en': 'Mixed-time',
@@ -2026,8 +2107,11 @@ def undervisningstid_JSON(self):
 #
 # RETURNERAR JSON of Successive Specializations
 def successivfordjupning_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/successivfordjupning', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/successivfordjupning',
+    headers=self.headers).json()
+  return r
 
 #returns:
 # {   'SuccessivFordjupning': [   {   'Benamning': {   'en': 'Second cycle, '
@@ -2071,8 +2155,11 @@ def successivfordjupning_JSON(self):
 #
 # RETURNERAR JSON of forms of education
 def undervisningsform_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/undervisningsform', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/undervisningsform',
+    headers=self.headers).json()
+  return r
 
 #returns:
 # {   'Undervisningsform': [   {   'Benamning': {   'en': '- No translation '
@@ -2143,8 +2230,10 @@ def undervisningsform_JSON(self):
 #
 # RETURNERAR JSON of local periods
 def LokalaPerioder_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/period', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/period',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Period': [
@@ -2199,8 +2288,11 @@ def LokalaPerioder_JSON(self):
 #
 # RETURNERAR JSON of education levels
 def nivainomstudieordning_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/nivainomstudieordning', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/nivainomstudieordning',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'NivaInomStudieordning': [   {   'Benamning': {   'en': 'First cycle',
@@ -2256,8 +2348,10 @@ def nivainomstudieordning_JSON(self):
 #
 # RETURNERAR JSON of subject area groups
 def amnesgrupp_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/amnesgrupp', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/amnesgrupp',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Amnesgrupp': [   {   'Benamning': {   'en': 'Archival Science',
@@ -2306,8 +2400,10 @@ def amnesgrupp_JSON(self):
 #
 # RETURNERAR JSON of study tempos
 def studietakt_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/studietakt', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/studietakt',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Studietakt': [   {   'Benamning': {   'en': '- No translation available -',
@@ -3321,8 +3417,11 @@ def studietakt_JSON(self):
 #
 # RETURNERAR JSON forms of financing
 def finansieringsform_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/finansieringsform', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/finansieringsform',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Finansieringsform': [   {   'Benamning': {   'en': '- No translation '
@@ -3346,8 +3445,11 @@ def finansieringsform_JSON(self):
 #
 # RETURNERAR JSON of subjects
 def utbildningsomrade_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/utbildningsomrade', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/utbildningsomrade',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Utbildningsomrade': [   {   'Benamning': {   'en': 'Dance',
@@ -3419,8 +3521,11 @@ def utbildningsomrade_JSON(self):
 #
 # RETURNERAR JSON of krequirements for earlier studies
 def kravpatidigarestudier_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/kravpatidigarestudier', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/kravpatidigarestudier',
+    headers=self.headers).json()
+  return r
 
 # returns
 # {   'KravPaTidigareStudier': [   {   'Benamning': {   'en': 'University '
@@ -3469,8 +3574,11 @@ def kravpatidigarestudier_JSON(self):
 #
 # RETURNERAR JSON of study regulation
 def studieordning_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/studieordning', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/studieordning',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Studieordning': [   {   'Benamning': {   'en': 'Higher education, study '
@@ -3733,8 +3841,10 @@ def studieordning_JSON(self):
 #
 # RETURNERAR JSON of units
 def enhet_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/enhet', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/enhet',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Enhet': [   {   'Benamning': {   'en': 'Credit points',
@@ -3836,8 +3946,11 @@ def enhet_JSON(self):
 #
 # RETURNERAR JSON of study location
 def studielokalisering_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/studielokalisering', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/studielokalisering',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Studielokalisering': [   {   'Benamning': {   'en': 'Botkyrka',
@@ -4246,8 +4359,11 @@ def studielokalisering_JSON(self):
 #
 # RETURNERAR JSON of admission round
 def antagningsomgang_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/antagningsomgang', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/antagningsomgang',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Antagningsomgang': [   {   'Benamning': {   'en': 'Application to courses '
@@ -4291,8 +4407,11 @@ def antagningsomgang_JSON(self):
 #
 # RETURNERAR JSON of selected organization
 def organisation_by_uid_JSON(self, organisationUid):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/organisation/'+organisationUid, headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/organisation/'+organisationUid,
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Benamning': {'en': 'EECS/Computer Science', 'sv': 'EECS/Datavetenskap'},
@@ -4314,8 +4433,11 @@ def organisation_by_uid_JSON(self, organisationUid):
 # RETURNERAR JSON of types of education
 # for information about these see https://ladok.se/wp-content/uploads/2018/01/Funktionsbeskrivning_095.pdf
 def utbildningstyp_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/utbildningstyp', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/utbildningstyp',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Utbildningstyp': [   {   'AvserTillfalle': False,
@@ -4420,8 +4542,11 @@ def utbildningstyp_JSON(self):
 #
 # RETURNERAR JSON of activities
 def aktivitetstillfallestyp_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/aktivitetstillfallestyp', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/aktivitetstillfallestyp',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'Aktivitetstillfallestyp': [   {   'Benamning': {   'en': 'Partial Exam',
@@ -4463,8 +4588,10 @@ def aktivitetstillfallestyp_JSON(self):
 #
 # RETURNERAR JSON of admission round
 def catalog_service_index__JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/service/index', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/service/index',
+    headers=self.headers).json()
+  return r
 
 # returns:
 # {   'ServiceName': 'Ladok3 REST-tjänst för kataloginformation',
@@ -4490,8 +4617,11 @@ def catalog_service_index__JSON(self):
 # RETURNERAR JSON of "omradesbehorighet"
 # for information see https://antagning.se/globalassets/omradesbehorigheter-hogskolan.pdf
 def omradesbehorighet_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + '/kataloginformation/grunddata/omradesbehorighet', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/grunddata/omradesbehorighet',
+    headers=self.headers).json()
+  return r
 
 # added by GQMJr
 #####################################################################
@@ -4524,8 +4654,10 @@ def omradesbehorighet_JSON(self):
 # studentUID             -- student's UID
 # RETURNERAR JSON of admission round
 def examen_student_uid_JSON(self):
-    r = self.session.get(url = self.base_gui_proxy_url + 'examen/student/+studentUID', headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + 'examen/student/+studentUID',
+    headers=self.headers).json()
+  return r
 
 
 # added by GQMJr
@@ -4539,8 +4671,10 @@ def examen_student_uid_JSON(self):
 #
 # Example: ii=ladok_session.instance_info_uid(instance_uid)
 def instance_info_uid(self, instance_uid):
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/'+instance_uid, headers = self.headers).json()
-    return r
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/resultat/kurstillfalle/'+instance_uid,
+    headers=self.headers).json()
+  return r
 
 
 
@@ -4550,130 +4684,153 @@ def instance_info_uid(self, instance_uid):
 ##
 
 def __get_xsrf_token(self):
-    cookies = self.session.cookies.get_dict()
-    return next(cookies[cookie] for cookie in cookies if cookie == 'XSRF-TOKEN')
+  cookies = self.session.cookies.get_dict()
+  return next(cookies[cookie] for cookie in cookies if cookie == 'XSRF-TOKEN')
 
 
 # returns None or a LADOK-formated date
 def __validate_date(self, date_raw):
-    datregex = re.compile("(\d\d)?(\d\d)-?(\d\d)-?(\d\d)")
-    dat = datregex.match(date_raw)
-    if dat:
-        if dat.group(1) == None: # add 20, ladok3 won't survive till 2100
-            return "20" + dat.group(2) + "-" + dat.group(3) + "-" + dat.group(4) 
-        else:
-            return dat.group(1) + dat.group(2) + "-" + dat.group(3) + "-" + dat.group(4) 
+  datregex = re.compile("(\d\d)?(\d\d)-?(\d\d)-?(\d\d)")
+  dat = datregex.match(date_raw)
+  if dat:
+    if dat.group(1) == None: # add 20, ladok3 won't survive till 2100
+      return "20" + dat.group(2) + "-" + dat.group(3) + "-" + dat.group(4)
     else:
-        return None
+      return dat.group(1) + dat.group(2) + \
+        "-" + dat.group(3) + "-" + dat.group(4)
+  else:
+    return None
 
 def __get_grade_scale_by_id(self, grade_scale_id):
-    return next(grade_scale for grade_scale in self.get_grade_scales() if grade_scale.id == grade_scale_id)
+  return next(grade_scale
+    for grade_scale in self.get_grade_scales()
+      if grade_scale.id == grade_scale_id)
 
 
 def __get_grade_scale_by_code(self, grade_scale_code):
-    return next(grade_scale for grade_scale in self.get_grade_scales() if grade_scale.code == grade_scale_code)
+  return next(grade_scale
+    for grade_scale in self.get_grade_scales()
+      if grade_scale.code == grade_scale_code)
 
 
 def __get_grade_by_id(self, grade_id):
-    for grade_scale in self.get_grade_scales():
-        for grade in grade_scale.grades():
-            if grade.id == grade_id: return grade
-    
-    return None
+  for grade_scale in self.get_grade_scales():
+    for grade in grade_scale.grades():
+      if grade.id == grade_id:
+        return grade
+  
+  return None
 
 
 def __get_student_data(self, person_nr):
-    r = self.session.get(url = self.base_gui_proxy_url + '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' + person_nr + '&skipCount=false&sprakkod=sv', headers = self.headers).json()['Resultat']
-    
-    if len(r) != 1: return None
-    
-    r = r[0]
-    # from schemas/schemas.ladok.se-studentinformation.xsd
-    #   <xs:complexType name="Student">
-    #   <xs:complexContent>
-    #     <xs:extension base="base:BaseEntitet">
-    #       <xs:sequence>
-    #         <xs:element name="Avliden" type="xs:boolean"/>
-    #         <xs:element minOccurs="0" name="Efternamn" type="xs:string"/>
-    #         <xs:element minOccurs="0" name="ExterntUID" type="xs:string"/>
-    #         <xs:element name="FelVidEtableringExternt" type="xs:boolean"/>
-    #         <xs:element minOccurs="0" name="Fodelsedata" type="xs:string"/>
-    #         <xs:element minOccurs="0" name="Fornamn" type="xs:string"/>
-    #         <xs:element minOccurs="0" name="KonID" type="xs:int"/>
-    #         <xs:element minOccurs="0" name="Personnummer" type="xs:string"/>
-    #         <xs:element minOccurs="0" name="Skyddsstatus" type="xs:string"/>
-    #         <xs:element minOccurs="0" ref="si:UnikaIdentifierare"/>
-    #       </xs:sequence>
-    #     </xs:extension>
-    #   </xs:complexContent>
-    # </xs:complexType>
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer='
+        + person_nr + '&skipCount=false&sprakkod=sv',
+    headers=self.headers).json()['Resultat']
+  
+  if len(r) != 1: return None
+  
+  r = r[0]
+  # from schemas/schemas.ladok.se-studentinformation.xsd
+  #   <xs:complexType name="Student">
+  #   <xs:complexContent>
+  #     <xs:extension base="base:BaseEntitet">
+  #       <xs:sequence>
+  #         <xs:element name="Avliden" type="xs:boolean"/>
+  #         <xs:element minOccurs="0" name="Efternamn" type="xs:string"/>
+  #         <xs:element minOccurs="0" name="ExterntUID" type="xs:string"/>
+  #         <xs:element name="FelVidEtableringExternt" type="xs:boolean"/>
+  #         <xs:element minOccurs="0" name="Fodelsedata" type="xs:string"/>
+  #         <xs:element minOccurs="0" name="Fornamn" type="xs:string"/>
+  #         <xs:element minOccurs="0" name="KonID" type="xs:int"/>
+  #         <xs:element minOccurs="0" name="Personnummer" type="xs:string"/>
+  #         <xs:element minOccurs="0" name="Skyddsstatus" type="xs:string"/>
+  #         <xs:element minOccurs="0" ref="si:UnikaIdentifierare"/>
+  #       </xs:sequence>
+  #     </xs:extension>
+  #   </xs:complexContent>
+  # </xs:complexType>
 
-    return {
-        'id': r['Uid'], # Ladok-ID
-        'first_name': r['Fornamn'],
-        'last_name':  r['Efternamn'],
-        'person_nr':  r['Personnummer'], # tolv siffror, utan bindestreck eller plustecken
-        'alive':  not r['Avliden']
-    }
+  return {
+    'id':         r['Uid'], # Ladok-ID
+    'first_name': r['Fornamn'],
+    'last_name':  r['Efternamn'],
+    'person_nr':  r['Personnummer'], # tolv siffror, utan bindestreck eller plustecken
+    'alive':  not r['Avliden']
+  }
 
 # detta är egentligen kurstillfällen, inte kurser (ID-numret är alltså ett ID-nummer för ett kurstillfälle)
 def __get_student_courses(self, student_id):
-    r = self.session.get(url = self.base_gui_proxy_url + '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/' + student_id, headers = self.headers).json()
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/'
+        + student_id,
+    headers=self.headers).json()
+  
+  results = []
+  
+  for course in r['Tillfallesdeltaganden']:
+    if not course['Nuvarande'] or
+       'Utbildningskod' not in course['Utbildningsinformation']:
+      continue
     
-    results = []
-    
-    for course in r['Tillfallesdeltaganden']:
-        if not course['Nuvarande'] or 'Utbildningskod' not in course['Utbildningsinformation']: continue
-        
-        results.append({
-            'id': course['Uid'],
-            'round_id': course['Utbildningsinformation']['UtbildningstillfalleUID'], # ett Ladok-ID för kursomgången
-            'education_id': course['Utbildningsinformation']['UtbildningUID'], # ett Ladok-ID för något annat som rör kursen
-            'instance_id': course['Utbildningsinformation']['UtbildningsinstansUID'], # ett Ladok-ID för att rapportera in kursresultat
-            'code': course['Utbildningsinformation']['Utbildningskod'], # kurskod KOPPS
-            'name': course['Utbildningsinformation']['Benamning']['sv']
-        })
-    
-    return results
+    results.append({
+      'id': course['Uid'],
+      'round_id': course['Utbildningsinformation']['UtbildningstillfalleUID'], # ett Ladok-ID för kursomgången
+      'education_id': course['Utbildningsinformation']['UtbildningUID'], # ett Ladok-ID för något annat som rör kursen
+      'instance_id': course['Utbildningsinformation']['UtbildningsinstansUID'], # ett Ladok-ID för att rapportera in kursresultat
+      'code': course['Utbildningsinformation']['Utbildningskod'], # kurskod KOPPS
+      'name': course['Utbildningsinformation']['Benamning']['sv']
+    })
+  
+  return results
 
 
 def __get_student_course_moments(self, course_round_id, student_id):
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/kurstillfalle/' + str(course_round_id) + '/student/' + str(student_id) + '/moment', headers = self.headers).json()
-    
-    return [{
-        'course_moment_id': moment['UtbildningsinstansUID'],
-        'code': moment['Utbildningskod'],
-        'education_id': moment['UtbildningUID'],
-        'name': moment['Benamning']['sv']
-    } for moment in r['IngaendeMoment']]
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/kurstillfalle/' + str(course_round_id) +
+        '/student/' + str(student_id) + '/moment',
+    headers=self.headers).json()
+  
+  return [{
+    'course_moment_id': moment['UtbildningsinstansUID'],
+    'code': moment['Utbildningskod'],
+    'education_id': moment['UtbildningUID'],
+    'name': moment['Benamning']['sv']
+  } for moment in r['IngaendeMoment']]
 
 
 def __get_student_course_results(self, course_round_id, student_id):
-    r = self.session.get(url = self.base_gui_proxy_url + '/resultat/studieresultat/student/' + student_id + '/utbildningstillfalle/' + course_round_id, headers = self.headers).json()
-    
-    return {
-        'id': r['Uid'],
-        'results': [{
-                'education_id': result['UtbildningUID'],
-                'pending': {
-                    'id': result['Arbetsunderlag']['Uid'],
-                    'moment_id': result['Arbetsunderlag']['UtbildningsinstansUID'],
-                    'grade': self.__get_grade_by_id(result['Arbetsunderlag']['Betygsgrad']),
-                    'date': result['Arbetsunderlag']['Examinationsdatum'],
-                    'grade_scale': self.__get_grade_scale_by_id(result['Arbetsunderlag']['BetygsskalaID']),
-                    # behövs vid uppdatering av betygsutkast
-                    'last_modified': result['Arbetsunderlag']['SenasteResultatandring']
-                } if 'Arbetsunderlag' in result else None,
-                'attested': {
-                    'id': result['SenastAttesteradeResultat']['Uid'],
-                    'moment_id': result['SenastAttesteradeResultat']['UtbildningsinstansUID'],
-                    'grade': self.__get_grade_by_id(result['SenastAttesteradeResultat']['Betygsgrad']),
-                    'date': result['SenastAttesteradeResultat']['Examinationsdatum'],
-                    'grade_scale': self.__get_grade_scale_by_id(result['SenastAttesteradeResultat']['BetygsskalaID'])
-                } if 'SenastAttesteradeResultat' in result else None
-            } for result in r['ResultatPaUtbildningar']
-        ]
-    }
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/studieresultat/student/' + student_id +
+        '/utbildningstillfalle/' + course_round_id,
+    headers=self.headers).json()
+  
+  return {
+    'id': r['Uid'],
+    'results': [{
+      'education_id': result['UtbildningUID'],
+      'pending': {
+        'id': result['Arbetsunderlag']['Uid'],
+        'moment_id': result['Arbetsunderlag']['UtbildningsinstansUID'],
+        'grade': self.__get_grade_by_id(result['Arbetsunderlag']['Betygsgrad']),
+        'date': result['Arbetsunderlag']['Examinationsdatum'],
+        'grade_scale': self.__get_grade_scale_by_id(result['Arbetsunderlag']['BetygsskalaID']),
+        # behövs vid uppdatering av betygsutkast
+        'last_modified': result['Arbetsunderlag']['SenasteResultatandring']
+      } if 'Arbetsunderlag' in result else None,
+      'attested': {
+        'id': result['SenastAttesteradeResultat']['Uid'],
+        'moment_id': result['SenastAttesteradeResultat']['UtbildningsinstansUID'],
+        'grade': self.__get_grade_by_id(result['SenastAttesteradeResultat']['Betygsgrad']),
+        'date': result['SenastAttesteradeResultat']['Examinationsdatum'],
+        'grade_scale': self.__get_grade_scale_by_id(result['SenastAttesteradeResultat']['BetygsskalaID'])
+      } if 'SenastAttesteradeResultat' in result else None
+    } for result in r['ResultatPaUtbildningar']]
+  }
 @
 
 
