@@ -3,13 +3,19 @@
 We want to get results out of Canvas and put them into LADOK.
 We want to take each assignment group in Canvas and map into a course component 
 in LADOK.
-The course components are
+\emph{Assumption}:
+we assume that all assignments in the Canvas course instance are grouped; and 
+each group must map exactly to the names of the LADOK components.
+
+The course components in LADOK (and assignment groups in Canvas) are
 \begin{itemize}
 \item LAB1,
 \item LAB2,
 \item LAB3,
-\item MAT1.
+\item MAT1
 \end{itemize}
+in the prgi (DD1315) course.
+
 For now we will ignore setting the grade on the full course.
 
 \paragraph{Accessing the systems}
