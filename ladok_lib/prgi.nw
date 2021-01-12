@@ -97,7 +97,7 @@ In summary, we do the following:
 course = get_course(course_code_canvas)
 course_components = get_components(course)
 for component in course_components:
-  print(component.name)
+  print(f"{component.name} <- Canvas")
   component_results = students_results(course, component)
   print(f"{component.name} -> LADOK")
   report_results(course_code_ladok, component.name, component_results)
