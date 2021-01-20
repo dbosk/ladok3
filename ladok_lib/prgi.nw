@@ -42,7 +42,7 @@ KTH_PASSWD = os.environ["KTH_PASSWD"]
 
 ladok = ladok3.LadokSessionKTH(
         KTH_LOGIN, KTH_PASSWD,
-        test_environment=False) # for experiments
+        test_environment=True) # for experiments
 
 API_URL = os.environ["CANVAS_SERVER"]
 API_KEY = os.environ["CANVAS_TOKEN"]

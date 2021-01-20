@@ -674,20 +674,6 @@ def get_student(self, id):
 @
 
 
-\subsection{Courses}
-
-Another object that we want to access is a course.
-We want to list all instances of a course and one particular course instance.
-<<LadokSession data methods>>=
-@cachetools.cachedmethod(
-  operator.attrgetter("cache"),
-  key=functools.partial(cachetools.keys.hashkey, "get_courses"))
-def get_course(self, code):
-  """Returns a course by code"""
-  return Course(ladok=self, code=code)
-@
-
-
 
 \chapter{Student objects}\label{StudentClasses}
 
