@@ -1338,10 +1338,10 @@ def save_result(self, person_nr_raw, course_code, course_moment,
   if grade_raw in ["AF", "PF"]:
       raise Exception('Invalid grade: ' + grade_raw + ' looks like a grade_scale') 
 
-  if (grade_raw == 'P' and grade_scale == "AF") or
+  if (grade_raw == 'P' and grade_scale == "AF") or \
      (grade_raw in "ABCDE" and grade_scale == "PF"):
-    raise Exception('Invalid grade: ' + grade_raw + ' does not match 
-    grade_scale ' + grade_scale) 
+    raise Exception('Invalid grade: ' + grade_raw +
+      ' does not match grade_scale ' + grade_scale)
   
   person_nr =  format_personnummer(person_nr_raw)
   if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
@@ -4761,7 +4761,7 @@ def __get_student_courses(self, student_id):
   results = []
   
   for course in r['Tillfallesdeltaganden']:
-    if not course['Nuvarande'] or
+    if not course['Nuvarande'] or \
        'Utbildningskod' not in course['Utbildningsinformation']:
       continue
     
