@@ -16,8 +16,8 @@ The course components in LADOK (and assignment groups in Canvas) for the prgi
 \item MAT1.
 \end{itemize}
 The LAB3 component corresponds to a project.
-In Canvas, it has P/F assignments (\eg presentation) and one A--F assignment ( 
-the project itself).
+In Canvas, it has P/F assignments (\eg presentation) and one A--F assignment
+(the project itself).
 The component grade is based on the project itself, but the other assignments 
 each must have a P too.
 
@@ -42,7 +42,7 @@ KTH_PASSWD = os.environ["KTH_PASSWD"]
 
 ladok = ladok3.LadokSessionKTH(
         KTH_LOGIN, KTH_PASSWD,
-        test_environment=True) # for experiments
+        test_environment=False) # for experiments
 
 API_URL = os.environ["CANVAS_SERVER"]
 API_KEY = os.environ["CANVAS_TOKEN"]
