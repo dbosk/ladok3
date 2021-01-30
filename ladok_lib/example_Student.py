@@ -1,7 +1,8 @@
 import ladok3
+import os
 
 ladok = ladok3.LadokSessionKTH(
-        os.environ["KTH_LOGIN", os.environ["KTH_PASSWD"],
+        os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
         test_environment=True) # for experiments
 
 me = ladok.get_student("8506097891")
@@ -14,6 +15,7 @@ print()
 
 student = ladok.get_student("1234561234")
 print(f"{student.personnummer} {student.first_name} {student.last_name}")
+
 for course in student.courses(code="DD1315"):
     print(f"round_id = {course.round_id}")
     print(f"education_id = {course.education_id}")
@@ -23,6 +25,10 @@ for course in student.courses(code="DD1315"):
     print("Results:")
     for result in course.results:
         result.set_grade("P", "2021-01-01")
+        s = f"{course.code} {result.component} {result.grade}"
+        if result.attested:
+            s += f"({result.date})"
+        print(s)
         print(f"component_id = {result.component_id}")
         print(f"education_id = {result.education_id}")
         print(f"grade = {result.grade} ({result.date})")
