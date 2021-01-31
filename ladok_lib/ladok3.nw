@@ -390,7 +390,11 @@ Thus, we have the following base class.
 class LadokData:
   """Base class for LADOK data"""
   def __init__(self, /, **kwargs):
-    self.__dict__.update(kwargs)
+    self.__setup_properties(kwargs)
+
+  def __setup_properties(self, kwargs):
+    """Turn keywords into private attributes and read-only properties"""
+    <<set up read-only properties>>
 
   def __eq__(self, other):
     if type(self) == type(other):
@@ -406,6 +410,19 @@ class LadokData:
     json_format = self.__dict__.copy()
     json_format["type"] = str(type(self))
     return json_format
+@
+
+For the [[__setup_properties]] method, we want it to set up private attributes 
+and read-only properties for them.
+For each keyword in [[kwargs]], we add the private attribute through 
+[[self.__dict__]] and the corresponding property to the class itself.
+<<set up read-only properties>>=
+for attribute in kwargs:
+  # private attributes are named on the form _class__attribute
+  priv_attr_name = f"_{type(self).__name__}__{attribute}"
+  self.__dict__[priv_attr_name] = kwargs[attribute]
+  setattr(type(self), attribute,
+    property(operator.attrgetter(priv_attr_name)))
 @
 
 The objects that can be modified can also be updated.
