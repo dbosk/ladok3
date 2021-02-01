@@ -1167,9 +1167,10 @@ elif type(grade) == str:
   try:
     grade = self.grade_scale.grades(code=grade)[0]
   except:
-    raise TypeError("The grade is not in the scale")
+    raise TypeError(
+      f"The grade {grade} is not in the scale {self.grade_scale.code}")
 else:
-  raise TypeError("Can't use type for grade")
+  raise TypeError(f"Can't use type {type(grade)} for grade")
 
 self.__grade = grade
 
