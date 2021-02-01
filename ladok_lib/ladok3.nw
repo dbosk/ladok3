@@ -1031,6 +1031,10 @@ class CourseInstance(LadokRemoteData):
     return self.__ladok_json.copy()
 @
 
+\section{Course registrations}
+
+Every student is registered on a course.
+The [[CourseRegistration]] class represents this data from LADOK.
 <<classes>>=
 class CourseRegistration(LadokRemoteData):
   """Represents a student's participation in a course instance"""
@@ -1074,13 +1078,13 @@ class CourseRegistration(LadokRemoteData):
   def ladok_json(self):
     return self.__ladok_json
 
-  @property
-  def components(self):
+  def components(self, /, **kwargs):
     try:
-      return self.__components
+      if self.__components is None:
+        self.__get_components()
     except:
       self.__get_components()
-    return self.__components
+    return filter_on_keys(self.__components, **kwargs)
 
   def __get_components(self):
     <<pull course components>>
@@ -1098,6 +1102,10 @@ class CourseRegistration(LadokRemoteData):
     <<pull CourseRegistration results>>
 @
 
+\subsection{Course components}
+
+We can pull the course components, specifically to a course instance like 
+this:
 <<pull course components>>=
 response = self.ladok.session.get(
   url=self.ladok.base_gui_proxy_url + '/resultat/kurstillfalle/' +
@@ -1106,10 +1114,20 @@ response = self.ladok.session.get(
   headers=self.ladok.headers).json()
     
 self.__components = [CourseComponent(
-  ladok=self.ladok,
-  student=self.__student,
-  **component) for component in response['IngaendeMoment']]
+    ladok=self.ladok,
+    student=self.__student,
+    **component) for component in response['IngaendeMoment']]
 @
+
+The [[CourseComponent]] class will make the attributes available.
+<<classes>>=
+class CourseComponent(LadokData):
+  """Represents a course component of a course registration"""
+  def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
+@
+
+\subsection{Course results}
 
 <<pull CourseRegistration results>>=
 response = self.ladok.session.get(
