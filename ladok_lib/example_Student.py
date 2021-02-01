@@ -24,10 +24,9 @@ for course in student.courses(code="DD1315"):
     print(f"name = {course.name}")
     print("Results:")
     for result in course.results:
-        result.set_grade("P", "2021-01-01")
-        s = f"{course.code} {result.component} {result.grade}"
+        s = f"{course.code} {result.component_id} {result.grade}"
         if result.attested:
-            s += f"({result.date})"
+            s += f" ({result.date})"
         print(s)
         print(f"component_id = {result.component_id}")
         print(f"education_id = {result.education_id}")
