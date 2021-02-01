@@ -366,7 +366,7 @@ in LADOK.
 We will first look at the base classes and then provide methods that return 
 instances of various subclasses.
 
-\subsection{LADOK data base classes: [[LadokData]], [[LadokRemoteData]]}
+\subsection{LADOK data base class: [[LadokData]]}
 
 Some objects will only have read-only attributes, like grade scales, whereas 
 others, like students, will have modifiable attributes, such as results, which 
@@ -408,8 +408,38 @@ class LadokData:
   def json(self):
     """JSON compatible dictionary representation of the object"""
     json_format = self.__dict__.copy()
-    json_format["type"] = str(type(self))
+    for key, value in json_format.items():
+      if isinstance(value, LadokData):
+        json_format[key] = value.json
+    json_format["type"] = type(self).__name__
     return json_format
+@
+
+\subsection{To and from JSON format}
+
+We want to be able to restore an object from that JSON formatted dictionary.
+We provide a function~[[restore]], which restores an object from a JSON-like 
+dictionary.
+The [[restore]] function uses the constructor and, in turn, the 
+[[__setup_properties]] method.
+<<function>>=
+def restore(json_dict):
+  if "type" not in json_dict:
+    return LadokData(**json_dict)
+
+  <<check type and return such object>>
+
+  raise TypeError(f"cannot restor type {json_dict.type}, not a known type")
+@
+
+For completeness, we also provide [[LadokDataEncoder]], a subclass of 
+[[JSONEncoder]].
+<<classes>>=
+class LadokDataEncoder(json.JSONEncoder):
+  def default(self, object):
+    if isinstance(object, LadokData):
+      return object.json
+    return super().default(object)
 @
 
 For the [[__setup_properties]] method, we want it to set up private attributes 
@@ -417,6 +447,7 @@ and read-only properties for them.
 For each keyword in [[kwargs]], we add the private attribute using 
 [[setattr(self, ...)]] and the corresponding property to the class itself using 
 [[setattr(type(self), ...)]].
+(Note that we only add the property if it doesn't already exist.)
 We check the names, if the attributes already match the pattern for a private 
 attribute name, we don't \enquote{privatize} it again.
 <<set up read-only properties>>=
@@ -431,9 +462,12 @@ for attribute in kwargs:
     property_name = attribute
 
   setattr(self, priv_attr_name, kwargs[attribute])
-  setattr(type(self), property_name,
-    property(operator.attrgetter(priv_attr_name)))
+  if not hasattr(type(self), property_name):
+    setattr(type(self), property_name,
+      property(operator.attrgetter(priv_attr_name)))
 @
+
+\subsection{LADOK remote data base class: [[LadokRemoteData]]}
 
 The objects that can be modified can also be updated.
 They can be updated locally, which must be pushed to LADOK; they can be changed 
@@ -480,9 +514,13 @@ self.cache = {}
 @cachetools.cachedmethod(
   operator.attrgetter("cache"),
   key=functools.partial(cachetools.keys.hashkey, "method"))
-def method(self):
+def method(self, *args):
   pass
 \end{minted}
+
+However, this construction cannot handle non-hashable objects (\eg dictionaries 
+and lists) as arguments.
+But the JSON representation of objects should be possible to make hashable.
 
 \subsection{Conjunctive filters}
 
