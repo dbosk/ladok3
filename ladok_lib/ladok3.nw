@@ -414,14 +414,24 @@ class LadokData:
 
 For the [[__setup_properties]] method, we want it to set up private attributes 
 and read-only properties for them.
-For each keyword in [[kwargs]], we add the private attribute through 
-[[self.__dict__]] and the corresponding property to the class itself.
+For each keyword in [[kwargs]], we add the private attribute using 
+[[setattr(self, ...)]] and the corresponding property to the class itself using 
+[[setattr(type(self), ...)]].
+We check the names, if the attributes already match the pattern for a private 
+attribute name, we don't \enquote{privatize} it again.
 <<set up read-only properties>>=
 for attribute in kwargs:
   # private attributes are named on the form _class__attribute
-  priv_attr_name = f"_{type(self).__name__}__{attribute}"
-  self.__dict__[priv_attr_name] = kwargs[attribute]
-  setattr(type(self), attribute,
+  priv_attr_prefix = f"_{type(self).__name__}__"
+  if priv_attr_prefix in attribute:
+    priv_attr_name = attribute
+    property_name = attribute.replace(priv_attr_prefix, "")
+  else:
+    priv_attr_name = priv_attr_prefix + attribute
+    property_name = attribute
+
+  setattr(self, priv_attr_name, kwargs[attribute])
+  setattr(type(self), property_name,
     property(operator.attrgetter(priv_attr_name)))
 @
 
