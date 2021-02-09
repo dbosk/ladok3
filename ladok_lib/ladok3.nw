@@ -1504,9 +1504,9 @@ def save_result(self, person_nr_raw, course_code, course_moment,
         headers=headers)
   
   if not 'Resultat' in r.json():
-    raise Exception("Kunde inte mata in " + person_nr_raw + " " +
-      course_moment + " : " + grade_raw + " " + result_date_raw + "\n" +
-        r.text)
+    raise Exception("Couldn't register " +
+      course_moment + "=" + grade_raw + " " + result_date_raw + ": " +
+        r.json()["Meddelande"])
   
   return True
 
