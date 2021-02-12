@@ -13,23 +13,29 @@ print(f"{me2.personnummer} {me2.last_name}, {me2.first_name}")
 print(f"{me.ladok_id} == {me2.ladok_id}")
 print()
 
-student = ladok.get_student("1234561234")
-print(f"{student.personnummer} {student.first_name} {student.last_name}")
+course = me.courses(code="DD2395")[0]
+print(f"code = {course.code}")
+print(f"name = {course.name}")
 
-for course in student.courses(code="DD1315"):
-    print(f"round_id = {course.round_id}")
-    print(f"education_id = {course.education_id}")
-    print(f"instance_id = {course.instance_id}")
-    print(f"code = {course.code}")
-    print(f"name = {course.name}")
-    print("Results:")
-    for result in course.results:
-        s = f"{course.code} {result.component_id} {result.grade}"
-        if result.attested:
-            s += f" ({result.date})"
-        print(s)
-        print(f"component_id = {result.component_id}")
-        print(f"education_id = {result.education_id}")
-        print(f"grade = {result.grade} ({result.date})")
-        print(f"attested = {result.attested}")
-        print(result.ladok_json.keys())
+print("Results:")
+for result in course.results():
+    s = f"{course.code}"
+    if result.component:
+        s += f" {result.component}"
+    s += f" {result.grade}"
+    if result.attested:
+        s += f" ({result.date})"
+    print(s)
+
+student = ladok.get_student("1234561234")
+prgi = student.courses(code="DD1315")[0]
+
+for result in prgi.results():
+    print(f"{result.component} {result.grade} ({result.date})", end="")
+    if not result.attested:
+        print("*")
+    else:
+        print()
+
+lab1 = prgi.results(component="LAB1")[0]
+lab1.set_grade("P", "2021-02-12")
