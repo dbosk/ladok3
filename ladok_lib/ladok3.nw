@@ -945,9 +945,10 @@ Similarly to above, we use the [[__get_study_attributes]] helper method to
 populate all study-related attributes that LADOK returns in one request.
 <<student attribute methods>>=
 def __get_study_attributes(self):
+  """Helper method to fetch study related attributes"""
   <<create a list of the student's course objects>>
 
-def courses(self, **kwargs):
+def courses(self, /, **kwargs):
   """Returns a list of courses that the student is registered on.
   Filtered based on keywords."""
   try:
@@ -1049,13 +1050,15 @@ class CourseRegistration(LadokRemoteData):
     # kurskod
     self.__code = kwargs.pop("Utbildningskod")
     self.__name = kwargs.pop("Benamning")["sv"]
-    self.__ladok_json = kwargs.copy()
+
     if all(key is None for key in self.__dict__.values()):
       raise TypeError("not enough keyword args given")
+
     super().__init__(**kwargs)
 
   @property
   def round_id(self):
+    """Returns LADOK ID for the course round (kursomgång)"""
     return self.__round_id
 
   @property
