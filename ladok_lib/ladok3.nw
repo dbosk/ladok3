@@ -40,6 +40,8 @@
 \clearpage
 
 @
+\part{The library}
+
 \chapter{Introduction}
 
 This is the documented source code of the LADOK3 API wrapper for Python, the 
@@ -4985,7 +4987,10 @@ def __get_student_course_results(self, course_round_id, student_id):
 @
 
 
-\chapter{Example: transfer results from KTH Canvas to LADOK}
+
+\part{Example applications}
+
+\chapter{Transfer results from KTH Canvas to LADOK}
 
 Here we provide an example program~[[prgi.py]] which exports results from KTH 
 Canvas to LADOK for the introductory programming course~prgi (DD1315).
