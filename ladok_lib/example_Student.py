@@ -13,11 +13,12 @@ print(f"{me2.personnummer} {me2.last_name}, {me2.first_name}")
 print(f"{me.ladok_id} == {me2.ladok_id}")
 print()
 
-course = me.courses(code="DD2395")[0]
-print(f"code = {course.code}")
-print(f"name = {course.name}")
+for course in me.courses():
+    print(f"{course.code} {course.name}")
 
-print("Results:")
+course = me.courses(code="DD2395")[0]
+
+print(f"{course.code} results:")
 for result in course.results():
     s = f"{course.code}"
     if result.component:
