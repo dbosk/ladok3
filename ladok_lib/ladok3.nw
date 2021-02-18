@@ -383,18 +383,21 @@ We also want to serialize the data.
 We will use the JSON format for this.
 We provide this as a read only property [[json]].
 If the output of [[json]] is given as the [[kwargs]] parameter to the 
-constructor, the constructor we restore all the attributes.
-This allows a subclass to call [[super().__init__(**json_data)]] to restore an 
-object's attributes.
+[[make_properties]] method, it will restore all the attributes.
+
+We provide the [[LadokData]] class with a constructor that takes keyword 
+arguments ([[**kwargs]]).
+These are not used, but just so that we can add [[super().__init__(**kwargs)]] 
+at the top of every constructor of the child classes.
 
 Thus, we have the following base class.
 <<classes>>=
 class LadokData:
   """Base class for LADOK data"""
   def __init__(self, /, **kwargs):
-    self.__setup_properties(kwargs)
+    pass
 
-  def __setup_properties(self, kwargs):
+  def make_properties(self, kwargs):
     """Turn keywords into private attributes and read-only properties"""
     <<set up read-only properties>>
 
@@ -479,11 +482,11 @@ These objects must also keep a LADOK session internally ([[self.ladok]]).
 class LadokRemoteData(LadokData):
   """Base class for remote LADOK data"""
   def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
     if "_LadokRemoteData__ladok" in kwargs:
-      super().__init__(**kwargs)
+      self.make_properties(**kwargs)
     else:
       self.__ladok = kwargs.pop("ladok")
-      super().__init__(**kwargs)
 
   @property
   def ladok(self):
@@ -491,11 +494,11 @@ class LadokRemoteData(LadokData):
 
   def pull(self):
     """Pull updates for object from LADOK"""
-    raise NotImplementedError()
+    raise NotImplementedError("This object doesn't support pulling from LADOK")
 
   def push(self):
     """Push changes made to the object to LADOK"""
-    raise NotImplementedError()
+    raise NotImplementedError("This object doesn't support pushing to LADOK")
 @
 
 The LADOK session object provides some methods for searching for data, \eg 
@@ -619,14 +622,14 @@ This object should be read only and we never need to update it.
 <<classes>>=
 class GradeScale(LadokData):
   """A grade scale"""
-  def __init__(self, /, **json_data):
-    if "_GradeScale__id" in json_data:
-      super().__init__(**json_data)
+  def __init__(self, /, **kwargs):
+    if "_GradeScale__id" in kwargs:
+      self.make_properties(**kwargs)
     else:
-      self.__id = json_data["id"]
-      self.__code = json_data["code"]
-      self.__name = json_data["name"]
-      self.__grades = [Grade(**kwargs) for kwargs in json_data["grades"]]
+      self.__id = kwargs["id"]
+      self.__code = kwargs["code"]
+      self.__name = kwargs["name"]
+      self.__grades = [Grade(**kwargs) for kwargs in kwargs["grades"]]
 
   @property
   def id(self):
@@ -652,7 +655,7 @@ class Grade(LadokData):
   def __init__(self, /, **json_data):
     """Constructor taking a dictionary (JSON-like) structure"""
     if "_Grade__id" in json_data:
-      super().__init__(**json_data)
+      self.make_properties(**json_data)
     else:
       self.__id = json_data["id"]
       self.__code = json_data["code"]
@@ -741,6 +744,38 @@ def get_student(self, id):
 @
 
 
+\subsection{Getting translations}
+
+In many cases, LADOK provides several translations.
+The do that in the form of this JSON structure:
+\begin{minted}{JSON}
+{
+  "Benamning": [
+    {
+      "Sprakkod": "sv",
+      "Text": "Laborationer",
+      "link": []
+    },
+    {
+      "Sprakkod": "en",
+      "Text": "Programming 
+          Assignments",
+      "link": []
+    }
+  ]
+}
+\end{minted}
+We provide the function [[get_translation]] to get the [[Text]] based on a 
+specified [[Sprakkod]].
+<<functions>>=
+def get_translation(lang_code, list_of_translations):
+  for translation in list_of_translations:
+    if translation["Sprakkod"] == lang_code:
+      return translation["Text"]
+  raise KeyError(f"no translation for language {lang_code}")
+@
+
+
 
 \chapter{Student objects}\label{StudentClasses}
 
@@ -762,16 +797,13 @@ class Student(LadokRemoteData):
   def __init__(self, /, **kwargs):
     """Requires ladok (a LadokSession object),
     id (either a personnummer or LADOK ID)"""
-    if "_Student__ladok_id" in kwargs or "_Student__personnummer" in kwargs:
-      super().__init__(**kwargs)
+    super().__init__(**kwargs)
+    id = kwargs.pop("id")
+    self.__personnummer = format_personnummer(id)
+    if not self.__personnummer:
+      self.__ladok_id = id
     else:
-      id = kwargs.pop("id")
-      self.__personnummer = format_personnummer(id)
-      if not self.__personnummer:
-        self.__ladok_id = id
-      else:
-        self.__ladok_id = None
-      super().__init__(**kwargs)
+      self.__ladok_id = None
 
   def pull(self):
     """pull student data from LADOK"""
@@ -801,7 +833,7 @@ def format_personnummer(person_nr_raw):
   else:
     return None
 @ Note that we must match the start and end in the regex, otherwise we 
-sometimes match parts of LADOK IDs.
+sometimes match parts of LADOK IDs as personnummer.
 
 \section{Students' personal attributes}
 
@@ -1003,36 +1035,27 @@ This is essentially an \enquote{instance of a course syllabus}.
 <<classes>>=
 class Course(LadokRemoteData):
   """Represents a course instance. Must be constructed from at least
-  a LadokSession object,
-  an instance_id (UtbildningsinstansUID),
+  ladok (a LadokSession object),
+  UtbildningsinstansUID (an instance_id from LADOK),
   optionally a data dictionary from LADOK"""
   def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
     self.__instance_id = kwargs.pop("UtbildningsinstansUID")
 
-    must_fetch = False
     try:
       self.__assign_attr(kwargs)
-      <<extract Course attributes into data from kwargs>>
     except:
-      must_fetch = True
-
-    # must run this to set up self.ladok
-    super().__init__(**kwargs)
-
-    if must_fetch:
-      self.pull()
-    else:
-      self.__assign_more_attr(data)
+      self.__pull_attributes()
 
   def __assign_attr(self, data):
     <<assign Course data to private attributes>>
 
-  def __assign_more_attr(self, data):
-    <<assign Course data that requires LADOK session>>
-
-  def pull(self):
+  def __pull_attributes(self):
     <<fetch Course data object from LADOK>>
     self.__assign_attr(data)
+
+  def pull(self):
+    self.__pull_attributes()
 
   @property
   def instance_id(self):
@@ -1066,7 +1089,6 @@ class Course(LadokRemoteData):
   def unit(self):
     return self.__unit
 
-  @property
   def components(self, /, **kwargs):
     """Returns the list of components, filtered on keywords"""
     return filter_on_keys(self.__components, **kwargs)
@@ -1074,12 +1096,18 @@ class Course(LadokRemoteData):
 
 Now we must fetch data from LADOK.
 <<fetch Course data object from LADOK>>=
+headers = self.ladok.headers.copy()
+headers["Content-Type"] = "application/vnd.ladok-resultat+json"
+headers["X-XSRF-TOKEN"] = self.ladok.get_xsrf_token()
+headers["Referer"] = self.ladok.base_gui_url
+
 put_data = {"Identitet": [self.__instance_id]}
 
 response = self.ladok.session.put(
   url=self.ladok.base_gui_proxy_url + '/resultat/utbildningsinstans/moduler',
   json=put_data,
-  headers=self.ladok.headers).json()
+  headers=headers)
+response = response.json()
 
 data = response["Utbildningsinstans"][0]
 @
@@ -1098,17 +1126,7 @@ self.__version = data.pop("Versionsnummer")
 
 self.__credits = data.pop("Omfattning")
 self.__unit = data.pop("Enhet")
-@
 
-Finally, after the [[self.ladok]] attribute is initialized by the parent class, 
-we can deal with the grading scale and the course components.
-<<extract Course attributes into data from kwargs>>=
-data = {
-  "BetygsskalaID": kwargs.pop("BetygsskalaID"),
-  "Moduler": kwargs.pop("Moduler")
-}
-@ Then we can use this data to set up the remaining attributes.
-<<assign Course data that requires LADOK session>>=
 self.__grade_scale = self.ladok.get_grade_scales(
   id=data.pop("BetygsskalaID"))
 
@@ -1127,20 +1145,28 @@ the rest into properties as well, so that they are available for the curious.
 class CourseComponent(LadokData):
   """Represents a course component of a course registration"""
   def __init__(self, /, **kwargs):
-    if "UtbildningsinstansUID" not in kwargs:
-      self.__instance_id = kwargs.pop("Uid")
-    else:
+    super().__init__(**kwargs)
+
+    if "UtbildningsinstansUID" in kwargs:
       self.__instance_id = kwargs.pop("UtbildningsinstansUID")
+    else:
+      self.__instance_id = kwargs.pop("Uid")
 
     self.__education_id = kwargs.pop("UtbildningUID")
 
     self.__code = kwargs.pop("Utbildningskod")
-    self.__description = kwargs.pop("Benamning")
+    description = kwargs.pop("Benamning")
+    if isinstance(description, dict):
+      self.__description = get_translation("sv", description)
+    else:
+      self.__description = description
 
     self.__credits = kwargs.pop("Omfattning")
     self.__unit = kwargs.pop("Enhet")
 
-    super().__init__(**kwargs)
+    ladok = kwargs.pop("ladok")
+    grade_scale_id = kwargs.pop("BetygsskalaID")
+    self.__grade_scale = ladok.get_grade_scales(id=grade_scale_id)[0]
 
   @property
   def instance_id(self):
@@ -1170,6 +1196,10 @@ class CourseComponent(LadokData):
     """Returns the number of credits"""
     return self.__credits
 
+  @property
+  def grade_scale(self):
+    return self.__grade_scale
+
   def __str__(self):
     return self.code
 
@@ -1190,12 +1220,12 @@ This is the object that must be used to get results for a student.
 class CourseRegistration(Course):
   """Represents a student's participation in a course instance"""
   def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
+
     self.__student = kwargs.pop("student")
 
     # ett Ladok-ID för kursomgången
     self.__round_id = kwargs.pop("UtbildningstillfalleUID")
-
-    super().__init__(**kwargs)
 
   @property
   def round_id(self):
@@ -1221,15 +1251,42 @@ class CourseRegistration(Course):
       result.push()
 @
 
-We'll get back to [[<<pull existing CourseResult objects from LADOK>>]] later.
-However, if we rely on that one to have populated [[self.__results]], then we 
-can see which components from [[self.components]] are missing and just add 
-empty results for those.
+We can pull these from LADOK as well.
+We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
+From the response we get from LADOK, we construct [[CourseResult]] objects that 
+deal with the details.
+<<pull existing CourseResult objects from LADOK>>=
+response = self.ladok.session.get(
+  url=self.ladok.base_gui_proxy_url +
+    '/resultat/studieresultat/student/' + self.__student.ladok_id +
+      '/utbildningstillfalle/' + self.round_id,
+  headers=self.ladok.headers).json()
+    
+self.__results_id = response["Uid"]
+self.__results = []
+for result in response["ResultatPaUtbildningar"]:
+  try:
+    self.__results.append(CourseResult(
+      ladok=self.ladok,
+      components=self.components(),
+      student=self.__student,
+      study_results_id=self.__results_id,
+      **result))
+  except TypeError:
+    pass
+@
+
+Now we can see which components from [[self.components]] are missing from 
+[[self.__results]] and just add empty results for those.
 <<add new CourseResult objects for missing components>>=
 for component in self.components():
-  if not list(filter_on_keys(self.__results, code=component.code)):
+  if not list(filter_on_keys(self.__results, component=component.code)):
     self.__results.append(
-      CourseResult(component=component))
+      CourseResult(
+        ladok=self.ladok,
+        component=component,
+        student=self.__student,
+        study_results_id=self.__results_id))
 @
 
 
@@ -1245,13 +1302,15 @@ class CourseResult(LadokRemoteData):
   """Represents a result on a course module"""
   def __init__(self, /, **kwargs):
     """To construct this object we must give existing data, i.e.
-    Arbetsunderlag or SenastAttesteradeResultat directly from LADOK.A"""
+    Arbetsunderlag or SenastAttesteradeResultat directly from LADOK."""
+    super().__init__(**kwargs)
+
     self.__student = kwargs.pop("student")
 
     if "component" in kwargs and "study_results_id" in kwargs:
       self.__component = kwargs.pop("component")
       self.__study_results_id = kwargs.pop("study_results_id")
-      <<populate CourseResult attributes for empty result>>
+      self.__populate_attributes()
     elif "components" in kwargs and \
         ("Arbetsunderlag" in kwargs or "SenastAttesteradeResultat" in kwargs):
       components = kwargs.pop("components")
@@ -1260,12 +1319,15 @@ class CourseResult(LadokRemoteData):
         self.__last_modified = data.pop("SenasteResultatandring")
       elif "SenastAttesteradeResultat" in kwargs:
         data = kwargs.pop("SenastAttesteradeResultat")
-      <<populate CourseResult attributes from data>>
-      return
+      self.__populate_attributes(**data, components=components)
     else:
       raise TypeError("not enough keys given to construct object")
 
-    super().__init__(**kwargs)
+  def __populate_attributes(self, /, **data):
+    if not data:
+      <<populate CourseResult attributes for empty result>>
+    else:
+      <<populate CourseResult attributes from data>>
 
   @property
   def component(self):
@@ -1322,21 +1384,17 @@ class CourseResult(LadokRemoteData):
 If we get the data from LADOK, then we can fill in all the attributes.
 <<populate CourseResult attributes from data>>=
 self.__uid = data.pop("Uid")
-self.__education_id = kwargs.pop("UtbildningUID")
 self.__instance_id = data.pop("UtbildningsinstansUID")
 
 grade_scale_id = data.pop("BetygsskalaID")
 grade = data.pop("Betygsgrad")
 
-# We must run this constructor to set up the self.ladok attribute
-super().__init__(**kwargs)
-
 self.__date = data.pop("Examinationsdatum")
 self.__grade_scale = self.ladok.get_grade_scales(id=grade_scale_id)[0]
 self.__grade = self.__grade_scale.grades(id=grade)[0]
-component_list = filter_on_keys(components,
-  education_id=self.__education_id,
-  instance_id=self.__instance_id)
+
+components = data.pop("components")
+component_list = filter_on_keys(components, instance_id=self.__instance_id)
 self.__component = component_list[0] if component_list \
                                      else None
 self.__modified = False
@@ -1346,14 +1404,14 @@ However, if this is a completely new result, it doesn't exist in LADOK.
 Then we lack quite a few of the attributes.
 <<populate CourseResult attributes for empty result>>=
 self.__uid = None
-self.__education_id = None
-self.__instance_id = None
+self.__instance_id = self.__component.instance_id
 
 self.__date = None
 self.__grade_scale = self.__component.grade_scale
 self.__grade = None
 
 self.__modified = False
+self.__last_modified = None
 @
 
 \subsubsection{Setting the grade}
@@ -1385,29 +1443,6 @@ self.__date = date
 
 
 \subsection{Working with existing results}
-
-We can pull these from LADOK as well.
-We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
-From the response we get from LADOK, we construct [[CourseResult]] objects that 
-deal with the details.
-<<pull existing CourseResult objects from LADOK>>=
-response = self.ladok.session.get(
-  url=self.ladok.base_gui_proxy_url +
-    '/resultat/studieresultat/student/' + self.__student.ladok_id +
-      '/utbildningstillfalle/' + self.round_id,
-  headers=self.ladok.headers).json()
-    
-self.__results = []
-for result in response["ResultatPaUtbildningar"]:
-  try:
-    self.__results.append(CourseResult(
-      ladok=self.ladok,
-      components=self.components(),
-      study_results_id=response["Uid"],
-      **result))
-  except TypeError:
-    pass
-@
 
 To push an updated result to LADOK, we do the following.
 <<push the existing CourseResult grade data to LADOK>>=
@@ -1443,10 +1478,10 @@ Since we don't update an already existing item, we must add a new result to
 LADOK.
 Particularly, we must add something to the student's study results.
 <<push the new CourseResult grade data to LADOK>>=
-headers = self.headers.copy()
+headers = self.ladok.headers.copy()
 headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
-headers['X-XSRF-TOKEN'] = self.__get_xsrf_token()
-headers['Referer'] = self.base_gui_url
+headers['X-XSRF-TOKEN'] = self.ladok.get_xsrf_token()
+headers['Referer'] = self.ladok.base_gui_url
 
 post_data = {
   'Resultat': [{
@@ -1459,15 +1494,17 @@ post_data = {
   }]
 }
 
-response = self.session.post(
-  url=self.base_gui_proxy_url + '/resultat/studieresultat/skapa',
+response = self.ladok.session.post(
+  url=self.ladok.base_gui_proxy_url + '/resultat/studieresultat/skapa',
   json=post_data,
   headers=headers)
 
 if not 'Resultat' in response.json():
   raise Exception("Couldn't register "
-    f"{course_moment} {self.grade} {self.date}: " +
+    f"{self.component} {self.grade} {self.date}: " +
       response.json()["Meddelande"])
+
+self.__populate_attributes(**response.json()["Resultat"][0])
 @
 
 
@@ -4935,6 +4972,9 @@ def instance_info_uid(self, instance_uid):
 def __get_xsrf_token(self):
   cookies = self.session.cookies.get_dict()
   return next(cookies[cookie] for cookie in cookies if cookie == 'XSRF-TOKEN')
+
+def get_xsrf_token(self):
+  return self.__get_xsrf_token()
 
 
 # returns None or a LADOK-formated date

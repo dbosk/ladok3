@@ -26,9 +26,12 @@ for result in course.results():
     if result.attested:
         s += f" ({result.date})"
     print(s)
+print()
 
 student = ladok.get_student("1234561234")
 prgi = student.courses(code="DD1315")[0]
+
+print(f"{student.personnummer} {student.first_name} {student.last_name}")
 
 for result in prgi.results():
     print(f"{result.component} {result.grade} ({result.date})", end="")
@@ -39,3 +42,6 @@ for result in prgi.results():
 
 lab1 = prgi.results(component="LAB1")[0]
 lab1.set_grade("P", "2021-02-12")
+
+lab2 = prgi.results(component="LAB2")[0]
+lab2.set_grade("P", "2021-02-18")
