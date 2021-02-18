@@ -122,17 +122,13 @@ We simply try to report them to LADOK.
 def report_results(course_code, component_name, results):
   for result in results:
     try:
-      ladok.save_result(
-        result.person_nr,
-        course_code,
-        component_name,
-        str(result.date),
-        result.grade,
-        result.grade_scale)
+      student = ladok.get_student(result.person_nr)
+      course = student.courses(code=course_code)[0]
+      result = course.results(component=component_name)[0]
+      result.set_grade(result.grade, result.date)
     except Exception as err:
       try:
-        student = ladok.get_student(result.person_nr)
-        print(f"{student.first_name} {student.last_name}: {err}")
+        print(f"{student}: {err}")
       except ValueError as verr:
         print(f"{verr}: {result.person_nr}: {err}")
 @

@@ -885,6 +885,9 @@ def last_name(self):
     self.__get_personal_attributes()
   return self.__last_name
 
+def __str__(self):
+  return f"{self.personnummer} {self.first_name} {self.last_name}"
+
 @property
 def alive(self):
   """Return whether student is alive or not"""
