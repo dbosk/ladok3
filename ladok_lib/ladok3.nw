@@ -727,26 +727,6 @@ for grade_scale in response.json()['Betygsskala']:
 @
 
 
-\subsection{Students}
-
-Perhaps the main data that we want to access is that of a student.
-We provide two ways to identify the student.
-The personal identity number (Swedish 
-\emph{\foreignlanguage{swedish}{personnummer}}) and the unique LADOK 
-identifier.
-These are so different in format that we can distinguish one from the other.
-However, we an delegate this job to the [[Student]] class.
-<<LadokSession data methods>>=
-@cachetools.cachedmethod(
-  operator.attrgetter("cache"),
-  key=functools.partial(cachetools.keys.hashkey, "get_student"))
-def get_student(self, id):
-  """Get a student by unique ID, returns a Student object"""
-  # note that self is the required LadokSession object
-  return Student(ladok=self, id=id)
-@
-
-
 \subsection{Getting translations}
 
 In many cases, LADOK provides several translations.
@@ -780,7 +760,7 @@ def get_translation(lang_code, list_of_translations):
 
 
 
-\chapter{Student objects}\label{StudentClasses}
+\chapter{Students}\label{StudentClasses}
 
 This chapter treats how we can work with student data.
 We can get student data from LADOK using the [[LadokSession]] class.
@@ -804,6 +784,27 @@ the same way.
 We can check if the result is attested or not.
 If it's not attested, we can change it.
 \inputminted[firstline=32,lastline=48]{python}{example_Student.py}
+
+
+\section{Getting students from LADOK}
+
+Perhaps the main data that we want to access is that of a student.
+We provide two ways to identify the student.
+The personal identity number (Swedish 
+\emph{\foreignlanguage{swedish}{personnummer}}) and the unique LADOK 
+identifier.
+These are so different in format that we can distinguish one from the other.
+However, we an delegate this job to the [[Student]] class.
+<<LadokSession data methods>>=
+@cachetools.cachedmethod(
+  operator.attrgetter("cache"),
+  key=functools.partial(cachetools.keys.hashkey, "get_student"))
+def get_student(self, id):
+  """Get a student by unique ID, returns a Student object"""
+  # note that self is the required LadokSession object
+  return Student(ladok=self, id=id)
+@
+
 
 \section{The [[Student]] class}
 
