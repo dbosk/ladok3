@@ -1050,79 +1050,215 @@ for course in response['Tillfallesdeltaganden']:
 @
 
 
-\chapter{Course objects}\label{CourseClasses}
+\chapter{Courses}\label{CourseClasses}
 
 We can use the course-related classes as follows.
 \inputminted{python}{example_Course.py}
 
-\section{Courses}
+\section{Course rounds}
 
-We have the course as the basic class.
-This is essentially an \enquote{instance of a course syllabus}.
+We can search for courses like this.
+The result consists of a list of [[CourseRound]] objects.
+<<LadokSession data methods>>=
+@cachetools.cachedmethod(
+  operator.attrgetter("cache"),
+  key=functools.partial(cachetools.keys.hashkey, "search_courses"))
+def get_course_rounds(self, /, **kwargs):
+  """Query LADOK about course rounds, possible keys:
+  code, round_code, name
+  """
+  url = self.base_gui_proxy_url + "/resultat/kurstillfalle/filtrera?"
+
+  if "code" in kwargs:
+    url += f"kurskod={kwargs['code']}&"
+  if "name" in kwargs:
+    url += f"benamning={kwargs['name']}&"
+  if "round_name" in kwargs:
+    url += f"tillfalleskod={kwargs['round_code']}&"
+
+  url += "page=1&limit=100&skipCount=false&sprakkod=sv"
+
+  response = self.session.get(
+    url=url,
+    headers=self.headers)
+
+  results = response.json()["Resultat"]
+  
+  return [CourseRound(ladok=self, **result) for result in results]
+@
+
+The response consists of this JSON data:
+\begin{minted}{JSON}
+{
+	"Resultat": [
+		"0": {
+			"Slutdatum": "2021-01-15",
+			"Startdatum": "2020-08-24",
+			"StudielokaliseringID": 135195,
+			"StudietaktID": 6,
+			"TillfallesKod": "51386",
+			"Uid": "4e94fe55-1cef-11ea-a622-3565135944de",
+			"UndervisningsformID": 1,
+			"Utbildningsinstans": {
+				"Avvecklad": false,
+				"Benamning": [
+					{
+						"Sprakkod": "sv",
+						"Text": "Programmeringsteknik och Matlab",
+						"link": []
+					},
+					{
+						"Sprakkod": "en",
+						"Text": "Programming Techniques and Matlab",
+						"link": []
+					}
+				],
+				"Enhet": "HP",
+				"GallerUtbildningUtanAngivenOmfattning": false,
+				"Omfattning": 7.5,
+				"OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+				"ResultatPaKursVidAttesteringAvModul": false,
+				"Uid": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+				"UtbildningUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
+				"Utbildningskod": "DD1315",
+				"Versionsnummer": 2,
+				"link": []
+			},
+			"link": [ ... ]
+    },
+    "1": { ... },
+    ...
+  ],
+  TotaltAntalPoster: 32
+}
+\end{minted}
+
+We have two classes that are relevant here, [[CourseInstance]] and 
+[[CourseRound]].
+The [[CourseInstance]] corresponds to the data in [[Utbildningsinstans]] above.
+And the [[CourseRound]] is the data \enquote{wrapping around} that of the 
+[[CourseInstance]].
+Thus, we will make [[CourseRound]] a specialization of [[CourseInstance]].
+This makes sense as it contains additional data, such as start and end date.
+This class takes care of those and then defers the rest to the 
+[[CourseInstance]] class (by calling its constructor).
 <<classes>>=
-class Course(LadokRemoteData):
+class CourseInstance(LadokRemoteData):
   """Represents a course instance. Must be constructed from at least
   ladok (a LadokSession object),
   UtbildningsinstansUID (an instance_id from LADOK),
   optionally a data dictionary from LADOK"""
+  <<CourseInstance methods>>
+
+class CourseRound(CourseInstance):
+  """Represents a course round"""
   def __init__(self, /, **kwargs):
-    super().__init__(**kwargs)
-    self.__instance_id = kwargs.pop("UtbildningsinstansUID")
+    """Must be constructed from at least:
+    Uid, TillfallesKod, Startdatum, Slutdatum"""
+    <<prepare kwargs and call CourseInstance constructor>>
 
-    try:
-      self.__assign_attr(kwargs)
-    except:
-      self.__pull_attributes()
+    self.__round_id = kwargs.pop("Uid")
+    self.__round_code = kwargs.pop("TillfallesKod")
 
-  def __assign_attr(self, data):
-    <<assign Course data to private attributes>>
+    self.__start = datetime.date.fromisoformat(kwargs.pop("Startdatum"))
+    self.__end = datetime.date.fromisoformat(kwargs.pop("Slutdatum"))
 
-  def __pull_attributes(self):
-    <<fetch Course data object from LADOK>>
-    self.__assign_attr(data)
+  @property
+  def round_id(self):
+    return self.__round_id
 
-  def pull(self):
+  @property
+  def round_code(self):
+    return self.__round_code
+
+  @property
+  def start(self):
+    return self.__start
+
+  @property
+  def end(self):
+    return self.__end
+
+  <<CourseRound data methods>>
+@
+
+The [[CourseInstance]] constructor expects only the [[Utbildningsinstans]] part 
+of the data.
+However, the [[Uid]] should be renamed [[UtbildningsinstansUID]].
+We must also pass on the [[ladok]] object.
+<<prepare kwargs and call CourseInstance constructor>>=
+instance_data = kwargs.pop("Utbildningsinstans")
+instance_data["UtbildningsinstansUID"] = instance_data.pop("Uid")
+super().__init__(ladok=kwargs.pop("ladok"), **instance_data)
+@
+
+\section{Course instances}
+
+We have the course instance as the base class.
+This is essentially an \enquote{instance of a course syllabus}.
+We know from above that it inherits from [[LadokRemoteData]] and that it must 
+be initialized with the keywords [[ladok]] (for its parent) and 
+[[UtbildningsinstansUID]] (for itself) and optionally some data.
+This leaves the following methods.
+<<CourseInstance methods>>=
+def __init__(self, /, **kwargs):
+  super().__init__(**kwargs)
+  self.__instance_id = kwargs.pop("UtbildningsinstansUID")
+
+  try:
+    self.__assign_attr(kwargs)
+  except:
     self.__pull_attributes()
 
-  @property
-  def instance_id(self):
-    return self.__instance_id
+def __assign_attr(self, data):
+  <<assign CourseInstance data to private attributes>>
 
-  @property
-  def education_id(self):
-    return self.__education_id
+def __pull_attributes(self):
+  <<fetch CourseInstance data object from LADOK>>
+  self.__assign_attr(data)
 
-  @property
-  def code(self):
-    return self.__code
+def pull(self):
+  self.__pull_attributes()
 
-  @property
-  def name(self):
-    return self.__name.copy()
+@property
+def instance_id(self):
+  return self.__instance_id
 
-  @property
-  def version(self):
-    return self.__version
+@property
+def education_id(self):
+  return self.__education_id
 
-  @property
-  def grade_scale(self):
-    return self.__grade_scale
+@property
+def code(self):
+  return self.__code
 
-  @property
-  def credits(self):
-    return self.__credits
+@property
+def name(self):
+  return self.__name.copy()
 
-  @property
-  def unit(self):
-    return self.__unit
+@property
+def version(self):
+  return self.__version
 
-  def components(self, /, **kwargs):
-    """Returns the list of components, filtered on keywords"""
-    return filter_on_keys(self.__components, **kwargs)
+@property
+def grade_scale(self):
+  return self.__grade_scale
+
+@property
+def credits(self):
+  return self.__credits
+
+@property
+def unit(self):
+  return self.__unit
+
+def components(self, /, **kwargs):
+  """Returns the list of components, filtered on keywords"""
+  return filter_on_keys(self.__components, **kwargs)
 @
 
 Now we must fetch data from LADOK.
-<<fetch Course data object from LADOK>>=
+<<fetch CourseInstance data object from LADOK>>=
 headers = self.ladok.headers.copy()
 headers["Content-Type"] = "application/vnd.ladok-resultat+json"
 headers["X-XSRF-TOKEN"] = self.ladok.get_xsrf_token()
@@ -1139,9 +1275,159 @@ response = response.json()
 data = response["Utbildningsinstans"][0]
 @
 
+Then data will be populated with the following values:
+\begin{minted}{JSON}
+{
+  "Avvecklad": false,
+  "Benamning": [
+    {
+      "Sprakkod": "sv",
+      "Text": "Programmeringsteknik och Matlab",
+      "link": []
+    },
+    {
+      "Sprakkod": "en",
+      "Text": "Programming Techniques and Matlab",
+      "link": []
+    }
+  ],
+  "BetygsskalaID": 131657,
+  "Enhet": "HP",
+  "GallerUtbildningUtanAngivenOmfattning": false,
+  "KravPaHanvisningTillBeslutshandling": false,
+  "KravPaProjekttitel": false,
+  "Moduler": [
+    {
+      "Avvecklad": false,
+      "Benamning": [
+        {
+          "Sprakkod": "sv",
+          "Text": "Laborationer",
+          "link": []
+        },
+        {
+          "Sprakkod": "en",
+          "Text": "Programming Assignments",
+          "link": []
+        }
+      ],
+      "BetygsskalaID": 131656,
+      "Enhet": "HP",
+      "GallerUtbildningUtanAngivenOmfattning": false,
+      "KravPaHanvisningTillBeslutshandling": false,
+      "KravPaProjekttitel": false,
+      "Moduler": [],
+      "Omfattning": 1.5,
+      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+      "ResultatPaKursVidAttesteringAvModul": false,
+      "Uid": "387c7248-73d8-11e8-b4e0-063f9afb40e3",
+      "UtbildningUID": "387c99a9-73d8-11e8-afa7-8e408e694e54",
+      "Utbildningskod": "MAT1",
+      "Versionsnummer": 1,
+      "link": [ ... ]
+    },
+    {
+      "Avvecklad": false,
+      "Benamning": [
+        {
+          "Sprakkod": "sv",
+          "Text": "Laborationer",
+          "link": []
+        },
+        {
+          "Sprakkod": "en",
+          "Text": "Programming Assignments",
+          "link": []
+        }
+      ],
+      "BetygsskalaID": 131657,
+      "Enhet": "HP",
+      "GallerUtbildningUtanAngivenOmfattning": false,
+      "KravPaHanvisningTillBeslutshandling": false,
+      "KravPaProjekttitel": false,
+      "Moduler": [],
+      "Omfattning": 3,
+      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+      "ResultatPaKursVidAttesteringAvModul": false,
+      "Uid": "389b1dda-73d8-11e8-b4e0-063f9afb40e3",
+      "UtbildningUID": "389b1e62-73d8-11e8-afa7-8e408e694e54",
+      "Utbildningskod": "LAB3",
+      "Versionsnummer": 1,
+      "link": [ ... ]
+    },
+    {
+      "Avvecklad": false,
+      "Benamning": [
+        {
+          "Sprakkod": "sv",
+          "Text": "Laborationer",
+          "link": []
+        },
+        {
+          "Sprakkod": "en",
+          "Text": "Programming Assignments",
+          "link": []
+        }
+      ],
+      "BetygsskalaID": 131656,
+      "Enhet": "HP",
+      "GallerUtbildningUtanAngivenOmfattning": false,
+      "KravPaHanvisningTillBeslutshandling": false,
+      "KravPaProjekttitel": false,
+      "Moduler": [],
+      "Omfattning": 1.5,
+      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+      "ResultatPaKursVidAttesteringAvModul": false,
+      "Uid": "38a1867d-73d8-11e8-b4e0-063f9afb40e3",
+      "UtbildningUID": "38a1d44d-73d8-11e8-afa7-8e408e694e54",
+      "Utbildningskod": "LAB2",
+      "Versionsnummer": 1,
+      "link": [ ... ]
+    },
+    {
+      "Avvecklad": false,
+      "Benamning": [
+        {
+          "Sprakkod": "sv",
+          "Text": "Laborationer",
+          "link": []
+        },
+        {
+          "Sprakkod": "en",
+          "Text": "Programming Assignments",
+          "link": []
+        }
+      ],
+      "BetygsskalaID": 131656,
+      "Enhet": "HP",
+      "GallerUtbildningUtanAngivenOmfattning": false,
+      "KravPaHanvisningTillBeslutshandling": false,
+      "KravPaProjekttitel": false,
+      "Moduler": [],
+      "Omfattning": 1.5,
+      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+      "ResultatPaKursVidAttesteringAvModul": false,
+      "Uid": "38a6416f-73d8-11e8-b4e0-063f9afb40e3",
+      "UtbildningUID": "38a66848-73d8-11e8-afa7-8e408e694e54",
+      "Utbildningskod": "LAB1",
+      "Versionsnummer": 1,
+      "link": [ ... ]
+    }
+  ],
+  "Omfattning": 7.5,
+  "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+  "ResultatPaKursVidAttesteringAvModul": false,
+  "Uid": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+  "UtbildningUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
+  "Utbildningskod": "DD1315",
+  "Versionsnummer": 2,
+  "link": [ ... ]
+}
+\end{minted}
+
 Now that we have the [[data]] object, we can assign its values to the private 
 attributes.
-<<assign Course data to private attributes>>=
+<<assign CourseInstance data to private attributes>>=
 self.__education_id = data.pop("UtbildningUID")
 
 self.__code = data.pop("Utbildningskod")
@@ -1244,7 +1530,7 @@ Every student is registered on a course.
 The [[CourseRegistration]] class represents this data from LADOK.
 This is the object that must be used to get results for a student.
 <<classes>>=
-class CourseRegistration(Course):
+class CourseRegistration(CourseInstance):
   """Represents a student's participation in a course instance"""
   def __init__(self, /, **kwargs):
     super().__init__(**kwargs)
