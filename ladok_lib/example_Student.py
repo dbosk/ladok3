@@ -41,8 +41,24 @@ for result in prgi.results():
     else:
         print()
 
-lab1 = prgi.results(component="LAB1")[0]
-lab1.set_grade("P", "2021-02-12")
+print("Changing grades")
 
-lab2 = prgi.results(component="LAB2")[0]
-lab2.set_grade("P", "2021-02-18")
+try:
+    lab1 = prgi.results(component="LAB1")[0]
+    lab1.set_grade("P", "2021-02-23")
+except Exception as err:
+    print(f"Couldn't change LAB1: {err}")
+
+try:
+    lab2 = prgi.results(component="LAB2")[0]
+    lab2.set_grade("P", "2021-02-18")
+except Exception as err:
+    print(f"Couldn't change LAB2: {err}")
+
+for result in prgi.results():
+    print(f"{result.component} {result.grade} ({result.date})", end="")
+    if not result.attested:
+        print("*")
+    else:
+        print()
+

@@ -1706,10 +1706,11 @@ self.__date = data.pop("Examinationsdatum")
 self.__grade_scale = self.ladok.get_grade_scales(id=grade_scale_id)[0]
 self.__grade = self.__grade_scale.grades(id=grade)[0]
 
-components = data.pop("components")
-component_list = filter_on_keys(components, instance_id=self.__instance_id)
-self.__component = component_list[0] if component_list \
-                                     else None
+if "components" in data:
+  components = data.pop("components")
+  component_list = filter_on_keys(components, instance_id=self.__instance_id)
+  self.__component = component_list[0] if component_list \
+                                      else None
 self.__modified = False
 @
 
