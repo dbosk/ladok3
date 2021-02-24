@@ -40,6 +40,7 @@ for result in prgi.results():
         print("*")
     else:
         print()
+    print(f"component instance: {result.component.instance_id}")
 
 print("Changing grades")
 

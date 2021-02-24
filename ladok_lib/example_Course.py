@@ -8,4 +8,15 @@ ladok = ladok3.LadokSessionKTH(
 prgiX = ladok.get_course_rounds(code="DD1315")
 
 for prgi in prgiX:
-    print(f"{prgi.start}--{prgi.end}")
+    print(f"{prgi.code} {prgi.start}--{prgi.end}")
+print()
+
+prgi = prgiX[0]
+print(f"{prgi.code} {prgi.start}--{prgi.end}")
+print(f"round: {prgi.round_id}")
+print(f"round code: {prgi.round_code}")
+print(f"instance: {prgi.instance_id}")
+print(f"education: {prgi.education_id}")
+print(f"{prgi.code} components:")
+for component in prgi.components():
+    print(f"{component.code}: {component.instance_id}")
