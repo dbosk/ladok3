@@ -5645,7 +5645,15 @@ Canvas to LADOK for the introductory programming course~prgi (DD1315).
 \input{prgi.tex}
 
 
-\printbibliography{}
+\chapter{Statistical analysis of a course}
+
+Here we provide a program~[[stats.py]] which computes statistics for a series 
+of courses in LADOK.
+
+\input{stats.tex}
+
+
+\printbibliography
 
 
 \end{document}

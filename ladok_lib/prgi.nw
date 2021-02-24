@@ -248,7 +248,3 @@ for ladok_id, grades in gradebook.items():
 return to_report
 @
 
-
-\printbibliography{}
-
-\end{document}
