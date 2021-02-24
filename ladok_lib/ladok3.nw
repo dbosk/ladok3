@@ -1540,10 +1540,22 @@ class CourseRegistration(CourseInstance):
     # ett Ladok-ID för kursomgången
     self.__round_id = kwargs.pop("UtbildningstillfalleUID")
 
+    dates = kwargs.pop("Studieperiod")
+    self.__start = datetime.date.fromisoformat(dates["Startdatum"])
+    self.__end = datetime.date.fromisoformat(dates["Slutdatum"])
+
   @property
   def round_id(self):
     """Returns LADOK ID for the course round (kursomgång)"""
     return self.__round_id
+
+  @property
+  def start(self):
+    return self.__start
+
+  @property
+  def end(self):
+    return self.__end
 
   def results(self, /, **kwargs):
     """Returns the student's results on the course, filtered on keywords"""
