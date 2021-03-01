@@ -27,16 +27,17 @@ prgi.py: prgi.nw
 
 
 .PHONY: all
-all: stats.py
+all: stats-data.py
 
-stats.py: stats.nw
+stats-data.py: stats.nw
+	${NOTANGLE}
 
 
 .PHONY: clean
 clean:
 	${RM} ladok3 ladok3.py ladok3.pdf ladok3.tex
 	${RM} prgi.pdf prgi.py prgi.tex
-	${RM} stats.pdf stats.py stats.tex
+	${RM} stats.pdf stats-data.py stats.tex
 
 
 PKG_NAME-main= 			ladok3
