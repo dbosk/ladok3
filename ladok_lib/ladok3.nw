@@ -1063,7 +1063,7 @@ The result consists of a list of [[CourseRound]] objects.
 @cachetools.cachedmethod(
   operator.attrgetter("cache"),
   key=functools.partial(cachetools.keys.hashkey, "search_courses"))
-def get_course_rounds(self, /, **kwargs):
+def search_course_rounds(self, /, **kwargs):
   """Query LADOK about course rounds, possible keys:
   code, round_code, name
   """
@@ -1542,202 +1542,8 @@ def results(self, /, **kwargs):
 To fetch the results from LADOK, we must do the following query.
 <<CourseRound data methods>>=
 def __fetch_results(self):
-  headers = self.ladok.headers.copy()
-  headers["Content-Type"] = "application/vnd.ladok-resultat+json"
-  headers["X-XSRF-TOKEN"] = self.ladok.get_xsrf_token()
-  headers["Referer"] = self.ladok.base_gui_url
-
-  put_data = {
-    "Filtrering": ["OBEHANDLADE", "UTKAST", "ATTESTERADE"],
-    "KurstillfallenUID": [self.round_id],
-    "OrderBy": [
-      "EFTERNAMN_ASC",
-      "FORNAMN_ASC",
-      "PERSONNUMMER_ASC"
-    ],
-    "Limit": 400,
-    "Page": 1,
-    "StudenterUID": []
-  }
-
-  response = self.ladok.session.put(
-    url=self.ladok.base_gui_proxy_url +
-      '/resultat/studieresultat/rapportera/utbildningsinstans/' +
-        self.instance_id + '/sok',
-    json=put_data,
-    headers=headers).json()
-  data = response["Utbildningsinstans"][0]
+  pass
 @
-
-The results that we get from this request is this.
-\begin{minted}{JSON}
-{
-  "Resultat": [
-    "1": {
-      "AktuellKursinstans": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
-      "AktuelltKurstillfalle": "4e94fe55-1cef-11ea-a622-3565135944de",
-      "KursUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
-      "Rapporteringskontext": {
-        "BetygsskalaID": 131656,
-        "GallerUtbildningUtanAngivenOmfattning": false,
-        "KravPaHanvisningTillBeslutshandling": false,
-        "KravPaProjekttitel": false,
-        "UtbildningUID": "38a66848-73d8-11e8-afa7-8e408e694e54",
-        "UtbildningsinstansUID": "38a6416f-73d8-11e8-b4e0-063f9afb40e3"
-      },
-      "ResultatPaUtbildningar": [
-        {
-          "HarTillgodoraknande": false,
-          "HeltTillgodoraknad": false,
-          "KanExkluderas": false,
-          "SenastAttesteradeResultat": {
-            "Anteckning": "",
-            "Beslutsdatum": "2021-01-12",
-            "Beslutsfattare": "Daniel Bosk",
-            "Betygsgrad": 131658,
-            "Betygsgradsobjekt": {
-              "GiltigSomSlutbetyg": true,
-              "ID": 131658,
-              "Kod": "P",
-              "link": []
-            },
-            "BetygsskalaID": 131656,
-            "Examinationsdatum": "2020-10-22",
-            "ForbereddForBorttag": false,
-            "KursinstansUID": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
-            "KurstillfalleUID": "4e94fe55-1cef-11ea-a622-3565135944de",
-            "Noteringar": [],
-            "Noteringsdefinitioner": [],
-            "ProcessStatus": 3,
-            "ResultatUID": "8ca0955a-54b5-11eb-8e41-bc743cd4482b",
-            "SenasteResultatandring": "2021-01-12T10:44:23.457",
-            "StudentUID": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
-            "StudieresultatUID": "f1d19268-e300-11ea-8f88-9c9fd6664756",
-            "Uid": "8ca0955a-54b5-11eb-8e41-bc743cd4482b",
-            "UtbildningsinstansUID": "38a1867d-73d8-11e8-b4e0-063f9afb40e3",
-            "link": [ ... ]
-          },
-          "TotalTillgodoraknadOmfattning": 0,
-          "UtbildningUID": "38a1d44d-73d8-11e8-afa7-8e408e694e54",
-          "link": []
-        },
-        {
-          "HarTillgodoraknande": false,
-          "HeltTillgodoraknad": false,
-          "KanExkluderas": false,
-          "SenastAttesteradeResultat": {
-            "Anteckning": "",
-            "Beslutsdatum": "2021-01-12",
-            "Beslutsfattare": "Daniel Bosk",
-            "Betygsgrad": 131673,
-            "Betygsgradsobjekt": {
-              "GiltigSomSlutbetyg": true,
-              "ID": 131673,
-              "Kod": "C",
-              "link": []
-            },
-            "BetygsskalaID": 131657,
-            "Examinationsdatum": "2020-12-04",
-            "ForbereddForBorttag": false,
-            "KursinstansUID": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
-            "KurstillfalleUID": "4e94fe55-1cef-11ea-a622-3565135944de",
-            "Noteringar": [],
-            "Noteringsdefinitioner": [],
-            "ProcessStatus": 3,
-            "ResultatUID": "d073028d-4c1e-11eb-8e41-bc743cd4482b",
-            "SenasteResultatandring": "2021-01-12T10:51:48.276",
-            "StudentUID": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
-            "StudieresultatUID": "f1d19268-e300-11ea-8f88-9c9fd6664756",
-            "Uid": "d073028d-4c1e-11eb-8e41-bc743cd4482b",
-            "UtbildningsinstansUID": "389b1dda-73d8-11e8-b4e0-063f9afb40e3",
-            "link": [ ... ]
-          },
-          "TotalTillgodoraknadOmfattning": 0,
-          "UtbildningUID": "389b1e62-73d8-11e8-afa7-8e408e694e54",
-          "link": []
-        },
-        {
-          "HarTillgodoraknande": false,
-          "HeltTillgodoraknad": false,
-          "KanExkluderas": false,
-          "SenastAttesteradeResultat": {
-            "Anteckning": "",
-            "Beslutsdatum": "2021-01-12",
-            "Beslutsfattare": "Daniel Bosk",
-            "Betygsgrad": 131658,
-            "Betygsgradsobjekt": {
-              "GiltigSomSlutbetyg": true,
-              "ID": 131658,
-              "Kod": "P",
-              "link": []
-            },
-            "BetygsskalaID": 131656,
-            "Examinationsdatum": "2020-11-07",
-            "ForbereddForBorttag": false,
-            "KursinstansUID": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
-            "KurstillfalleUID": "4e94fe55-1cef-11ea-a622-3565135944de",
-            "Noteringar": [],
-            "Noteringsdefinitioner": [],
-            "ProcessStatus": 3,
-            "ResultatUID": "eaa9dc6a-54bb-11eb-8e41-bc743cd4482b",
-            "SenasteResultatandring": "2021-01-12T10:55:02.533",
-            "StudentUID": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
-            "StudieresultatUID": "f1d19268-e300-11ea-8f88-9c9fd6664756",
-            "Uid": "eaa9dc6a-54bb-11eb-8e41-bc743cd4482b",
-            "UtbildningsinstansUID": "387c7248-73d8-11e8-b4e0-063f9afb40e3",
-            "link": [ ... ]
-          },
-          "TotalTillgodoraknadOmfattning": 0,
-          "UtbildningUID": "387c99a9-73d8-11e8-afa7-8e408e694e54",
-          "link": []
-        },
-        {
-          "Arbetsunderlag": {
-            "Betygsgrad": 131658,
-            "Betygsgradsobjekt": {
-              "GiltigSomSlutbetyg": true,
-              "ID": 131658,
-              "Kod": "P",
-              "link": []
-            },
-            "BetygsskalaID": 131656,
-            "Examinationsdatum": "2021-02-23",
-            "ForbereddForBorttag": false,
-            "KursinstansUID": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
-            "KurstillfalleUID": "4e94fe55-1cef-11ea-a622-3565135944de",
-            "Noteringar": [],
-            "Noteringsdefinitioner": [],
-            "ProcessStatus": 1,
-            "ResultatUID": "d43bb8a2-75eb-11eb-a5d3-2906d089463e",
-            "SenasteResultatandring": "2021-02-23T16:40:00.078904",
-            "StudentUID": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
-            "StudieresultatUID": "f1d19268-e300-11ea-8f88-9c9fd6664756",
-            "Uid": "d43bb8a2-75eb-11eb-a5d3-2906d089463e",
-            "UtbildningsinstansUID": "38a6416f-73d8-11e8-b4e0-063f9afb40e3",
-            "link": [ ... ]
-          },
-          "HarTillgodoraknande": false,
-          "HeltTillgodoraknad": false,
-          "KanExkluderas": false,
-          "TotalTillgodoraknadOmfattning": 0,
-          "UtbildningUID": "38a66848-73d8-11e8-afa7-8e408e694e54",
-          "link": []
-        }
-      ],
-      "Student": {
-        "Efternamn": "Studentsson",
-        "Fornamn": "Studenten",
-        "Personnummer": "202101011234",
-        "Uid": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
-        "link": [ ... ]
-      },
-      "Uid": "f1d19268-e300-11ea-8f88-9c9fd6664756",
-      "link": [ ... ]
-    }
-  ]
-}
-\end{minted}
-
 
 
 \chapter{Course objects related to students}
@@ -5851,6 +5657,391 @@ def __get_student_course_results(self, course_round_id, student_id):
   }
 @
 
+
+\chapter{Additional API calls}
+
+We will now document some possible API calls to LADOK.
+
+To make things easier, we will add two methods, [[get_query]] and 
+[[put_query]], which are shortcuts to make GET and PUT queries to LADOK.
+<<LadokSession data methods>>=
+def get_query(self, path):
+  """Returns GET query response for path on the LADOK server"""
+  return self.session.get(
+    url=self.base_gui_proxy_url + path,
+    headers=self.headers)
+
+def put_query(self, path, put_data):
+  """Returns PUT query response for path on the LADOK server"""
+  headers = self.headers.copy()
+  headers["Content-Type"] = "application/vnd.ladok-resultat+json"
+  headers["X-XSRF-TOKEN"] = self.get_xsrf_token()
+  headers["Referer"] = self.base_gui_url
+
+  return self.session.put(
+    url=self.base_gui_proxy_url + path,
+    json=put_data,
+    headers=headers)
+@
+
+To make things even easier, we provide a function to recursively remove all 
+[[link]] key--value pairs from a LADOK JSON record.
+<<functions>>=
+def remove_links(json_obj):
+  """Recursively removes all "link" keys and values"""
+  if isinstance(json_obj, dict):
+    if "link" in json_obj:
+      json_obj.pop("link")
+    for key, value in json_obj.items():
+      remove_links(value)
+  elif isinstance(json_obj, list):
+    for item in json_obj:
+      remove_links(item)
+@
+
+\section{[[search_course_results]]}
+
+This method searches for student results for a given component on a given 
+course round.
+<<LadokSession data methods>>=
+def search_course_results(self, course_round_id, component_instance_id):
+  """Requires:
+  course_round_id: round_id for a course,
+  component_instance_id: instance_id for a component of the course.
+  """
+  put_data = {
+    "Filtrering": ["OBEHANDLADE", "UTKAST", "ATTESTERADE"],
+    "KurstillfallenUID": [course_round_id],
+    "OrderBy": [
+      "EFTERNAMN_ASC",
+      "FORNAMN_ASC",
+      "PERSONNUMMER_ASC"
+    ],
+    "Limit": 400,
+    "Page": 1,
+    "StudenterUID": []
+  }
+
+  response = self.put_query(
+    '/resultat/studieresultat/rapportera/utbildningsinstans/' +
+      component_instance_id + '/sok',
+    put_data)
+
+  if response.status_code == 200:
+    return response.json()
+  return None
+@
+
+The results that we get from this request is this.
+\begin{minted}{JSON}
+{
+  "Resultat": [
+    "1": {
+      "AktuellKursinstans": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+      "AktuelltKurstillfalle": "4e94fe55-1cef-11ea-a622-3565135944de",
+      "KursUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
+      "Rapporteringskontext": {
+        "BetygsskalaID": 131656,
+        "GallerUtbildningUtanAngivenOmfattning": false,
+        "KravPaHanvisningTillBeslutshandling": false,
+        "KravPaProjekttitel": false,
+        "UtbildningUID": "38a66848-73d8-11e8-afa7-8e408e694e54",
+        "UtbildningsinstansUID": "38a6416f-73d8-11e8-b4e0-063f9afb40e3"
+      },
+      "ResultatPaUtbildningar": [
+        {
+          "HarTillgodoraknande": false,
+          "HeltTillgodoraknad": false,
+          "KanExkluderas": false,
+          "SenastAttesteradeResultat": {
+            "Anteckning": "",
+            "Beslutsdatum": "2021-01-12",
+            "Beslutsfattare": "Daniel Bosk",
+            "Betygsgrad": 131658,
+            "Betygsgradsobjekt": {
+              "GiltigSomSlutbetyg": true,
+              "ID": 131658,
+              "Kod": "P",
+              "link": []
+            },
+            "BetygsskalaID": 131656,
+            "Examinationsdatum": "2020-10-22",
+            "ForbereddForBorttag": false,
+            "KursinstansUID": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+            "KurstillfalleUID": "4e94fe55-1cef-11ea-a622-3565135944de",
+            "Noteringar": [],
+            "Noteringsdefinitioner": [],
+            "ProcessStatus": 3,
+            "ResultatUID": "8ca0955a-54b5-11eb-8e41-bc743cd4482b",
+            "SenasteResultatandring": "2021-01-12T10:44:23.457",
+            "StudentUID": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
+            "StudieresultatUID": "f1d19268-e300-11ea-8f88-9c9fd6664756",
+            "Uid": "8ca0955a-54b5-11eb-8e41-bc743cd4482b",
+            "UtbildningsinstansUID": "38a1867d-73d8-11e8-b4e0-063f9afb40e3",
+            "link": [ ... ]
+          },
+          "TotalTillgodoraknadOmfattning": 0,
+          "UtbildningUID": "38a1d44d-73d8-11e8-afa7-8e408e694e54",
+          "link": []
+        },
+        {
+          "HarTillgodoraknande": false,
+          "HeltTillgodoraknad": false,
+          "KanExkluderas": false,
+          "SenastAttesteradeResultat": {
+            "Anteckning": "",
+            "Beslutsdatum": "2021-01-12",
+            "Beslutsfattare": "Daniel Bosk",
+            "Betygsgrad": 131673,
+            "Betygsgradsobjekt": {
+              "GiltigSomSlutbetyg": true,
+              "ID": 131673,
+              "Kod": "C",
+              "link": []
+            },
+            "BetygsskalaID": 131657,
+            "Examinationsdatum": "2020-12-04",
+            "ForbereddForBorttag": false,
+            "KursinstansUID": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+            "KurstillfalleUID": "4e94fe55-1cef-11ea-a622-3565135944de",
+            "Noteringar": [],
+            "Noteringsdefinitioner": [],
+            "ProcessStatus": 3,
+            "ResultatUID": "d073028d-4c1e-11eb-8e41-bc743cd4482b",
+            "SenasteResultatandring": "2021-01-12T10:51:48.276",
+            "StudentUID": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
+            "StudieresultatUID": "f1d19268-e300-11ea-8f88-9c9fd6664756",
+            "Uid": "d073028d-4c1e-11eb-8e41-bc743cd4482b",
+            "UtbildningsinstansUID": "389b1dda-73d8-11e8-b4e0-063f9afb40e3",
+            "link": [ ... ]
+          },
+          "TotalTillgodoraknadOmfattning": 0,
+          "UtbildningUID": "389b1e62-73d8-11e8-afa7-8e408e694e54",
+          "link": []
+        },
+        {
+          "HarTillgodoraknande": false,
+          "HeltTillgodoraknad": false,
+          "KanExkluderas": false,
+          "SenastAttesteradeResultat": {
+            "Anteckning": "",
+            "Beslutsdatum": "2021-01-12",
+            "Beslutsfattare": "Daniel Bosk",
+            "Betygsgrad": 131658,
+            "Betygsgradsobjekt": {
+              "GiltigSomSlutbetyg": true,
+              "ID": 131658,
+              "Kod": "P",
+              "link": []
+            },
+            "BetygsskalaID": 131656,
+            "Examinationsdatum": "2020-11-07",
+            "ForbereddForBorttag": false,
+            "KursinstansUID": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+            "KurstillfalleUID": "4e94fe55-1cef-11ea-a622-3565135944de",
+            "Noteringar": [],
+            "Noteringsdefinitioner": [],
+            "ProcessStatus": 3,
+            "ResultatUID": "eaa9dc6a-54bb-11eb-8e41-bc743cd4482b",
+            "SenasteResultatandring": "2021-01-12T10:55:02.533",
+            "StudentUID": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
+            "StudieresultatUID": "f1d19268-e300-11ea-8f88-9c9fd6664756",
+            "Uid": "eaa9dc6a-54bb-11eb-8e41-bc743cd4482b",
+            "UtbildningsinstansUID": "387c7248-73d8-11e8-b4e0-063f9afb40e3",
+            "link": [ ... ]
+          },
+          "TotalTillgodoraknadOmfattning": 0,
+          "UtbildningUID": "387c99a9-73d8-11e8-afa7-8e408e694e54",
+          "link": []
+        },
+        {
+          "Arbetsunderlag": {
+            "Betygsgrad": 131658,
+            "Betygsgradsobjekt": {
+              "GiltigSomSlutbetyg": true,
+              "ID": 131658,
+              "Kod": "P",
+              "link": []
+            },
+            "BetygsskalaID": 131656,
+            "Examinationsdatum": "2021-02-23",
+            "ForbereddForBorttag": false,
+            "KursinstansUID": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+            "KurstillfalleUID": "4e94fe55-1cef-11ea-a622-3565135944de",
+            "Noteringar": [],
+            "Noteringsdefinitioner": [],
+            "ProcessStatus": 1,
+            "ResultatUID": "d43bb8a2-75eb-11eb-a5d3-2906d089463e",
+            "SenasteResultatandring": "2021-02-23T16:40:00.078904",
+            "StudentUID": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
+            "StudieresultatUID": "f1d19268-e300-11ea-8f88-9c9fd6664756",
+            "Uid": "d43bb8a2-75eb-11eb-a5d3-2906d089463e",
+            "UtbildningsinstansUID": "38a6416f-73d8-11e8-b4e0-063f9afb40e3",
+            "link": [ ... ]
+          },
+          "HarTillgodoraknande": false,
+          "HeltTillgodoraknad": false,
+          "KanExkluderas": false,
+          "TotalTillgodoraknadOmfattning": 0,
+          "UtbildningUID": "38a66848-73d8-11e8-afa7-8e408e694e54",
+          "link": []
+        }
+      ],
+      "Student": {
+        "Efternamn": "Studentsson",
+        "Fornamn": "Studenten",
+        "Personnummer": "202101011234",
+        "Uid": "2e4f6781-d24a-11ea-a4db-82cca4dd4b3e",
+        "link": [ ... ]
+      },
+      "Uid": "f1d19268-e300-11ea-8f88-9c9fd6664756",
+      "link": [ ... ]
+    }
+  ]
+}
+\end{minted}
+
+
+\section{[[get_course_instance]]}
+
+This method fetches the data for a given course instance.
+It requires the course instance ID.
+<<LadokSession data methods>>=
+def get_course_instance(self, instance_id):
+  """Returns course instance data"""
+  response = self.get_query(
+    f"/resultat/utbildningsinstans/kursinstans/{instance_id}")
+
+  if response.status_code == 200:
+    return response.json()
+  return None
+@
+
+This method gives the following result:
+\begin{minted}{JSON}
+{
+	"Avvecklad": false,
+	"Benamning": [
+		{
+			"Sprakkod": "sv",
+			"Text": "Programmeringsteknik och Matlab",
+			"link": []
+		},
+		{
+			"Sprakkod": "en",
+			"Text": "Programming Techniques and Matlab",
+			"link": []
+		}
+	],
+	"BetygsskalaID": 131657,
+	"Enhet": "HP",
+	"GallerUtbildningUtanAngivenOmfattning": false,
+	"KravPaHanvisningTillBeslutshandling": false,
+	"KravPaProjekttitel": false,
+	"Omfattning": 7.5,
+	"OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+	"ResultatPaKursVidAttesteringAvModul": false,
+	"Uid": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+	"UtbildningUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
+	"Utbildningskod": "DD1315",
+	"Versionsnummer": 2,
+	"link": [ ...  ]
+}
+\end{minted}
+
+
+\section{[[get_course_rounds]]}
+
+This method fetches all course rounds that uses the given course instance.
+<<LadokSession data methods>>=
+def get_course_rounds(self, course_instance_id):
+  """Requires course instance ID"""
+  response = self.get_query(
+    f"/resultat/kurstillfalle/kursinstans/{course_instance_id}")
+
+  if response.status_code == 200:
+    return response.json()
+  return None
+@
+
+This method returns something like this:
+\begin{minted}{JSON}
+{
+	"Utbildningstillfalle": [
+		{
+			"Slutdatum": "2021-01-15",
+			"Startdatum": "2020-08-24",
+			"StudielokaliseringID": 135195,
+			"StudietaktID": 6,
+			"TillfallesKod": "51386",
+			"Uid": "4e94fe55-1cef-11ea-a622-3565135944de",
+			"UndervisningsformID": 1,
+			"Utbildningsinstans": {
+				"Avvecklad": false,
+				"Benamning": [
+					{
+						"Sprakkod": "sv",
+						"Text": "Programmeringsteknik och Matlab",
+						"link": []
+					},
+					{
+						"Sprakkod": "en",
+						"Text": "Programming Techniques and Matlab",
+						"link": []
+					}
+				],
+				"Enhet": "HP",
+				"GallerUtbildningUtanAngivenOmfattning": false,
+				"Omfattning": 7.5,
+				"OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+				"ResultatPaKursVidAttesteringAvModul": false,
+				"Uid": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+				"UtbildningUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
+				"Utbildningskod": "DD1315",
+				"Versionsnummer": 2,
+				"link": []
+			},
+      "link": [ ... ]
+		},
+		{
+			"Slutdatum": "2020-01-14",
+			"Startdatum": "2019-08-26",
+			"StudielokaliseringID": 135195,
+			"StudietaktID": 6,
+			"TillfallesKod": "50869",
+			"Uid": "13cfac1a-f7ad-11e8-9614-d09e533d4323",
+			"UndervisningsformID": 1,
+			"Utbildningsinstans": {
+				"Avvecklad": false,
+				"Benamning": [
+					{
+						"Sprakkod": "sv",
+						"Text": "Programmeringsteknik och Matlab",
+						"link": []
+					},
+					{
+						"Sprakkod": "en",
+						"Text": "Programming Techniques and Matlab",
+						"link": []
+					}
+				],
+				"Enhet": "HP",
+				"GallerUtbildningUtanAngivenOmfattning": false,
+				"Omfattning": 7.5,
+				"OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+				"ResultatPaKursVidAttesteringAvModul": false,
+				"Uid": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+				"UtbildningUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
+				"Utbildningskod": "DD1315",
+				"Versionsnummer": 2,
+				"link": []
+			},
+      "link": [ ... ]
+		}
+	],
+	"link": []
+}
+\end{minted}
 
 
 \part{Example applications}

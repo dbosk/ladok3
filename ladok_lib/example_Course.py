@@ -5,7 +5,7 @@ ladok = ladok3.LadokSessionKTH(
         os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
         test_environment=True) # for experiments
 
-prgiX = ladok.get_course_rounds(code="DD1315")
+prgiX = ladok.search_course_rounds(code="DD1315")
 
 for prgi in prgiX:
     print(f"{prgi.code} {prgi.start}--{prgi.end}")
