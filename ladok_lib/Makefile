@@ -30,9 +30,74 @@ prgi.py: prgi.nw
 all: stats-data.py
 all: stats-grade-dist.py
 
+stats-data.py: ladok3.py
 stats-data.py stats-grade-dist.py: stats.nw
 	${NOTANGLE}
 
+
+.PHONY: stats
+stats: stats-prgi stats-dd1310
+
+DD1315.csv: stats-data.py
+	python stats-data.py DD1315 > $@
+
+.PHONY: stats-prgi
+stats-prgi: DD1315-all.pgf DD1315-grouped.pgf DD1315-last.pgf
+
+DD1315-all.pgf DD1315-all.tex: DD1315.csv stats-grade-dist.py
+	(head -n 1 DD1315.csv; grep LAB3 DD1315.csv) | \
+		python stats-grade-dist.py -TnLf DD1315-all.pgf \
+			-G 51386 \
+			-G 50869 -G 50662 -G 50650 \
+			-G 50523 -G 50917 -G 51210 -G 50094 -G 50167 -G 60420 \
+				> DD1315-all.tex
+
+DD1315-grouped.pgf DD1315-grouped.tex: DD1315.csv stats-grade-dist.py
+	(head -n 1 DD1315.csv; grep LAB3 DD1315.csv) | \
+		python stats-grade-dist.py -nL -f DD1315-grouped.pgf \
+			-G 51386 \
+			-G 50869 50662 50650 50523 \
+			-G 50917 51210 50094 50167 60420 \
+				> DD1315-grouped.tex
+
+DD1315-last.pgf DD1315-last.tex: DD1315.csv stats-grade-dist.py
+	(head -n 1 DD1315.csv; grep LAB3 DD1315.csv) | \
+		python stats-grade-dist.py -nL -f DD1315-last.pgf \
+			-G 51386 \
+			-G 50869 50662 50650 50523 50917 51210 50094 50167 60420 \
+				> DD1315-last.tex
+
+ladok3.pdf: $(addsuffix .pgf,DD1315-all DD1315-grouped DD1315-last)
+ladok3.pdf: $(addsuffix .tex,DD1315-all DD1315-grouped DD1315-last)
+
+DD1310.csv: stats-data.py
+	python stats-data.py DD1310 > $@
+
+.PHONY: stats-dd1310
+stats-dd1310: DD1310-all.pgf DD1310-grouped.pgf
+
+DD1310-all.pgf DD1310-all.tex: DD1310.csv stats-grade-dist.py
+	(head -n 1 DD1310.csv; grep LAB3 DD1310.csv) | \
+		python stats-grade-dist.py -nL -f DD1310-all.pgf \
+			-G 50156 \
+			-G 50142 \
+			-G 50310 \
+			-G 50219 \
+			-G 50429 -G 50649 -G 50519 -G 50914 -G 50018 \
+				> DD1310-all.tex
+
+DD1310-grouped.pgf DD1310-grouped.tex: DD1310.csv stats-grade-dist.py
+	(head -n 1 DD1310.csv; grep LAB3 DD1310.csv) | \
+		python stats-grade-dist.py -nL -f DD1310-grouped.pgf \
+			-G 50156 \
+			-G 50142 \
+			-G 50310 \
+			-G 50219 \
+			-G 50429 50649 50519 50914 50018 \
+				> DD1310-grouped.tex
+
+ladok3.pdf: $(addsuffix .pgf,DD1310-all DD1310-grouped)
+ladok3.pdf: $(addsuffix .tex,DD1310-all DD1310-grouped)
 
 .PHONY: clean
 clean:
@@ -40,6 +105,10 @@ clean:
 	${RM} prgi.pdf prgi.py prgi.tex
 	${RM} stats.pdf stats.tex
 	${RM} stats-data.py stats-grade-dist.py
+	${RM} DD1315-*.pgf DD1315-*.tex DD1310-*.pgf DD1310-*.tex
+
+.PHONY: distclean
+	${RM} DD1315.csv DD1310.csv
 
 
 PKG_NAME-main= 			ladok3
