@@ -28,8 +28,9 @@ prgi.py: prgi.nw
 
 .PHONY: all
 all: stats-data.py
+all: stats-grade-dist.py
 
-stats-data.py: stats.nw
+stats-data.py stats-grade-dist.py: stats.nw
 	${NOTANGLE}
 
 
@@ -37,7 +38,8 @@ stats-data.py: stats.nw
 clean:
 	${RM} ladok3 ladok3.py ladok3.pdf ladok3.tex
 	${RM} prgi.pdf prgi.py prgi.tex
-	${RM} stats.pdf stats-data.py stats.tex
+	${RM} stats.pdf stats.tex
+	${RM} stats-data.py stats-grade-dist.py
 
 
 PKG_NAME-main= 			ladok3

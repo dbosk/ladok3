@@ -6,5 +6,6 @@ prgi.out
 prgi.pdf
 prgi.py
 prgi.tex
-stats-data.py
 stats.tex
+stats-data.py
+stats-grade-dist.py

@@ -1,28 +1,37 @@
-\section{Overview}
-
 We want to compute statistics based on LADOK data.
 We want to answer the following questions:
 \begin{enumerate}
-\item What are the grade distribution of a course?
-\item How do grade distributions differ between years for the same course?
-\item How do grade distributions differ between (similar) courses?
+\item\label[question]{QGradeDistInCourse} What are the grade distribution of a 
+course round?
+\item\label[question]{QGradeDistDiffYears} How do grade distributions differ 
+between years (\ie rounds) for the same course?
+\item\label[question]{QGradeDistDiffCourses} How do grade distributions differ 
+between (similar) courses?
 \item How is the throughput distribution of a course?
 \item How do throughput distributions vary between years?
 \end{enumerate}
 
-This program will produce CSV files to answer those questions.
-The data we need are:
+We provide the program [[stats-data.py]] to extract the necessary data from 
+LADOK (\cref{StatsData}).
+This program will produce CSV-formated data to answer those questions.
+The data is formated like this:
 \begin{itemize}
-\item course start date,
-\item student pseudonymous identifier (to correlate different course 
-components),
-\item course component grade and
-\item date of that grade.
+\item course,
+\item round,
+\item component,
+\item student (pseudonym),
+\item grade,
+\item normalized time.
 \end{itemize}
 
-\subsection{Implementation overview}
+Then we provide ways to analyze that data.
+We answer
+\cref{QGradeDistInCourse,QGradeDistDiffYears,QGradeDistDiffCourses}
+in \cref{GradeDistributions}.
 
-We have the [[stats.py]] program.
+\section{Getting the data, [[stats-data.py]]}\label{StatsData}
+
+We have the [[stats-data.py]] program.
 We take a course code as an argument, then we produce CSV data for that course.
 
 We need access to LADOK through the [[ladok3]] module.
@@ -31,15 +40,14 @@ We will also write data to disk in CSV form, so we need the [[csv]] module.
 import argparse
 import csv
 import datetime
-import itertools as it
 import ladok3
 import os
 import sys
 
-<<functions>>
+<<data functions>>
 
 def main():
-  <<process command-line arguments into args>>
+  <<process stats-data command-line arguments into args>>
   <<produce data about course specified in args>>
 
 if __name__ == "__main__":
@@ -47,7 +55,7 @@ if __name__ == "__main__":
 @
 
 We set up the argument parser and parse the command line.
-<<process command-line arguments into args>>=
+<<process stats-data command-line arguments into args>>=
 parser = argparse.ArgumentParser(
   description="Produce CSV data from LADOK about a course")
 
@@ -58,47 +66,42 @@ args = parser.parse_args()
 @
 
 
-\section{Producing data}
+\subsection{Producing data}
 
-We fetch the data from LADOK and store it in a directory named as the course 
-code.
-There we create files named by the round code and the date of when it started.
+We fetch the data from LADOK and print it in CSV format to standard out 
+([[sys.stdout]]).
+This way the user can deal with how to store the data.
 <<produce data about course specified in args>>=
 ladok = ladok3.LadokSessionKTH(
         os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
         test_environment=True) # for experiments
 
-workdir = os.getcwd() + "/" + args.course_code
-if not os.path.isdir(workdir):
-  try:
-    os.mkdir(workdir)
-  except Exception as err:
-    print(f"couldn't create {workdir}: {err}")
-    sys.exit(1)
-
+data_writer = csv.writer(sys.stdout)
 course_rounds = ladok.search_course_rounds(code=args.course_code)
 
+data_writer.writerow([
+  "Course", "Round", "Component", "Student", "Grade", "Time"
+])
 for course_round in course_rounds:
   data = extract_data_for_round(ladok, course_round)
   data = clean_data(data)
 
-  out_name = f"{workdir}/{course_round.round_code}-{course_round.start}.csv"
-  with open(out_name, "w") as out_file:
-    data_writer = csv.writer(out_file)
-    data_writer.writerow(["Student", "Component", "Grade", "Time"])
-    for row in data:
-      data_writer.writerow(row)
+  for student, component, grade, time in data:
+    data_writer.writerow(
+      [course_round.code, course_round.round_code, component,
+        student, grade, time]
+    )
 @
 
 
-\section{Extracting data for a round}
+\subsection{Extracting data for a round}
 
 Now we want to extract data for a given course round.
 This is done by the function~[[extract_data_for_round]].
 We need access to LADOK through the [[ladok]] object of type [[LadokSession]].
 We also need the course round through the [[course_round]] object of type 
 [[CourseRound]].
-<<functions>>=
+<<data functions>>=
 def extract_data_for_round(ladok, course_round):
   <<compute start and length of the course>>
   <<get the results for the course round>>
@@ -178,11 +181,11 @@ else:
 @
 
 
-\section{Clean the data}
+\subsection{Clean the data}
 
 We want to filter out some values from the data.
 We only want to keep students who are registered on the course the first time.
-<<functions>>=
+<<data functions>>=
 def clean_data(data):
   data = list(data)
   students_to_remove = reregistered_students(data)
@@ -194,7 +197,7 @@ started.
 Thus we remove any student who has a result before the course.
 It would be more exact to remove students who are in fact reregistered in 
 LADOK, but we leave that for a future version.
-<<functions>>=
+<<data functions>>=
 def reregistered_students(data):
   students = set()
   for student, _, _, time in data:
@@ -206,4 +209,104 @@ def remove_students(students, data):
   for row in data:
     if row[0] not in students:
       yield row
+@
+
+
+\section{Grade distributions}\label{GradeDistributions}
+
+Here we provide the program~[[stats-grade-dist.py]], which computes the grade 
+distribution for course rounds.
+
+We will also read the data in CSV form, so we need the [[csv]] module.
+We read the data from standard input.
+<<stats-grade-dist.py>>=
+import argparse
+import csv
+import pandas as pd
+import sys
+
+def main():
+  parser = argparse.ArgumentParser(
+    description="Compute grade distributions for course rounds")
+
+  <<add grade-dist command-line arguments to parser>>
+  args = parser.parse_args()
+  data = pd.read_csv(sys.stdin)
+  <<compute the grade distributions for data based on args>>
+
+if __name__ == "__main__":
+  main()
+@
+
+We want to group rows on various attributes.
+We have one argument for selecting which attribute (column) to group by.
+Then we need two more arguments to select which values should fit into which 
+group.
+<<add grade-dist command-line arguments to parser>>=
+parser.add_argument("-g", "--group-by", default="Round",
+  help="The column name to group by")
+parser.add_argument("-G", "--groups", nargs="*",
+  help="The values of each group, groups separated by semicolon (;)")
+@
+
+We can set up a [[groups]] list (of lists) based on these parameters.
+<<set up groups to iterate over>>=
+groups = []
+if args.groups:
+  while args.groups:
+    try:
+      split_at = args.groups.index(";")
+      groups.append(args.groups[:split_at])
+      args.groups = args.groups[split_at+1:]
+    except:
+      groups.append(args.groups)
+      args.groups = []
+else:
+  groups = [[group] for group in data[args.group_by].unique()]
+@
+
+\subsection{Computing the grade distributions}
+
+Now we can compute the grade distribution for each group.
+However, we might want the results in different forms: do we want the results 
+normalized or as cumulative counts?
+<<add grade-dist command-line arguments to parser>>=
+parser.add_argument("-n", "--normalize", action="store_true", default=False,
+  help="Normalize counts")
+@
+
+Then we can compute the grade distributions as follows.
+<<compute the grade distributions for data based on args>>=
+<<set up groups to iterate over>>
+
+stats = pd.DataFrame(index=data.Grade.unique())
+
+for group in groups:
+  group_data = data[data[args.group_by].isin(group)]
+  group_name = "+".join(group)
+  stats[group_name] = group_data.groupby("Grade")["Student"].count()
+  if args.normalize:
+    stats[group_name] /= len(group_data.Student.unique())
+
+stats.sort_index(inplace=True)
+<<print the stats>>
+@
+
+\subsection{Printing the stats}
+
+We want to print the stats.
+We want to print it plainly for exploration.
+We also want to print a \LaTeX-formatted version for easy inclusion in 
+documents.
+<<add grade-dist command-line arguments to parser>>=
+parser.add_argument("-L", "--LaTeX", action="store_true",
+  help="Print results LaTeX formatted")
+@
+
+Now, we can just check if the flag is set or not.
+<<print the stats>>=
+if args.LaTeX:
+  print(stats.to_latex())
+else:
+  print(stats)
 @
