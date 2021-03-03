@@ -99,6 +99,28 @@ DD1310-grouped.pgf DD1310-grouped.tex: DD1310.csv stats-grade-dist.py
 ladok3.pdf: $(addsuffix .pgf,DD1310-all DD1310-grouped)
 ladok3.pdf: $(addsuffix .tex,DD1310-all DD1310-grouped)
 
+DD1312.csv: stats-data.py
+	python stats-data.py DD1312 > $@
+
+DD1312-all.pgf DD1312-all.tex: DD1312.csv
+	(head -n 1 DD1312.csv; grep LAB3 DD1312.csv) | \
+		python stats-grade-dist.py -nL -f DD1312-all.pgf \
+			-G 50730 \
+			-G 50864 \
+			-G 50661 \
+			-G 50943 \
+				> DD1312-all.tex
+
+DD1312-grouped.pgf DD1312-grouped.tex: DD1312.csv
+	(head -n 1 DD1312.csv; grep LAB3 DD1312.csv) | \
+		python stats-grade-dist.py -nL -f DD1312-grouped.pgf \
+			-G 50730 \
+			-G 50864 50661 50943 \
+				> DD1312-grouped.tex
+
+ladok3.pdf: $(addsuffix .pgf,DD1312-all DD1312-grouped)
+ladok3.pdf: $(addsuffix .tex,DD1312-all DD1312-grouped)
+
 .PHONY: clean
 clean:
 	${RM} ladok3 ladok3.py ladok3.pdf ladok3.tex

@@ -217,7 +217,7 @@ def remove_students(students, data):
 Here we provide the program~[[stats-grade-dist.py]], which computes the grade 
 distribution for course rounds.
 
-We will also read the data in CSV form, so we need the [[csv]] module.
+We will read the data in CSV form, so we need the [[csv]] module.
 We read the data from standard input.
 <<stats-grade-dist.py>>=
 import argparse
@@ -342,71 +342,116 @@ if "fig_out" in args:
 
 \subsection{Example analyses}
 
-We performed some analyses on the courses DD1315 and DD1310.
+We performed some analyses on the courses DD1315, DD1310, DD1312.
 DD1315 is covered in \cref{%
   DD1315-all-figure,DD1315-all-table,%
   DD1315-grouped-figure,DD1315-grouped-table,%
   DD1315-last-figure,DD1315-last-table%
 }.
-DD1310 is covered in \cref{...}.
+DD1310 is covered in \cref{%
+  DD1310-all-figure,DD1310-all-table,%
+  DD1310-grouped-figure,DD1310-grouped-table,%
+}.
+DD1312 is covered in \cref{%
+  DD1312-all-figure,DD1312-all-table,%
+  DD1312-grouped-figure,DD1312-grouped-table,%
+}
 
 \begin{figure}
+\centering
 \input{DD1315-all.pgf}
 \caption{All rounds of DD1315 separately.}
 \label{DD1315-all-figure}
 \end{figure}
 
 \begin{table}
+\centering
 \input{DD1315-all.tex}
 \caption{All rounds of DD1315 separately.}
 \label{DD1315-all-table}
 \end{table}
 
 \begin{figure}
+\centering
 \input{DD1315-grouped.pgf}
 \caption{Rounds of DD1315 suitably grouped.}
 \label{DD1315-grouped-figure}
 \end{figure}
 
 \begin{table}
+\centering
 \input{DD1315-grouped.tex}
 \caption{Rounds of DD1315 suitably grouped.}
 \label{DD1315-grouped-table}
 \end{table}
 
 \begin{figure}
+\centering
 \input{DD1315-last.pgf}
 \caption{All rounds of DD1315 grouped together, except the last.}
 \label{DD1315-last-figure}
 \end{figure}
 
 \begin{table}
+\centering
 \input{DD1315-last.tex}
 \caption{All rounds of DD1315 grouped together, except the last.}
 \label{DD1315-last-table}
 \end{table}
 
 \begin{figure}
+\centering
 \input{DD1310-all.pgf}
 \caption{All rounds of DD1310 separately.}
 \label{DD1310-all-figure}
 \end{figure}
 
 \begin{table}
+\centering
 \input{DD1310-all.tex}
 \caption{All rounds of DD1310 separately.}
 \label{DD1310-all-table}
 \end{table}
 
 \begin{figure}
+\centering
 \input{DD1310-grouped.pgf}
 \caption{All rounds of DD1310 grouped suitably together.}
 \label{DD1310-grouped-figure}
 \end{figure}
 
 \begin{table}
+\centering
 \input{DD1310-grouped.tex}
 \caption{All rounds of DD1310 grouped suitably together.}
 \label{DD1310-grouped-table}
+\end{table}
+
+\begin{figure}
+\centering
+\input{DD1312-all.pgf}
+\caption{All rounds of DD1312 separately.}
+\label{DD1312-all-figure}
+\end{figure}
+
+\begin{table}
+\centering
+\input{DD1312-all.tex}
+\caption{All rounds of DD1312 separately.}
+\label{DD1312-all-table}
+\end{table}
+
+\begin{figure}
+\centering
+\input{DD1312-grouped.pgf}
+\caption{All rounds of DD1312 grouped suitably together.}
+\label{DD1312-grouped-figure}
+\end{figure}
+
+\begin{table}
+\centering
+\input{DD1312-grouped.tex}
+\caption{All rounds of DD1312 grouped suitably together.}
+\label{DD1312-grouped-table}
 \end{table}
 
