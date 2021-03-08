@@ -1,0 +1,182 @@
+\section{Getting the data, [[stats-data.py]]}\label{StatsData}
+
+We have the [[stats-data.py]] program.
+We take a course code as an argument, then we produce CSV data for that course.
+
+We need access to LADOK through the [[ladok3]] module.
+We will also write data to disk in CSV form, so we need the [[csv]] module.
+<<stats-data.py>>=
+import argparse
+import csv
+import datetime
+import ladok3
+import os
+import sys
+
+<<data functions>>
+
+def main():
+  <<process stats-data command-line arguments into args>>
+  <<produce data about course specified in args>>
+
+if __name__ == "__main__":
+  main()
+@
+
+We set up the argument parser and parse the command line.
+<<process stats-data command-line arguments into args>>=
+parser = argparse.ArgumentParser(
+  description="Produce CSV data from LADOK about a course")
+
+parser.add_argument("course_code",
+  help="The course code of the course to analyze")
+
+args = parser.parse_args()
+@
+
+
+\subsection{Producing data}
+
+We fetch the data from LADOK and print it in CSV format to standard out 
+([[sys.stdout]]).
+This way the user can deal with how to store the data.
+<<produce data about course specified in args>>=
+ladok = ladok3.LadokSessionKTH(
+        os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+        test_environment=False) # for experiments
+
+data_writer = csv.writer(sys.stdout)
+course_rounds = ladok.search_course_rounds(code=args.course_code)
+
+data_writer.writerow([
+  "Course", "Round", "Component", "Student", "Grade", "Time"
+])
+for course_round in course_rounds:
+  data = extract_data_for_round(ladok, course_round)
+  data = clean_data(data)
+
+  for student, component, grade, time in data:
+    data_writer.writerow(
+      [course_round.code, course_round.round_code, component,
+        student, grade, time]
+    )
+@
+
+
+\subsection{Extracting data for a round}
+
+Now we want to extract data for a given course round.
+This is done by the function~[[extract_data_for_round]].
+We need access to LADOK through the [[ladok]] object of type [[LadokSession]].
+We also need the course round through the [[course_round]] object of type 
+[[CourseRound]].
+<<data functions>>=
+def extract_data_for_round(ladok, course_round):
+  <<compute start and length of the course>>
+  <<get the results for the course round>>
+
+  for result in results:
+    student = result["Student"]["Uid"]
+
+    for component_result in result["ResultatPaUtbildningar"]:
+      if component_result["HarTillgodoraknande"]:
+        continue
+
+      <<get the component result data>>
+      <<extract component code from result data>>
+      <<extract grade and normalized date from result data>>
+
+      yield (student, component_code, grade, normalized_date)
+@
+
+We need the start of the course and the length to be able to normalize the 
+dates for the grades.
+<<compute start and length of the course>>=
+course_start = course_round.start
+course_length = course_round.end - course_start
+@
+
+We must get the results for the course round from LADOK.
+For this we must use an instance ID of a component.
+However, LADOK returns the results for all components, not just the one 
+requested for.
+<<get the results for the course round>>=
+component = course_round.components()[0]
+results = ladok.search_course_results(
+  course_round.round_id, component.instance_id)["Resultat"]
+@
+
+Depending on whether the data is attested or not, we can get the actual grade 
+and date from two different substructures:
+\enquote{Arbetsunderlag} are results in LADOK that have been entered, but not 
+attested;
+\enquote{SenastAttesteradeResultat} are results that have been attested.
+They both have the same structure.
+<<get the component result data>>=
+if "Arbetsunderlag" in component_result:
+  result_data = component_result["Arbetsunderlag"]
+elif "SenastAttesteradeResultat" in component_result:
+  result_data = component_result["SenastAttesteradeResultat"]
+else:
+  continue
+@
+
+The results only refer to the component's instance ID, so we must match the 
+component on that ID.
+The [[course_round]] object allows us to do exactly that with the 
+[[components]] method.
+We note that we can ignore the grade on the whole course, since that one is 
+determined by the other components.
+<<extract component code from result data>>=
+matching_component = course_round.components(
+  instance_id=result_data["UtbildningsinstansUID"])
+if len(matching_component) < 1:
+  continue
+component_code = matching_component[0].code
+@
+
+Finally, if there is a grade, we can extract the grade and compute the 
+normalized date.
+However, if there are no results, we set [[None]].
+<<extract grade and normalized date from result data>>=
+if "Betygsgradsobjekt" in result_data:
+  grade = result_data["Betygsgradsobjekt"]["Kod"]
+  date = datetime.date.fromisoformat(
+    result_data["Examinationsdatum"])
+  normalized_date = (date - course_start) / course_length
+else:
+  grade = "-"
+  normalized_date = None
+@
+
+
+\subsection{Clean the data}
+
+We want to filter out some values from the data.
+We only want to keep students who are registered on the course the first time.
+<<data functions>>=
+def clean_data(data):
+  data = list(data)
+  students_to_remove = reregistered_students(data)
+  return remove_students(students_to_remove, data)
+@
+
+We approximate first time registrations with grades reported before the course 
+started.
+Thus we remove any student who has a result before the course.
+It would be more exact to remove students who are in fact reregistered in 
+LADOK, but we leave that for a future version.
+<<data functions>>=
+def reregistered_students(data):
+  students = set()
+  for student, _, _, time in data:
+    if time and time < 0:
+      students.add(student)
+  return students
+
+def remove_students(students, data):
+  for row in data:
+    if row[0] not in students:
+      yield row
+@
+

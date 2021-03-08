@@ -1,0 +1,33 @@
+We want to compute statistics based on LADOK data.
+We want to answer the following questions:
+\begin{enumerate}
+\item\label[question]{QGradeDistInCourse} What are the grade distribution of a 
+course round?
+\item\label[question]{QGradeDistDiffYears} How do grade distributions differ 
+between years (\ie rounds) for the same course?
+\item\label[question]{QGradeDistDiffCourses} How do grade distributions differ 
+between (similar) courses?
+\item How is the throughput distribution of a course?
+\item How do throughput distributions vary between years?
+\end{enumerate}
+
+We provide the program [[stats-data.py]] to extract the necessary data from 
+LADOK (\cref{StatsData}).
+This program will produce CSV-formated data to answer those questions.
+The data is formated like this:
+\begin{itemize}
+\item course,
+\item round,
+\item component,
+\item student (pseudonym),
+\item grade,
+\item normalized time.
+\end{itemize}
+
+Then we provide ways to analyze that data.
+We answer
+\cref{QGradeDistInCourse,QGradeDistDiffYears,QGradeDistDiffCourses}
+in \cref{GradeDistributions}.
+
+\input{stats-data.tex}
+\input{stats-grade.tex}

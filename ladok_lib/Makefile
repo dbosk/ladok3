@@ -9,7 +9,7 @@ ladok3.pdf: example_LadokSession.py
 ladok3.pdf: example_Student.py
 ladok3.pdf: example_Course.py
 ladok3.pdf: prgi.tex
-ladok3.pdf: stats.tex
+ladok3.pdf: stats.tex stats-data.tex stats-grade.tex
 
 ladok3.tex: ladok3.nw
 
@@ -30,8 +30,8 @@ prgi.py: prgi.nw
 all: stats-data.py
 all: stats-grade-dist.py
 
-stats-data.py: ladok3.py
-stats-data.py stats-grade-dist.py: stats.nw
+stats-data.py: stats-data.nw ladok3.py
+stats-grade-dist.py: stats-grade.nw ladok3.py
 	${NOTANGLE}
 
 
@@ -102,7 +102,7 @@ ladok3.pdf: $(addsuffix .tex,DD1310-all DD1310-grouped)
 DD1312.csv: stats-data.py
 	python stats-data.py DD1312 > $@
 
-DD1312-all.pgf DD1312-all.tex: DD1312.csv
+DD1312-all.pgf DD1312-all.tex: DD1312.csv stats-grade-dist.py
 	(head -n 1 DD1312.csv; grep LAB3 DD1312.csv) | \
 		python stats-grade-dist.py -nL -f DD1312-all.pgf \
 			-G 50730 \
@@ -111,7 +111,7 @@ DD1312-all.pgf DD1312-all.tex: DD1312.csv
 			-G 50943 \
 				> DD1312-all.tex
 
-DD1312-grouped.pgf DD1312-grouped.tex: DD1312.csv
+DD1312-grouped.pgf DD1312-grouped.tex: DD1312.csv stats-grade-dist.py
 	(head -n 1 DD1312.csv; grep LAB3 DD1312.csv) | \
 		python stats-grade-dist.py -nL -f DD1312-grouped.pgf \
 			-G 50730 \
