@@ -35,7 +35,7 @@ args = parser.parse_args()
 @
 
 
-\subsection{Producing data}
+\paragraph{Producing data}
 
 We fetch the data from LADOK and print it in CSV format to standard out 
 ([[sys.stdout]]).
@@ -63,7 +63,7 @@ for course_round in course_rounds:
 @
 
 
-\subsection{Extracting data for a round}
+\section{Extracting data for a round}
 
 Now we want to extract data for a given course round.
 This is done by the function~[[extract_data_for_round]].
@@ -150,7 +150,7 @@ else:
 @
 
 
-\subsection{Clean the data}
+\section{Clean the data}
 
 We want to filter out some values from the data.
 We only want to keep students who are registered on the course the first time.
