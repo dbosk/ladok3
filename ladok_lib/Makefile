@@ -2,6 +2,7 @@
 all: ladok3.pdf
 
 LATEXFLAGS+=	-shell-escape
+TEX_PYTHONTEX=	yes
 
 ladok3.pdf: ladok3.tex preamble.tex
 ladok3.pdf: abstract.tex ../LICENSE
@@ -10,6 +11,7 @@ ladok3.pdf: example_Student.py
 ladok3.pdf: example_Course.py
 ladok3.pdf: prgi.tex
 ladok3.pdf: stats.tex stats-data.tex
+ladok3.pdf: ladok3.py
 
 ladok3.tex: ladok3.nw
 
