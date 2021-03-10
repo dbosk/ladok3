@@ -1073,7 +1073,7 @@ def search_course_rounds(self, /, **kwargs):
     url += f"kurskod={kwargs['code']}&"
   if "name" in kwargs:
     url += f"benamning={kwargs['name']}&"
-  if "round_name" in kwargs:
+  if "round_code" in kwargs:
     url += f"tillfalleskod={kwargs['round_code']}&"
 
   url += "page=1&limit=100&skipCount=false&sprakkod=sv"
