@@ -7,23 +7,6 @@ prgi.pdf
 prgi.py
 prgi.tex
 
-stats-data.tex
-stats-grade.tex
-stats-time.tex
-stats-data.py
-stats-grade-dist.py
+stats.tex
+statsdata.py
 
-DD1310-all.pgf
-DD1310-all.tex
-DD1310-grouped.pgf
-DD1310-grouped.tex
-DD1315-all.pgf
-DD1315-all.tex
-DD1315-grouped.pgf
-DD1315-grouped.tex
-DD1315-last.pgf
-DD1315-last.tex
-DD1312-all.pgf
-DD1312-all.tex
-DD1312-grouped.pgf
-DD1312-grouped.tex

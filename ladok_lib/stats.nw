@@ -1,11 +1,106 @@
-\section{Getting the data, [[stats-data.py]]}\label{StatsData}
+We want to compute statistics based on LADOK data.
+We want to answer the following questions:
+\begin{enumerate}
+\item\label[question]{QGradeDistInCourse} What are the grade distribution of a 
+course round?
+\item\label[question]{QGradeDistDiffYears} How do grade distributions differ 
+between years (\ie rounds) for the same course?
+\item\label[question]{QGradeDistDiffCourses} How do grade distributions differ 
+between (similar) courses?
+\item How is the throughput distribution of a course?
+\item How do throughput distributions vary between years?
+\end{enumerate}
 
-We have the [[stats-data.py]] program.
+We provide the program [[statsdata.py]] to extract the necessary data from 
+LADOK (\cref{StatsData}).
+This program will produce CSV-formated data to answer those questions.
+The data is formated like this:
+\begin{itemize}
+\item course,
+\item round,
+\item component,
+\item student (pseudonym),
+\item grade,
+\item normalized time.
+\end{itemize}
+Or more concretely, we can use it like this:
+\begin{pyblock}[statstest][numbers=left]
+import numpy as np
+import pandas as pd
+
+prgi = pd.read_csv("DD1315.csv")
+
+rounds_years = {
+  "51386": "2020",
+  "50869": "2019",
+  "50662": "2018",
+  "50650": "2017",
+  "50523": "2016"
+}
+prgi_LAB3 = prgi[
+  prgi.Component.eq("LAB3") & prgi.Round.isin(rounds_years.keys())
+].replace(rounds_years)
+
+stats = pd.crosstab(prgi_LAB3.Grade, prgi_LAB3.Round)
+
+for column in stats:
+  stats[column] /= stats[column].sum()
+
+print(stats.round(3).to_latex(
+  label="GradeDistribution",
+  caption="Grade distribution for the DD1315 course."
+))
+\end{pyblock}
+This yields \cref{GradeDistribution}.
+
+\stdoutpythontex
+
+If we convert the grades to numbers, then we can also compute the average grade 
+with standard deviation \etc.
+\begin{pyblock}[statstest][numbers=left,firstnumber=last]
+grade_map = {
+  "A": 5, "B": 4, "C": 3, "D": 2, "E": 1, "-": 0, np.nan: 0
+}
+grades_num = prgi_LAB3[ ["Round", "Grade"] ].replace(grade_map)
+
+print(grades_num.groupby("Round")["Grade"].describe().round(3).to_latex(
+  label="GradeStats",
+  caption="Statistics for grades of the DD1315 course, grade map: " +
+    ", ".join([f"{g} $\mapsto$ {s}" for g, s in grade_map.items()]) + "."
+))
+\end{pyblock}
+This yields \cref{GradeStats}.
+
+\stdoutpythontex
+
+Finally, we'd like to merge the old rounds to compare with the latest.
+\begin{pyblock}[statstest][numbers=left,firstnumber=last]
+rounds_avg = {
+  "2019": "2019--2016",
+  "2018": "2019--2016",
+  "2017": "2019--2016",
+  "2016": "2019--2016"
+}
+grades_avg = grades_num.replace(rounds_avg)
+
+print(grades_avg.groupby("Round")["Grade"].describe().round(3).to_latex(
+  label="GradeStatsAvg",
+  caption="Statistics for grades of the DD1315 course, grade map: " +
+    ", ".join([f"{g} $\mapsto$ {s}" for g, s in grade_map.items()]) + "."
+))
+\end{pyblock}
+This yields \cref{GradeStatsAvg}.
+
+\stdoutpythontex
+
+\section{Getting the data, [[statsdata.py]]}\label{StatsData}
+
+We have the [[statsdata.py]] program.
 We take a course code as an argument, then we produce CSV data for that course.
 
 We need access to LADOK through the [[ladok3]] module.
 We will also write data to disk in CSV form, so we need the [[csv]] module.
-<<stats-data.py>>=
+<<statsdata.py>>=
 import argparse
 import csv
 import datetime
@@ -16,7 +111,7 @@ import sys
 <<data functions>>
 
 def main():
-  <<process stats-data command-line arguments into args>>
+  <<process statsdata command-line arguments into args>>
   <<produce data about course specified in args>>
 
 if __name__ == "__main__":
@@ -24,7 +119,7 @@ if __name__ == "__main__":
 @
 
 We set up the argument parser and parse the command line.
-<<process stats-data command-line arguments into args>>=
+<<process statsdata command-line arguments into args>>=
 parser = argparse.ArgumentParser(
   description="Produce CSV data from LADOK about a course")
 
@@ -102,8 +197,8 @@ However, LADOK returns the results for all components, not just the one
 requested for.
 <<get the results for the course round>>=
 component = course_round.components()[0]
-results = ladok.search_course_results(
-  course_round.round_id, component.instance_id)["Resultat"]
+results = ladok.search_reported_results(
+  course_round.round_id, component.instance_id)
 @
 
 Depending on whether the data is attested or not, we can get the actual grade 
