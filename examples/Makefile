@@ -39,6 +39,6 @@ distclean:
 
 
 
-INCLUDE_MAKEFILES=./makefiles
+INCLUDE_MAKEFILES=../makefiles
 include ${INCLUDE_MAKEFILES}/tex.mk
 include ${INCLUDE_MAKEFILES}/noweb.mk

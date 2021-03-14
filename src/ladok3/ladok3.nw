@@ -94,7 +94,7 @@ authenticated session to LADOK's REST API.
 It uses the [[requests]] module.
 
 We can use the class as follows.
-\inputminted{python}{example_LadokSession.py}
+\inputminted{python}{../../examples/example_LadokSession.py}
 
 This chapter covers how the [[LadokSession]] and [[LadokSessionKTH]] classes 
 work.
@@ -765,25 +765,25 @@ def get_translation(lang_code, list_of_translations):
 This chapter treats how we can work with student data.
 We can get student data from LADOK using the [[LadokSession]] class.
 We first create the [[ladok]] object, an instance of a LADOK session.
-\inputminted[lastline=6]{python}{example_Student.py}
+\inputminted[lastline=6]{python}{../../examples/example_Student.py}
 This is the same as in \cref{AccessingLADOK}.
 
 Next we want to access data of a student.
 We can refer to the student by personnummer or the unique LADOK ID.
-\inputminted[firstline=8,lastline=13]{python}{example_Student.py}
+\inputminted[firstline=8,lastline=13]{python}{../../examples/example_Student.py}
 This gives us objects of the [[Student]] class.
 The objects [[me]] and [[me2]] both refer to the same person, so the outputs 
 should be the same.
 
 We can see which course instances the student is registered on (throughout 
 history).
-\inputminted[firstline=16,lastline=17]{python}{example_Student.py}
+\inputminted[firstline=16,lastline=17]{python}{../../examples/example_Student.py}
 We can select a particular course and we can get the results for that course in 
 the same way.
-\inputminted[firstline=19,lastline=29]{python}{example_Student.py}
+\inputminted[firstline=19,lastline=29]{python}{../../examples/example_Student.py}
 We can check if the result is attested or not.
 If it's not attested, we can change it.
-\inputminted[firstline=32,lastline=48]{python}{example_Student.py}
+\inputminted[firstline=32,lastline=48]{python}{../../examples/example_Student.py}
 
 
 \section{Getting students from LADOK}
@@ -1053,7 +1053,7 @@ for course in response['Tillfallesdeltaganden']:
 \chapter{Courses}\label{CourseClasses}
 
 We can use the course-related classes as follows.
-\inputminted{python}{example_Course.py}
+\inputminted{python}{../../examples/example_Course.py}
 
 \section{Course rounds}
 
