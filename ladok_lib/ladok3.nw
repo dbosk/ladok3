@@ -5988,12 +5988,12 @@ def __get_student_course_results(self, course_round_id, student_id):
 Here we provide an example program~[[prgi.py]] which exports results from KTH 
 Canvas to LADOK for the introductory programming course~prgi (DD1315).
 
-\input{prgi.tex}
+\input{../examples/prgi.tex}
 
 
 \chapter{Statistical analysis of a course}
 
-\input{stats.tex}
+\input{../examples/stats.tex}
 
 
 \printbibliography
