@@ -21,14 +21,17 @@ ladok3.tex: ladok3.nw
 
 
 .PHONY:
-all: ladok3.py
+all: __init__.py
 
 ladok3.py: ladok3.nw
+
+__init__.py: ladok3.py
+	ln -f $^ $@
 
 
 .PHONY: clean
 clean:
-	${RM} ladok3 ladok3.py ladok3.pdf ladok3.tex
+	${RM} __init__.py ladok3.py ladok3.pdf ladok3.tex
 
 .PHONY: distclean
 distclean:
