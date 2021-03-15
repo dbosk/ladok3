@@ -28,7 +28,7 @@
 \maketitle
 
 \vspace*{\fill}
-\VerbatimInput{../LICENSE}
+\VerbatimInput{../../LICENSE}
 \clearpage
 
 \begin{abstract}
@@ -783,7 +783,7 @@ the same way.
 \inputminted[firstline=19,lastline=29]{python}{../../examples/example_Student.py}
 We can check if the result is attested or not.
 If it's not attested, we can change it.
-\inputminted[firstline=32,lastline=48]{python}{../../examples/example_Student.py}
+\inputminted[firstline=32,lastline=51]{python}{../../examples/example_Student.py}
 
 
 \section{Getting students from LADOK}
@@ -5988,12 +5988,12 @@ def __get_student_course_results(self, course_round_id, student_id):
 Here we provide an example program~[[prgi.py]] which exports results from KTH 
 Canvas to LADOK for the introductory programming course~prgi (DD1315).
 
-\input{../examples/prgi.tex}
+\input{../../examples/prgi.tex}
 
 
 \chapter{Statistical analysis of a course}
 
-\input{../examples/stats.tex}
+\input{../../examples/stats.tex}
 
 
 \printbibliography
