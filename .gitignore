@@ -1,3 +1,7 @@
+build/
+dist/
+*.egg-info/
+
 # ignore my Canvas configuration file
 config*.json*
 *.xslx
