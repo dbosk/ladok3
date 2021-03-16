@@ -23,9 +23,8 @@ setup(
         "Intended Audience :: Science/Research",
         "Topic :: Utilities"
     ],
-    packages = find_packages(
-        where = "src"
-    ),
+    package_dir = {"": "src"},
+    packages = ["ladok3"],
     entry_points = {
         "console_scripts": [
             "ladok = ladok3.cli:main"
