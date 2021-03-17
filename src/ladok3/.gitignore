@@ -12,3 +12,8 @@ prgi.tex
 stats.tex
 statsdata.py
 
+cli.py
+cli.tex
+data.py
+data.tex
+ladok.bash

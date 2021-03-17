@@ -7,15 +7,15 @@ TEX_PYTHONTEX=	yes
 ladok3.pdf: ../src/ladok3/ladok3.tex
 ladok3.pdf: ../src/ladok3/api.tex
 
+ladok3.pdf: ../src/ladok3/cli.tex
+ladok3.pdf: ../src/ladok3/data.tex
+
 ladok3.pdf: preamble.tex abstract.tex ../LICENSE
 ladok3.pdf: ../examples/example_LadokSession.py
 ladok3.pdf: ../examples/example_Student.py
 ladok3.pdf: ../examples/example_Course.py
 ladok3.pdf: ../examples/prgi.tex
-ladok3.pdf: ../examples/stats.tex
 ladok3.pdf: DD1315.csv
-
-../examples/DD1315.csv: ../src/ladok3/__init__.py
 
 ../%:
 	${MAKE} -C $(dir $@) $(notdir $@)

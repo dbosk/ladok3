@@ -30,6 +30,9 @@ setup(
             "ladok = ladok3.cli:main"
         ]
     },
+    data_files = [
+        ("/etc/bash_completion.d", ["src/ladok3/ladok.bash"])
+    ],
     python_requires = ">=3.8",
     install_requires = [
         "cachetools >= 4.0.0",
