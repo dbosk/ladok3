@@ -14,7 +14,7 @@ z*
 #ignore all backup files
 *~
 # ingnore .*
-.*
+#.*
 
 # ignore python files
 __pycache__
