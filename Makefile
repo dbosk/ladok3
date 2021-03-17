@@ -2,6 +2,7 @@ SUBDIR_GOALS=	all clean distclean
 
 SUBDIR+= 	src/ladok3
 SUBDIR+=	examples
+SUBDIR+=	doc
 
 .PHONY: all
 all:
