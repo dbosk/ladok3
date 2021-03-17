@@ -72,9 +72,11 @@ The [[LadokSession]] itself is also designed to be cacheable: if the session to
 LADOK expires, it will automatically reauthenticate to establish a new session.
 
 
+
 \part{The library}
 
 \input{../src/ladok3/ladok3.tex}
+
 
 
 \part{API calls}
@@ -82,7 +84,21 @@ LADOK expires, it will automatically reauthenticate to establish a new session.
 \input{../src/ladok3/api.tex}
 
 
-\part{Example applications}
+
+\part{A command-line interface}
+
+\chapter{The base interface}
+
+\input{../src/ladok3/cli.tex}
+
+
+\chapter{The \texttt{data} command}
+
+\input{../src/ladok3/data.tex}
+
+
+
+\part{Other example applications}
 
 \chapter{Transfer results from KTH Canvas to LADOK}
 
@@ -90,11 +106,6 @@ Here we provide an example program~[[prgi.py]] which exports results from KTH
 Canvas to LADOK for the introductory programming course~prgi (DD1315).
 
 \input{../examples/prgi.tex}
-
-
-\chapter{Statistical analysis of a course}
-
-\input{../examples/stats.tex}
 
 
 \printbibliography
