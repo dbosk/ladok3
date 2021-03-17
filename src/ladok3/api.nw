@@ -110,6 +110,43 @@ The output looks like this.
 
 
 
+\chapter{Student-related API calls}
+
+\section{[[registrations_JSON]]}
+
+This method returns all registrations on a particular course for a particular 
+student.
+This way we can check if a student has been registered several times on a 
+course.
+<<LadokSession data methods>>=
+def registrations_JSON(self, course_education_id, student_id):
+  """Return a list of registrations on course with education_id for student 
+  with student_id. JSON format."""
+  response = self.get_query(
+    "/studiedeltagande/tillfallesdeltagande/"
+      f"utbildning/{course_education_id}/student/{student_id}",
+    "application/vnd.ladok-studiedeltagande+json")
+  
+  if response.status_code == 200:
+    return response.json()["Tillfallesdeltaganden"]
+  return None
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
+dasak = me.courses(code="DD2395")[0]
+
+results = ladok.registrations_JSON(dasak.education_id, me.ladok_id)
+
+ladok3.clean_data(results)
+print(json.dumps(results, indent=2))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+
+
 \chapter{Course-related API calls}
 
 \section{[[course_rounds_JSON]]}
@@ -128,6 +165,7 @@ def course_rounds_JSON(self, course_instance_id):
 
 This method is used as follows.
 \begin{pyblock}[apitest][numbers=left,firstnumber=last]
+dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
 results = ladok.course_rounds_JSON(dasak10.instance_id)
 
 ladok3.clean_data(results)
@@ -204,7 +242,6 @@ def search_reported_results_JSON(self, course_round_id, component_instance_id):
 
 This method is used as follows.
 \begin{pyblock}[apitest][numbers=left,firstnumber=last]
-dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
 LAB1 = dasak10.components(code="LAB1")[0]
 
 results = ladok.search_reported_results_JSON(dasak10.round_id, LAB1.instance_id)
@@ -320,43 +357,6 @@ print(json.dumps(results, indent=2))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
-
-
-\chapter{Student-related API calls}
-
-\section{[[registrations_JSON]]}
-
-This method returns all registrations on a particular course for a particular 
-student.
-This way we can check if a student has been registered several times on a 
-course.
-<<LadokSession data methods>>=
-def registrations_JSON(self, course_education_id, student_id):
-  """Return a list of registrations on course with education_id for student 
-  with student_id. JSON format."""
-  response = self.get_query(
-    "/studiedeltagande/tillfallesdeltagande/"
-      f"utbildning/{course_education_id}/student/{student_id}",
-    "application/vnd.ladok-studiedeltagande+json")
-  
-  if response.status_code == 200:
-    return response.json()["Tillfallesdeltaganden"]
-  return None
-@
-
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
-dasak = me.courses(code="DD2395")[0]
-
-results = ladok.registrations_JSON(dasak.education_id, me.ladok_id)
-
-ladok3.clean_data(results)
-print(json.dumps(results, indent=2))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
-
 
 
 \chapter{Baltatzis' and Maguire's original [[LadokSession]] methods}
