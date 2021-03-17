@@ -45,12 +45,22 @@
 \chapter{Introduction}
 
 This is the documented source code of the LADOK3 API wrapper for Python, the 
-module [[ladok3]] ([[<<ladok3.py>>]]).
+package [[ladok3]].
+You can install it by running
+\begin{minted}{bash}
+pip3 install ladok3
+\end{minted}
+in the terminal.
+You can find a quick reference by running
+\begin{minted}[firstnumber=last]{bash}
+pydoc ladok3
+\end{minted}
 
 We provide the main class [[LadokSession]].
 The [[LadokSession]] class acts like \enquote{factories} and will return 
 objects representing various LADOK data.
-These data objects' classes inherit the [[LadokData]] and [[LadokRemoteData]].
+These data objects' classes inherit the [[LadokData]] and [[LadokRemoteData]] 
+classes.
 Data of the type [[LadokData]] is not expected to change, unlike 
 [[LadokRemoteData]], which is.
 Objects of type [[LadokRemoteData]] know how to update themselves, \ie fetch 
@@ -70,6 +80,7 @@ We use the standard structure for the script.
 We start with the imports and then our class definitions follow in 
 [[<<classes>>]] and some helper functions in [[<<functions>>]].
 <<ladok3.py>>=
+"""A Python wrapper for the LADOK3 API"""
 # -*- coding: utf-8 -*-
 import cachetools
 import datetime
@@ -507,12 +518,16 @@ class LadokRemoteData(LadokData):
 The LADOK session object provides some methods for searching for data, \eg 
 students.
 These methods will return instances of [[LadokData]] or [[LadokRemoteData]].
-Since the objects that can be updated can update themselves, we can cache the 
-factories to speed up interaction with LADOK.
-This way we don't have to interact with the LADOK servers for every request, 
-but only when necessary.
 
 \subsection{Cached methods}
+
+Since the objects that can be updated can update themselves 
+([[LadokRemoteData]]), we can cache the factories to speed up interaction with 
+LADOK.
+Since Python uses references for objects, a cached object will always be 
+up-to-date if the program has made changes to it.
+This way we don't have to interact with the LADOK servers for every request, 
+but only when necessary.
 
 We will have a shared cache for all methods.
 <<LadokSession constructor body>>=
