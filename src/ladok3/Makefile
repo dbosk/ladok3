@@ -23,6 +23,7 @@ api.tex: api.nw
 
 .PHONY:
 all: __init__.py
+all: ladok.bash
 
 ladok3.py: ladok3.nw api.nw
 
@@ -31,6 +32,9 @@ __init__.py: ladok3.py
 
 cli.py: cli.nw
 data.py: data.nw
+
+ladok.bash: __init__.py cli.py data.py
+	register-python-argcomplete ladok > $@
 
 DD1315.csv: ../../examples/DD1315.csv
 	ln -sf $^ $@
