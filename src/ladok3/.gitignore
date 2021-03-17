@@ -12,3 +12,5 @@ prgi.tex
 stats.tex
 statsdata.py
 
+cli.py
+data.py

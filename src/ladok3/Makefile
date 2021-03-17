@@ -29,6 +29,9 @@ ladok3.py: ladok3.nw api.nw
 __init__.py: ladok3.py
 	mv $^ $@
 
+cli.py: cli.nw
+data.py: data.nw
+
 DD1315.csv: ../../examples/DD1315.csv
 	ln -sf $^ $@
 
