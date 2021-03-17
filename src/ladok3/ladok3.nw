@@ -545,66 +545,18 @@ However, this construction cannot handle non-hashable objects (\eg dictionaries
 and lists) as arguments.
 But the JSON representation of objects should be possible to make hashable.
 
-\subsection{Conjunctive filters}
 
-At several occasions we want to create conjunctive filters.
-\Eg that we filter for various attributes and all should be true.
-We will take two functions and combine them into one, so that we can do 
-something along these lines:
-\begin{minted}{python}
-filter_func = lambda x: True
+\chapter{Helper functions}
 
-if "first_name" in search_keys:
-  filter_func = conjunction(filter_func,
-    lambda x: x.first_name == search_keys["first_name"])
-if "last_name" in search_keys:
-  filter_func = conjunction(filter_func,
-    lambda x: x.last_name == search_keys["last_name"])
-
-students = filter(filter_func, all_students)
-\end{minted}
-
-We use the [[args]] and [[kwargs]] construction allows us to handle any 
-function arguments for the resulting function, but all functions that are part 
-of it must handle the same arguments.
-<<functions>>=
-def conjunction(f, g):
-  """Returns a function h(...) := f(...) and g(...)"""
-  return lambda *args, **kwargs: f(*args, **kwargs) and g(*args, **kwargs)
-@
-
-<<filter>>=
-  filter_func = lambda x: True
-  <<filter out grade scales based on kwargs>>
-  return list(filter(filter_func, self.grade_scales()))
-@
-To filter the grade scales, we construct a conjunctive function based on the 
-available keyword arguments.
-We want this to be a conjunction, since a disjunction can then be implemented 
-by several calls to [[grade_scales]].
-We want to set up [[filter_func]] to take a grade scale as argument.
-<<filter out grade scales based on kwargs>>=
-if "id" in kwargs:
-  filter_func = conjunction(filter_func,
-    lambda x: x.id == kwargs["id"])
-if "name" in kwargs:
-  filter_func = conjunction(filter_func,
-    lambda x: x.name == kwargs["name"])
-if "code" in kwargs:
-  filter_func = conjunction(filter_func,
-    lambda x: x.code == kwargs["code"])
-if "has_grade" in kwargs:
-  filter_func = conjunction(filter_func,
-    lambda x: kwargs["has_grade"] in x.grades)
-@
+We have several helper functions that are useful throughout.
 
 
-\subsection{Filter on keys}
+\section{Filter on keys}
 
 Many data methods will filter based on keys.
 We will provide the following function which does exactly that.
-This implementation runs through the (remaining) items once per keyword, so it 
-can probably be made more efficient.
+This implementation runs through the (remaining) items once per keyword, 
+meaning it's conjunctive.
 <<functions>>=
 def filter_on_keys(items, /, **kwargs):
   for key in kwargs:
