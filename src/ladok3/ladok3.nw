@@ -1880,7 +1880,7 @@ Canvas to LADOK for the introductory programming course~prgi (DD1315).
 
 \chapter{Statistical analysis of a course}
 
-\input{../../examples/stats.tex}
+\input{data.tex}
 
 
 \printbibliography

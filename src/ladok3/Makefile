@@ -11,7 +11,7 @@ ladok3.pdf: ../../examples/example_LadokSession.py
 ladok3.pdf: ../../examples/example_Student.py
 ladok3.pdf: ../../examples/example_Course.py
 ladok3.pdf: ../../examples/prgi.tex
-ladok3.pdf: ../../examples/stats.tex
+ladok3.pdf: data.tex
 ladok3.pdf: DD1315.csv
 
 ladok3.tex: ladok3.nw
@@ -22,7 +22,7 @@ api.tex: api.nw
 
 
 .PHONY:
-all: __init__.py
+all: __init__.py cli.py data.py
 all: ladok.bash
 
 ladok3.py: ladok3.nw api.nw
