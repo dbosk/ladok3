@@ -567,134 +567,8 @@ def filter_on_keys(items, /, **kwargs):
 @
 
 
-\subsection{Grade scales}
 
-LADOK has various grade scales.
-For instance:
-\begin{minted}{json}
-{
-  "id": 131657,
-  "code": "AF",
-  "name": "AF",
-  "grades": [
-    {"id": 131661, "code": "A", "accepted": True},
-    {"id": 131667, "code": "B", "accepted": True},
-    {"id": 131673, "code": "C", "accepted": True},
-    {"id": 131679, "code": "D", "accepted": True},
-    {"id": 131691, "code": "E", "accepted": True},
-    {"id": 131696, "code": "FX", "accepted": False},
-    {"id": 131697, "code": "F", "accepted": False}
-  ]
-}
-\end{minted}
-We need a class for grade scales.
-This object should be read only and we never need to update it.
-<<classes>>=
-class GradeScale(LadokData):
-  """A grade scale"""
-  def __init__(self, /, **kwargs):
-    if "_GradeScale__id" in kwargs:
-      self.make_properties(**kwargs)
-    else:
-      self.__id = kwargs["id"]
-      self.__code = kwargs["code"]
-      self.__name = kwargs["name"]
-      self.__grades = [Grade(**kwargs) for kwargs in kwargs["grades"]]
-
-  @property
-  def id(self):
-    return self.__id
-
-  @property
-  def code(self):
-    return self.__code
-
-  @property
-  def name(self):
-    return self.__name
-
-  def grades(self, /, **kwargs):
-    """Returns grades filtered on keyword"""
-    return filter_on_keys(self.__grades, **kwargs)
-@
-
-Then we need a class for each grade.
-<<classes>>=
-class Grade(LadokData):
-  """An individual grade part of a grade scale"""
-  def __init__(self, /, **json_data):
-    """Constructor taking a dictionary (JSON-like) structure"""
-    if "_Grade__id" in json_data:
-      self.make_properties(**json_data)
-    else:
-      self.__id = json_data["id"]
-      self.__code = json_data["code"]
-      self.__accepted = json_data["accepted"]
-
-  @property
-  def id(self):
-    return self.__id
-
-  @property
-  def code(self):
-    return self.__code
-
-  def __str__(self):
-    return self.code
-
-  @property
-  def accepted(self):
-    return self.__accepted
-
-  def __eq__(self, other):
-    if isinstance(other, Grade):
-      return self.__dict__ == other.__dict__
-    elif isinstance(other, str):
-      self.code == other
-    else:
-      raise NotImplementedError(f"can't test equality with {type(other)}")
-@
-
-Now we can provide the method that returns the grade scales.
-This method interacts with LADOK, so we want to cache its responses.
-We also want to be able to filter the responses, we do this by keyword 
-arguments.
-<<LadokSession data methods>>=
-@cachetools.cachedmethod(
-  operator.attrgetter("cache"),
-  key=functools.partial(cachetools.keys.hashkey, "grade_scale"))
-def get_grade_scales(self, /, **kwargs):
-  """Return a list of (un)filtered grade scales"""
-  if len(kwargs) == 0:
-    grade_scales = []
-    <<request grade scales list from ladok>>
-    return [GradeScale(**kwargs) for kwargs in grade_scales]
-
-  return filter_on_keys(self.get_grade_scales(), **kwargs)
-@
-
-To actually request the grade scales from LADOK, we request all of them from 
-LADOK and parse the JSON structure (a list of grade scales).
-<<request grade scales list from ladok>>=
-response = self.session.get(
-  url=self.base_gui_proxy_url + '/resultat/grunddata/betygsskala',
-  headers=self.headers)
-
-for grade_scale in response.json()['Betygsskala']:
-  grade_scales.append({
-    'id': int(grade_scale['ID']),
-    'code': grade_scale['Kod'],
-    'name': grade_scale['Benamning']['sv'],
-    'grades': [{
-      'id': int(grade['ID']),
-      'code': grade['Kod'],
-      'accepted': grade['GiltigSomSlutbetyg']
-    } for grade in grade_scale['Betygsgrad']]
-  })
-@
-
-
-\subsection{Extracting translations}
+\section{Extracting translations}
 
 In many cases, LADOK provides several translations.
 The do that in the form of this JSON structure:
@@ -723,6 +597,153 @@ def get_translation(lang_code, list_of_translations):
     if translation["Sprakkod"] == lang_code:
       return translation["Text"]
   raise KeyError(f"no translation for language {lang_code}")
+@
+
+
+\chapter{Grading scales}
+
+LADOK has various grading scales.
+Whenever we deal with results, we must use them and their identifiers.
+We provide classes that wraps LADOK's grading scales: [[GradeScale]] and 
+[[Grade]].
+We also provide a method, [[get_grade_scales]], which returns a list of 
+[[GradeScale]] objects.
+
+
+\section{The [[get_grade_scales]] method}
+
+We start with the method that returns the grading-scales objects.
+This method interacts with LADOK, so we want to cache its responses.
+We also want to be able to filter the responses, we do this by keyword 
+arguments.
+<<LadokSession data methods>>=
+@cachetools.cachedmethod(
+  operator.attrgetter("cache"),
+  key=functools.partial(cachetools.keys.hashkey, "grade_scale"))
+def get_grade_scales(self, /, **kwargs):
+  """Return a list of (un)filtered grade scales"""
+  if len(kwargs) == 0:
+    return [GradeScale(**scale_data)
+              for scale_data in self.grade_scales_JSON()]
+
+  return filter_on_keys(self.get_grade_scales(), **kwargs)
+@
+
+The [[grade_scales_JSON]] method is part of the LADOK API and is documented in 
+\cref{GradeScalesJSON}.
+
+
+\section{The [[GradeScale]] and [[Grade]] classes}
+
+We need a class for grade scales.
+This object should be read only and we never need to update it, so we can base 
+it on [[LadokData]].
+[[kwargs]] will have the following format:
+\begin{pycode}
+import json
+import ladok3
+import os
+
+ladok = ladok3.LadokSessionKTH(
+          os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+          test_environment=True)
+
+print("\\begin{minted}{JSON}")
+print(json.dumps(ladok.grade_scales_JSON()[0], indent=2))
+print("\\end{minted}")
+\end{pycode}
+
+This makes the follow class design suitable.
+<<classes>>=
+class GradeScale(LadokData):
+  """A grade scale"""
+  def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
+
+    if "_GradeScale__id" in kwargs:
+      self.make_properties(**kwargs)
+    else:
+      self.__id = int(kwargs.pop("ID"))
+      self.__code = kwargs.pop("Kod")
+      self.__name = kwargs.pop("Benamning")["sv"]
+      self.__grades = [Grade(**grade_data)
+                        for grade_data in kwargs.pop("Betygsgrad")]
+
+  @property
+  def id(self):
+    return self.__id
+
+  @property
+  def code(self):
+    return self.__code
+
+  @property
+  def name(self):
+    return self.__name
+
+  def grades(self, /, **kwargs):
+    """Returns grades filtered on keyword"""
+    return filter_on_keys(self.__grades, **kwargs)
+
+  def __contains__(self, grade):
+    <<test if grade is in grading scale>>
+
+  def __iter__(self):
+    <<iterate over grades in grading scale>>
+@
+
+Then we need a class for the grades themselves.
+We construct a grade from the LADOK JSON data.
+We also implement easy comparison so that we can search for the string 
+\enquote{A} instead of the [[Grade]] object for the A grade.
+<<classes>>=
+class Grade(LadokData):
+  """An individual grade part of a grade scale"""
+  def __init__(self, /, **json_data):
+    """Constructor taking a dictionary (JSON-like) structure"""
+    if "_Grade__id" in json_data:
+      self.make_properties(**json_data)
+    else:
+      self.__id = int(json_data.pop("ID"))
+      self.__code = json_data.pop("Kod")
+      self.__accepted = json_data.pop("GiltigSomSlutbetyg")
+
+  @property
+  def id(self):
+    return self.__id
+
+  @property
+  def code(self):
+    return self.__code
+
+  def __str__(self):
+    return self.code
+
+  @property
+  def accepted(self):
+    return self.__accepted
+
+  def __eq__(self, other):
+    if isinstance(other, Grade):
+      return self.__dict__ == other.__dict__
+    elif isinstance(other, str):
+      self.code == other
+    else:
+      raise NotImplementedError(f"can't test equality with {type(other)}")
+@
+
+
+\paragraph{Checking if a grade is in a grading scale}
+
+We can now easily implement the check if a grade is in a grading scale.
+<<test if grade is in grading scale>>=
+return grade in self.__grades
+@ This works even if [[grade]] is a string, thanks to how [[__eq__]] is 
+implemented in the [[Grade]] class.
+
+Similarly, we can iterate over the grades in the grading scale.
+<<iterate over grades in grading scale>>=
+return iter(self.__grades)
 @
 
 
@@ -1911,6 +1932,28 @@ ladok = ladok3.LadokSessionKTH(
         os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
         test_environment=True) # for experiments
 \end{pyblock}
+
+
+
+\section{[[grade_scales_JSON]]}\label{GradeScalesJSON}
+
+To request the grading scales from LADOK, we request all of them and return a 
+list of JSON data objects containing the grading scale data.
+<<LadokSession data methods>>=
+def grade_scales_JSON(self):
+  response = self.get_query('/resultat/grunddata/betygsskala')
+
+  if response.status_code == 200:
+    return response.json()["Betygsskala"]
+  return None
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+print(json.dumps(ladok.grade_scales_JSON()[0], indent=2))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
 
 
 \section{[[get_registrations]]}
