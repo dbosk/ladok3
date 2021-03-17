@@ -107,14 +107,14 @@ The output looks like this.
 \stdoutpythontex[verbatim]
 
 
-\section{[[get_registrations]]}
+\section{[[registrations_JSON]]}
 
 This method returns all registrations on a particular course for a particular 
 student.
 This way we can check if a student has been registered several times on a 
 course.
 <<LadokSession data methods>>=
-def get_registrations(self, course_education_id, student_id):
+def registrations_JSON(self, course_education_id, student_id):
   """Return a list of registrations on course with education_id for student 
   with student_id. JSON format."""
   response = self.get_query(
@@ -132,7 +132,7 @@ This method is used as follows.
 me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
 dasak = me.courses(code="DD2395")[0]
 
-results = ladok.get_registrations(dasak.education_id, me.ladok_id)
+results = ladok.registrations_JSON(dasak.education_id, me.ladok_id)
 
 ladok3.clean_data(results)
 print(json.dumps(results, indent=2))
@@ -141,12 +141,17 @@ The output looks like this.
 \stdoutpythontex[verbatim]
 
 
-\section{[[search_reported_results]] and [[search_course_results]]}
+\section{Reported results}
+
+There are two ways to get results.
+One method gives more data than the other.
+
+\subsection{[[search_reported_results_JSON]]}
 
 This method searches for student results for a given component on a given 
 course round.
 <<LadokSession data methods>>=
-def search_reported_results(self, course_round_id, component_instance_id):
+def search_reported_results_JSON(self, course_round_id, component_instance_id):
   """Requires:
   course_round_id: round_id for a course,
   component_instance_id: instance_id for a component of the course.
@@ -179,7 +184,7 @@ This method is used as follows.
 dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
 LAB1 = dasak10.components(code="LAB1")[0]
 
-results = ladok.search_reported_results(dasak10.round_id, LAB1.instance_id)
+results = ladok.search_reported_results_JSON(dasak10.round_id, LAB1.instance_id)
 
 ladok3.clean_data(results)
 results = list(filter(
@@ -190,9 +195,11 @@ print(json.dumps(results, indent=2))
 The output looks like this.
 \stdoutpythontex[verbatim]
 
+\subsection{[[search_course_results_JSON]]}
+
 Another method, which gives slightly different results is the following.
 <<LadokSession data methods>>=
-def search_course_results(self, course_round_id, component_instance_id):
+def search_course_results_JSON(self, course_round_id, component_instance_id):
   put_data = {
     "KurstillfallenUID": [course_round_id],
     "Tillstand": ["REGISTRERAD", "AVKLARAD", "AVBROTT"],
@@ -215,7 +222,7 @@ This method is used as follows.
 dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
 LAB1 = dasak10.components(code="LAB1")[0]
 
-results = ladok.search_course_results(dasak10.round_id, LAB1.instance_id)
+results = ladok.search_course_results_JSON(dasak10.round_id, LAB1.instance_id)
 
 ladok3.clean_data(results)
 results = list(filter(
@@ -227,13 +234,14 @@ The output looks like this.
 \stdoutpythontex[verbatim]
 
 
-\section{[[get_course_instance]]}
+\section{[[course_instance_JSON]]}
 
 This method fetches the data for a given course instance.
 It requires the course instance ID.
+(This is a slightly rewritten version o Chip's original method.)
 <<LadokSession data methods>>=
-def get_course_instance(self, instance_id):
-  """Returns course instance data"""
+def course_instance_JSON(self, instance_id):
+  """Returns course instance data for a course with instance ID instance_id"""
   response = self.get_query(
     f"/resultat/utbildningsinstans/kursinstans/{instance_id}")
 
@@ -244,7 +252,7 @@ def get_course_instance(self, instance_id):
 
 This method is used as follows.
 \begin{pyblock}[apitest][numbers=left,firstnumber=last]
-results = ladok.get_course_instance(dasak10.instance_id)
+results = ladok.course_instance_JSON(dasak10.instance_id)
 
 ladok3.clean_data(results)
 print(json.dumps(results, indent=2))
@@ -253,11 +261,11 @@ The output looks like this.
 \stdoutpythontex[verbatim]
 
 
-\section{[[get_course_rounds]]}
+\section{[[course_rounds_JSON]]}
 
 This method fetches all course rounds that uses the given course instance.
 <<LadokSession data methods>>=
-def get_course_rounds(self, course_instance_id):
+def course_rounds_JSON(self, course_instance_id):
   """Requires course instance ID"""
   response = self.get_query(
     f"/resultat/kurstillfalle/kursinstans/{course_instance_id}")
@@ -269,7 +277,7 @@ def get_course_rounds(self, course_instance_id):
 
 This method is used as follows.
 \begin{pyblock}[apitest][numbers=left,firstnumber=last]
-results = ladok.get_course_rounds(dasak10.instance_id)
+results = ladok.course_rounds_JSON(dasak10.instance_id)
 
 ladok3.clean_data(results)
 print(json.dumps(results[:1]+results[-1:], indent=2))
@@ -278,15 +286,15 @@ The output looks like this.
 \stdoutpythontex[verbatim]
 
 
-\section{[[get_participants]]}
+\section{[[participants_JSON]]}
 
-This is an extension of Chip's [[participants_JSON]] method.
-The essential difference is keyword arguments to filter which students to 
-include.
 The method returns JSON data containing a list of students (the participants of 
 the course round).
+(This is an extension of Chip's original [[participants_JSON]] method.
+The essential difference is keyword arguments to filter which students to 
+include.)
 <<LadokSession data methods>>=
-def get_participants(self, course_round_id, /, **kwargs):
+def participants_JSON(self, course_round_id, /, **kwargs):
   """Returns JSON record containing participants in a course identified by 
   round ID.
   Filters in kwargs: not_started, ongoing, registered, finished, cancelled"""
@@ -331,7 +339,7 @@ def get_participants(self, course_round_id, /, **kwargs):
 
 This method is used as follows.
 \begin{pyblock}[apitest][numbers=left,firstnumber=last]
-results = ladok.get_participants(dasak10.round_id)
+results = ladok.participants_JSON(dasak10.round_id)
 
 ladok3.clean_data(results)
 results = list(filter(
@@ -799,133 +807,6 @@ def instance_info_uid(self, instance_uid):
   return r
 @
 
-
-\section{[[course_instance_JSON]]}
-
-<<LadokSession data methods>>=
-# added by GQMJr
-#####################################################################
-#
-# course_instance_JSON
-#
-# uid                -  uid of c course instance
-#
-# RETURNERAR JSON of resultat/utbildningsinstans/kursinstans
-#
-# Example: kurs=ladok_session.course_instance_JSON(ii['Utbildningsinstans']['Uid'])
-def course_instance_JSON(self, uid):
-  r = self.session.get(
-    url=self.base_gui_proxy_url +
-      '/resultat/utbildningsinstans/kursinstans/'+uid,
-    headers=self.headers).json()
-  return r
-@
-
-
-\section{[[participants_JSON]]}
-
-<<LadokSession data methods>>=
-# added by GQMJr
-#####################################################################
-#
-# participants_JSON
-#
-# uid                -  uid of c course instance
-#
-# RETURNERAR JSON of participants in a given course instance
-#
-# Example:         instance_code='50287'
-#                  ii=ladok_session.instance_info('II2202', instance_code, 'en')
-#                  pl=ladok_session.participants(ii['Uid'])
-def participants_JSON(self, uid):
-  headers = self.headers.copy()
-  headers['Content-Type'] = 'application/vnd.ladok-studiedeltagande+json'
-  headers['X-XSRF-TOKEN'] = self.__get_xsrf_token()
-  headers['Origin'] = self.base_url
-
-  put_data = {
-    'page': 1,
-    'limit': 400,
-    'orderby': ['EFTERNAMN_ASC',
-                'FORNAMN_ASC',
-                'PERSONNUMMER_ASC',
-                'KONTROLLERAD_KURS_ASC'],
-    'deltagaretillstand': [
-      'EJ_PABORJAD', # include students how have not yet started the course
-      'PAGAENDE',  # include started students (ongoing)
-      'REGISTRERAD' # include registered students
-      # 'ATERBUD', # cancelled
-      # 'PAGAENDE_MED_SPARR', # on-going block exists
-      # 'AVBROTT',    # Withdrawal
-      # 'EJ_PAGAENDE_TILLFALLESBYTE', # not on-going due to instance exchange
-      # 'UPPEHALL', # not on-going due to approved leave from studies
-      #'AVKLARAD' # include students who have completed the course
-    ],
-    'utbildningstillfalleUID': [uid]
-  }
-      
-  # the constants above come from schemas.ladok.se-studiedeltagande.xsd
-  #
-  # <xs:simpleType name="DeltagareKurstillfalleOrderByEnum">
-  #   <xs:restriction base="xs:string">
-  #     <xs:enumeration value="EFTERNAMN_DESC"/>
-  #     <xs:enumeration value="PERSONNUMMER_DESC"/>
-  #     <xs:enumeration value="PERSONNUMMER_ASC"/>
-  #     <xs:enumeration value="EFTERNAMN_ASC"/>
-  #     <xs:enumeration value="FORNAMN_DESC"/>
-  #     <xs:enumeration value="FORNAMN_ASC"/>
-  #   </xs:restriction>
-  # </xs:simpleType>
-  #
-  # or perhaps it comes from:
-  #
-  # <xs:simpleType name="DeltagareKurspaketeringstillfalleOrderByEnum">
-  #   <xs:restriction base="xs:string">
-  #     <xs:enumeration value="EFTERNAMN_ASC"/>
-  #     <xs:enumeration value="EFTERNAMN_DESC"/>
-  #     <xs:enumeration value="PERIOD_I_ORDNING_DESC"/>
-  #     <xs:enumeration value="KONTROLLERAD_KURS_DESC"/>
-  #     <xs:enumeration value="SUMMERAD_GODKAND_OMFATTNING_DESC"/>
-  #     <xs:enumeration value="PERSONNUMMER_ASC"/>
-  #     <xs:enumeration value="FORNAMN_ASC"/>
-  #     <xs:enumeration value="KONTROLLERAD_KURS_ASC"/>
-  #     <xs:enumeration value="SUMMERAD_GODKAND_OMFATTNING_ASC"/>
-  #     <xs:enumeration value="FORNAMN_DESC"/>
-  #     <xs:enumeration value="PERIOD_I_ORDNING_ASC"/>
-  #     <xs:enumeration value="PERSONNUMMER_DESC"/>
-  #   </xs:restriction>
-  # </xs:simpleType>
-
-  # <xs:simpleType name="DeltagaretillstandEnum">
-  #   <xs:restriction base="xs:string">
-  #     <xs:enumeration value="EJ_PAGAENDE_TILLFALLESBYTE"/>
-  #     <xs:enumeration value="EJ_PABORJAD"/>
-  #     <xs:enumeration value="AVKLARAD"/>
-  #     <xs:enumeration value="ATERBUD"/>
-  #     <xs:enumeration value="AVBROTT"/>
-  #     <xs:enumeration value="PAGAENDE_MED_SPARR"/>
-  #     <xs:enumeration value="PAGAENDE"/>
-  #     <xs:enumeration value="PABORJAD"/>
-  #     <xs:enumeration value="FORVANTAD_DELTAGARE"/>
-  #     <xs:enumeration value="REGISTRERAD"/>
-  #     <xs:enumeration value="UPPEHALL"/>
-  #   </xs:restriction>
-  # </xs:simpleType>
-
-
-  txt=json.dumps(put_data)
-  # note that I could not use json = put_data, as this changed the 
-  # 'Content-Type' and broke the functionality
-  # For thie reason, I manually do the conversion of the JSON to a string and manually set the 'Content-Type'.
-  r = self.session.put(
-    url=self.base_gui_proxy_url + '/studiedeltagande/deltagare/kurstillfalle',
-    data=txt,
-    headers=headers)
-  if r.status_code == 200:
-    participant_info=json.loads(r.text)
-    return participant_info
-  return None
-@
 
 
 \section{[[studystructure_student_JSON]]}
