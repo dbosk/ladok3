@@ -11,9 +11,14 @@ between (similar) courses?
 \item How do throughput distributions vary between years?
 \end{enumerate}
 
-We provide the program [[statsdata.py]] to extract the necessary data from 
-LADOK (\cref{StatsData}).
-This program will produce CSV-formated data to answer those questions.
+We provide the module [[data]] ([[<<data.py>>]]) to extract the necessary data 
+from LADOK (\cref{StatsData}).
+This is a subcommand for the [[ladok]] command-line interface.
+It can be used like this:
+\begin{minted}{bash}
+ladok data DD1315 > DD1315.csv
+\end{minted}
+This program will produce CSV-formated data to answer the questions above.
 The data is formated like this:
 \begin{itemize}
 \item course,

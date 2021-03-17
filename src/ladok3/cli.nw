@@ -11,23 +11,15 @@ The command outputs all results for all rounds of a course in CSV format.
 
 \section{Overview of the source code and dependencies}
 
-We provide some classes and functions in [[<<classess>>]] and 
-[[<<functions>>]], respectively.
-These functions and classes are discussed in relation to their use in 
-\cref{student-data,course-data}.
-
 We use [[argparse]] with [[argcomplete]] to handle the command-line interface.
 We use [[appdirs]] to handle configuration directories on various systems, we 
 set up a global [[dirs]] that we can use.
-Finally, we'll use [[cachetools]] to build a cache ([[ladok_cache]]) to speed 
-up queries.
 <<cli.py>>=
 #!/bin/env python3
 """A command-line interface for LADOK 3"""
 
 import appdirs
 import argcomplete, argparse
-import cachetools
 import json
 import os
 import re
@@ -183,6 +175,11 @@ def load_credentials(filename):
 
 
 \section{Subcommands}
+
+To add a subcommand we must add a subparser to the [[subp]] parser object from 
+above, we do this in [[<<add subparsers to subp>>]].
+Every subcommand exists in a separate module and that module provides the 
+function [[add_command_options]] that takes [[subp]] as an argument.
 
 We add the [[data]] subcommand.
 <<modules>>=
