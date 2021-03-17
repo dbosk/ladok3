@@ -85,8 +85,10 @@ directly.
 Then we must first add the global options (to [[argp]]) and then the subparsers 
 (to [[subp]]).
 <<process command-line options>>=
-argp = argparse.ArgumentParser(description="Command-line interface for LADOK3",
-                               epilog="Web: https://github.com/dbosk/ladok")
+argp = argparse.ArgumentParser(
+  description="Command-line interface for LADOK3",
+  epilog="Web: https://github.com/dbosk/ladok3"
+)
 <<add configuration options>>
 subp = argp.add_subparsers(required=True)
 <<add subparsers to subp>>
