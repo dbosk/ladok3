@@ -557,12 +557,23 @@ Many data methods will filter based on keys.
 We will provide the following function which does exactly that.
 This implementation runs through the (remaining) items once per keyword, 
 meaning it's conjunctive.
+
+If they keyword argument is a string, we interpret it as a regular expression.
+The downside of this is that we might accidentally get substring matches when 
+we expect exact matches.
+\Eg \verb'F' will match both \verb'F' and \verb'Fx' unless we specify 
+\verb'^F$'.
 <<functions>>=
 def filter_on_keys(items, /, **kwargs):
   for key in kwargs:
-    items = filter(
-      lambda x: operator.attrgetter(key)(x) == kwargs[key],
-      items)
+    if isinstance(kwargs[key], str):
+      pattern = re.compile(kwargs[key])
+      filter_func = lambda x: pattern.match(operator.attrgetter(key)(x))
+    else:
+      filter_func = lambda x: operator.attrgetter(key)(x) == kwargs[key]
+
+    items = filter(filter_func, items)
+
   return list(items)
 @
 
@@ -576,7 +587,14 @@ def filter_on_any_key(items, /, **kwargs):
   matching_items = []
   for item in items:
     for key in kwargs:
-      if operator.attrgetter(key)(item) == kwargs[key]:
+      if isinstance(kwargs[key], str):
+        filter_func = lambda x: \
+          re.match(kwargs[key], operator.attrgetter(key)(x))
+      else:
+        filter_func = lambda x: \
+          operator.attrgetter(key)(item) == kwargs[key]
+
+      if filter_func(item):
         matching_items.append(item)
         break
 
