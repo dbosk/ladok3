@@ -2,6 +2,7 @@ SUBDIR_GOALS=	all clean distclean
 
 SUBDIR+= 	src/ladok3
 SUBDIR+=	examples
+SUBDIR+=	docker
 
 .PHONY: all
 all:
@@ -15,9 +16,15 @@ install: all
 build: all
 	python3 -m build
 
-.PHONY: publish
-publish: build
+.PHONY: publish publish-ladok3 publish-docker
+publish: publish-ladok3 publish-docker
+
+publish-ladok3: build
 	python3 -m twine upload -r testpypi dist/*
+
+publish-docker: publish-ladok3
+	${MAKE} -C docker publish
+
 
 .PHONY: clean
 clean:
