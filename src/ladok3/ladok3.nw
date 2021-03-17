@@ -1,4 +1,92 @@
-\documentclass[a4paper]{report}
+\documentclass[%
+  nobib,nohyper,%
+  justified,marginals=raggedright,%
+  twoside,a4paper]{tufte-book}
+
+\setcounter{secnumdepth}{2}
+\setcounter{tocdepth}{2}
+
+\titleformat{\part}%[display]%
+  {\LARGE\filcenter}% format
+  {\allcaps{\partname~\thepart}}% label
+  {1em}% sep
+  {\allcaps}% before
+  []% after
+\titleformat{\chapter}%
+  {\huge\rmfamily\itshape\color{black}}% format applied to label+text
+  {\llap{\colorbox{black}{\parbox{1.5cm}{\hfill\itshape\color{white}\thechapter}}}}% label
+  {2pt}% horizontal separation between label and title body
+  {}% before the title body
+  []% after the title body
+\titleformat{\section}%
+  {\Large\rmfamily\itshape\color{black}}% format applied to label+text
+  {\llap{\colorbox{white}{\parbox{1.5cm}{\hfill\itshape\color{black}\thesection}}}}% label
+  {2pt}% horizontal separation between label and title body
+  {}% before the title body
+  []% after the title body
+\titleformat{\subsection}%
+  {\large\rmfamily\itshape\color{black}}% format applied to label+text
+  {\llap{\colorbox{white}{\parbox{1.5cm}{\hfill\itshape\color{black}\thesubsection}}}}% label
+  {2pt}% horizontal separation between label and title body
+  {}% before the title body
+  []% after the title body
+
+\renewcommand{\maketitlepage}{%
+  \cleardoublepage
+  {%
+  \sffamily
+  %\begin{fullwidth}%
+  \fontsize{18}{20}\selectfont\par\noindent\textcolor{darkgray}{\thanklessauthor}%
+  \vspace{6pc}%
+  \fontsize{36}{40}\selectfont\par\noindent\textcolor{darkgray}{\thanklesstitle}%
+  \vfill
+  \fontsize{14}{16}\selectfont\par\noindent\thanklesspublisher%
+  %\end{fullwidth}%
+  }%
+  \thispagestyle{empty}%
+  \clearpage
+}
+
+\let\origfigure=\figure
+\def\figure{\origfigure\hfill}
+\let\origtable=\table
+\def\table{\origtable\hfill}
+
+% Define the style of TOC entries                                                 
+%\newcommand{\allcaps}[1]{\textls[150]{\MakeTextUppercase{#1}}}
+\titlecontents{part}%
+  [0pt]% distance from left margin
+  {\addvspace{0.25\baselineskip}}% above (global formatting of entry)
+  {\allcaps{Part~\thecontentslabel}\allcaps}% before w/ label (label = ``Part I'      ')
+  {\allcaps{Part~\thecontentslabel}\allcaps}% before w/o label
+  {}% filler and page (leaders and page num)
+  [\vspace*{0.5\baselineskip}]% after
+
+\titlecontents{chapter}%
+  [4em]% distance from left margin
+  {}% above (global formatting of entry)
+  {\textit{\contentslabel{2em}}\textit}% before w/ label (label = ``Chapter 1'')
+  {\hspace{0em}\textit}% before w/o label
+  {\hfill\thecontentspage}% filler and page (leaders and page num)
+  [\vspace*{0.5\baselineskip}]% after
+
+\titlecontents{section}%
+  [7em]% distance from left margin
+  {}% above (global formatting of entry)
+  {\textit{\contentslabel{3em}}\textit}% before w/ label (label = ``Chapter 1'')
+  {\hspace{0em}\textit}% before w/o label
+  {\hfill\thecontentspage}% filler and page (leaders and page num)
+  [\vspace*{0.5\baselineskip}]% after
+
+\titlecontents{subsection}%
+  [10em]% distance from left margin
+  {}% above (global formatting of entry)
+  {\textit{\contentslabel{3em}}\textit}% before w/ label (label = ``Chapter 1'')
+  {\hspace{0em}\textit}% before w/o label
+  {\hfill\thecontentspage}% filler and page (leaders and page num)
+  [\vspace*{0.5\baselineskip}]% after
+
+
 \usepackage{noweb}
 % Needed to relax penalty for breaking code chunks across pages, otherwise 
 % there might be a lot of space following a code chunk.
@@ -6,8 +94,6 @@
 \let\nwdocspar=\smallbreak
 
 \usepackage[hyphens]{url}
-\usepackage{hyperref}
-\usepackage{authblk}
 
 \input{preamble.tex}
 
@@ -15,14 +101,16 @@
   A LADOK3 Python API
 }
 \author{%
-  Alexander Baltatzis,
-  Daniel Bosk,
-  Gerald Q.\ \enquote{Chip} Maguire Jr.
+  Alexander Baltatzis,\\
+  Daniel Bosk, and\\
+  Gerald Q.\ \enquote{Chip} Maguire Jr.\thanks{
+    KTH Royal Institute of Technology
+  }
 }
-\affil{%
-  KTH EECS\\
-  \texttt{\{alba,dbosk,maguire\}@kth.se}
-}
+%\affil{%
+%  KTH EECS\\
+%  \texttt{\{alba,dbosk,maguire\}@kth.se}
+%}
 
 \begin{document}
 \maketitle
@@ -31,9 +119,9 @@
 \VerbatimInput{../../LICENSE}
 \clearpage
 
-\begin{abstract}
+\vspace*{0.2\textheight}
+\paragraph*{Abstract}
   \input{abstract.tex}
-\end{abstract}
 \clearpage
 
 \tableofcontents
