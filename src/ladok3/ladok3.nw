@@ -1856,7 +1856,7 @@ self.__modified = False
 self.__last_modified = None
 @
 
-\subsubsection{Setting the grade}
+\subsection{Setting the grade}
 
 We can accept the grade either as a grade object or as a string.
 We must check both values for correctness before we update either of the 
