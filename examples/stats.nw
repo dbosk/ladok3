@@ -197,7 +197,7 @@ However, LADOK returns the results for all components, not just the one
 requested for.
 <<get the results for the course round>>=
 component = course_round.components()[0]
-results = ladok.search_reported_results(
+results = ladok.search_reported_results_JSON(
   course_round.round_id, component.instance_id)
 @
 
