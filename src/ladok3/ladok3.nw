@@ -1863,6 +1863,8 @@ self.__populate_attributes(**response.json()["Resultat"][0])
 
 
 
+\part{API calls}
+
 \input{api.tex}
 
 
