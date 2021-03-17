@@ -566,6 +566,22 @@ def filter_on_keys(items, /, **kwargs):
   return list(items)
 @
 
+To achieve disjunctive behaviour, we must run [[filter_on_keys]] once per 
+keyword.
+However, that causes problems if an item matches on more than one key.
+The following function solves that problem by not checking an item against more 
+keys once it has matched one key.
+<<functions>>=
+def filter_on_any_key(items, /, **kwargs):
+  matching_items = []
+  for item in items:
+    for key in kwargs:
+      if operator.attrgetter(key)(item) == kwargs[key]:
+        matching_items.append(item)
+        break
+
+  return matching_items
+@
 
 
 \section{Extracting translations}
