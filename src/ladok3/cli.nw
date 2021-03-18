@@ -280,7 +280,7 @@ def clear_cache(ls, args):
 @
 
 
-\section{Subcommands}
+\section{Other subcommands}
 
 To add a subcommand we must add a subparser to the [[subp]] parser object from 
 above, we do this in [[<<add subparsers to subp>>]].
