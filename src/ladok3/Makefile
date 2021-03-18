@@ -1,49 +1,32 @@
 .PHONY: all
-all: ladok3.pdf
-
-LATEXFLAGS+=	-shell-escape
-TEX_PYTHONTEX=	yes
-
-ladok3.pdf: ladok3.tex api.tex
-ladok3.pdf: preamble.tex abstract.tex ../../LICENSE
-ladok3.pdf: __init__.py
-ladok3.pdf: ../../examples/example_LadokSession.py
-ladok3.pdf: ../../examples/example_Student.py
-ladok3.pdf: ../../examples/example_Course.py
-ladok3.pdf: ../../examples/prgi.tex
-ladok3.pdf: ../../examples/stats.tex
-ladok3.pdf: DD1315.csv
-
-ladok3.tex: ladok3.nw
-api.tex: api.nw
-
-../%:
-	${MAKE} -C $(dir $@) $(notdir $@)
+all: ladok3.tex api.tex cli.tex data.tex
 
 
 .PHONY:
-all: __init__.py
+all: __init__.py cli.py data.py
+all: ladok.bash
 
 ladok3.py: ladok3.nw api.nw
 
 __init__.py: ladok3.py
 	mv $^ $@
 
-DD1315.csv: ../../examples/DD1315.csv
-	ln -sf $^ $@
+ladok.bash: __init__.py cli.py data.py
+	register-python-argcomplete ladok > $@
+
 
 .PHONY: clean
 clean:
 	${RM} __init__.py ladok3.py
-	${RM} ladok3.pdf ladok3.tex api.tex
+	${RM} ladok3.tex api.tex
+	${RM} cli.py data.py ladok.bash
+	${RM} cli.tex data.tex
 
 .PHONY: distclean
 distclean:
 	${RM} -Rf __pycache__
-	${MAKE} -C ../../examples clean distclean
 
 
 
 INCLUDE_MAKEFILES=../../makefiles
-include ${INCLUDE_MAKEFILES}/tex.mk
 include ${INCLUDE_MAKEFILES}/noweb.mk

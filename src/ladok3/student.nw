@@ -1,0 +1,26 @@
+We want to be able to do the following with student data:
+\begin{itemize}
+\item view a student's reported results on a particular course.
+\end{itemize}
+
+
+\section{The [[student]] command}
+
+As was pointed out in \cref{process-command-line-options}, we add the 
+[[student]] subcommand to [[<<add subparsers>>]] and using the [[subp]] object.
+<<add subparsers>>=
+student_parser = subp.add_parser("student",
+  help="Lists data about a student",
+  description="Lists data about a student")
+student_parser.set_defaults(func=student_command)
+add_student_id_options(student_parser)
+@
+
+The [[student_command]] function must take the LADOK session object~[[ls]] and 
+the options object~[[args]] as an argument 
+(\cref{process-command-line-options}).
+<<functions>>=
+def student_command(ls, args):
+  <<process student options>>
+@
+

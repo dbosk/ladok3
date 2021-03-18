@@ -1,0 +1,190 @@
+This is the documentation of the command-line interface module ([[cli]]) of the 
+[[ladok3]] package, [[<<cli.py>>]].
+
+The command-line interface is divided into subcommands, similar to Git.
+Currently, we provide the following commands:
+\begin{description}
+\item[data]
+The command outputs all results for all rounds of a course in CSV format.
+\end{description}
+
+
+\section{Overview of the source code and dependencies}
+
+We use [[argparse]] with [[argcomplete]] to handle the command-line interface.
+We use [[appdirs]] to handle configuration directories on various systems, we 
+set up a global [[dirs]] that we can use.
+<<cli.py>>=
+#!/bin/env python3
+"""A command-line interface for LADOK 3"""
+
+import appdirs
+import argcomplete, argparse
+import json
+import os
+import re
+import sys
+import traceback
+
+<<modules>>
+
+dirs = appdirs.AppDirs("ladok", "dbosk@kth.se")
+
+<<functions>>
+<<command-line interface>>
+@
+
+
+\section{A command-line interface}%
+\label{command-line-interface}
+
+If we run this script as a program, we want to provide a command-line 
+interface.
+This is a standard Pythonic if-main construction.
+<<command-line interface>>=
+def main():
+  """Run the command-line interface for the ladok command"""
+  <<process command-line options>>
+
+if __name__ == "__main__":
+  try:
+    main()
+    sys.exit(0)
+  except Exception as e:
+    err(-1, e)
+@
+
+We want uniform error handling.
+We will use the function [[err]] for errors and [[warn]] for warnings, both 
+inspired by err(3) and warn(3) in the BSD world.
+<<functions>>=
+def err(rc, msg):
+  print(f"{sys.argv[0]}: error: {msg}", file=sys.stderr)
+  traceback.print_exc(file=sys.stderr)
+  sys.exit(rc)
+
+def warn(msg):
+  print(f"{sys.argv[0]}: {msg}", file=sys.stderr)
+@
+
+
+\subsection{Process command-line options}%
+\label{process-command-line-options}
+
+We'll use [[argparse]] to parse the command-line options.
+Remember that we process [[argv]] passed to the function, not [[sys.argv]] 
+directly.
+Then we must first add the global options (to [[argp]]) and then the subparsers 
+(to [[subp]]).
+<<process command-line options>>=
+argp = argparse.ArgumentParser(
+  description="Command-line interface for LADOK3",
+  epilog="Web: https://github.com/dbosk/ladok3"
+)
+<<add configuration options>>
+subp = argp.add_subparsers(required=True)
+<<add subparsers to subp>>
+argcomplete.autocomplete(argp)
+args = argp.parse_args()
+<<process configuration options>>
+ls = ladok3.LadokSessionKTH(LADOK_USER, LADOK_PASS)
+<<execute subcommand>>
+@
+
+For each subcommand, we will add a subparser ([[subp.add_parser]]) that will 
+set the [[func]] attribute.
+Then we can execute the correct function and let that function check the 
+remaining arguments.
+We must also pass on a LADOK session object~[[ls]].
+<<execute subcommand>>=
+if "func" in args:
+  args.func(ls, args)
+@
+
+
+\subsection{Configuration}
+
+We must read the following configuration:
+\begin{enumerate}
+\item credentials for LADOK, \ie username ([[LADOK_USER]]) and password 
+([[LADOK_PASS]]) of the LADOK user;
+\end{enumerate}
+
+The credentials will be stored in a configuration file, [[config.json]], in 
+JSON format, \eg:
+\begin{minted}{json}
+{
+  "username": "the username",
+  "password": "the password"
+}
+\end{minted}
+They can alternatively be provided through the environment variables 
+[[LADOK_USER]] and [[LADOK_PASS]].
+The environment has priority over the configuration file.
+The configuration file is located in [[dirs.user_config_dir]].
+This directory varies by platform.
+
+We want to allow the user to specify different locations for the configuration.
+
+\paragraph{Location of configuration files}
+
+We want the user to be able to specify the location of the configuration 
+file.
+<<add configuration options>>=
+argp.add_argument("-f", "--config-file",
+  default=f"{dirs.user_config_dir}/config.json",
+  help=f"Path to configuration file, default: {dirs.user_config_dir}/config.json")
+@ Since we provide the default value here, we can always rely on it to be 
+available, so we can use [[args.config_file]] directly when we get the 
+credentials.
+
+We want to read the LADOK credentials to construct a LADOK-session 
+object~[[ls]] that will be used throughout.
+<<process configuration options>>=
+LADOK_USER, LADOK_PASS = load_credentials(args.config_file)
+@
+
+\paragraph{User credentials}
+
+We can read the credentials from two places: the environment or a configuration 
+file.
+We try the environment first and the configuration file second.
+
+The [[load_credentials]] function will try to get the LADOK user credentials 
+from the configuration.
+The environment is given priority, so it tries that first.
+If it succeeds, it returns those credentials.
+Otherwise, it tries to find the credentials in a configuration file.
+<<functions>>=
+def load_credentials(filename):
+  """Load credentials from environment or file named filename"""
+  try:
+    user = os.environ["LADOK_USER"]
+    passwd = os.environ["LADOK_PASS"]
+    return user, passwd
+  except:
+    pass
+
+  try:
+    with open(filename) as conf_file:
+      config = json.load(conf_file)
+    return config["username"], config["password"]
+  except:
+    raise Exception("Cannot find credentials.")
+@
+
+
+\section{Subcommands}
+
+To add a subcommand we must add a subparser to the [[subp]] parser object from 
+above, we do this in [[<<add subparsers to subp>>]].
+Every subcommand exists in a separate module and that module provides the 
+function [[add_command_options]] that takes [[subp]] as an argument.
+
+We add the [[data]] subcommand.
+<<modules>>=
+import ladok3.data
+@
+<<add subparsers to subp>>=
+ladok3.data.add_command_options(subp)
+@

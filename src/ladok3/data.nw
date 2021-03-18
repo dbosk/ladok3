@@ -11,9 +11,14 @@ between (similar) courses?
 \item How do throughput distributions vary between years?
 \end{enumerate}
 
-We provide the program [[statsdata.py]] to extract the necessary data from 
-LADOK (\cref{StatsData}).
-This program will produce CSV-formated data to answer those questions.
+We provide the module [[data]] ([[<<data.py>>]]) to extract the necessary data 
+from LADOK (\cref{StatsData}).
+This is a subcommand for the [[ladok]] command-line interface.
+It can be used like this:
+\begin{minted}{bash}
+ladok data DD1315 > DD1315.csv
+\end{minted}
+This program will produce CSV-formated data to answer the questions above.
 The data is formated like this:
 \begin{itemize}
 \item course,
@@ -93,53 +98,53 @@ This yields \cref{GradeStatsAvg}.
 
 \stdoutpythontex
 
-\section{Getting the data, [[statsdata.py]]}\label{StatsData}
+\section{The [[data]] subcommand}\label{StatsData}
 
-We have the [[statsdata.py]] program.
-We take a course code as an argument, then we produce CSV data for that course.
-
+This is a subcommand run as part of the [[ladok3.cli]] module.
+We provide a function [[add_command_options]] that adds the subcommand options 
+to a given parser.
 We need access to LADOK through the [[ladok3]] module.
 We will also write data to disk in CSV form, so we need the [[csv]] module.
-<<statsdata.py>>=
-import argparse
+<<data.py>>=
 import csv
 import datetime
 import ladok3
 import os
 import sys
 
-<<data functions>>
+<<functions>>
 
-def main():
-  <<process statsdata command-line arguments into args>>
+def add_command_options(parser):
+  <<add data parser to parser>>
+  <<add data command arguments to data parser>>
+
+def command(ladok, args):
   <<produce data about course specified in args>>
-
-if __name__ == "__main__":
-  main()
 @
 
-We set up the argument parser and parse the command line.
-<<process statsdata command-line arguments into args>>=
-parser = argparse.ArgumentParser(
-  description="Produce CSV data from LADOK about a course")
+\subsection{Setting up the data command options}
 
-parser.add_argument("course_code",
-  help="The course code of the course to analyze")
+We add a subparser.
+We set it up to use the function [[data_command]].
+<<add data parser to parser>>=
+data_parser = parser.add_parser("data",
+  help="Returns course results data in CSV form")
+data_parser.set_defaults(func=command)
+@
 
-args = parser.parse_args()
+We take a course code as an argument, then we produce CSV data for that course.
+<<add data command arguments to data parser>>=
+data_parser.add_argument("course_code",
+  help="The course code of the course for which to export data")
 @
 
 
-\paragraph{Producing data}
+\section{Producing data}
 
 We fetch the data from LADOK and print it in CSV format to standard out 
 ([[sys.stdout]]).
 This way the user can deal with how to store the data.
 <<produce data about course specified in args>>=
-ladok = ladok3.LadokSessionKTH(
-        os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
-        test_environment=False) # for experiments
-
 data_writer = csv.writer(sys.stdout)
 course_rounds = ladok.search_course_rounds(code=args.course_code)
 
@@ -165,7 +170,7 @@ This is done by the function~[[extract_data_for_round]].
 We need access to LADOK through the [[ladok]] object of type [[LadokSession]].
 We also need the course round through the [[course_round]] object of type 
 [[CourseRound]].
-<<data functions>>=
+<<functions>>=
 def extract_data_for_round(ladok, course_round):
   <<compute start and length of the course>>
   <<get the results for the course round>>
@@ -197,7 +202,7 @@ However, LADOK returns the results for all components, not just the one
 requested for.
 <<get the results for the course round>>=
 component = course_round.components()[0]
-results = ladok.search_reported_results(
+results = ladok.search_reported_results_JSON(
   course_round.round_id, component.instance_id)
 @
 
@@ -249,7 +254,7 @@ else:
 
 We want to filter out some values from the data.
 We only want to keep students who are registered on the course the first time.
-<<data functions>>=
+<<functions>>=
 def clean_data(data):
   data = list(data)
   students_to_remove = reregistered_students(data)
@@ -261,7 +266,7 @@ started.
 Thus we remove any student who has a result before the course.
 It would be more exact to remove students who are in fact reregistered in 
 LADOK, but we leave that for a future version.
-<<data functions>>=
+<<functions>>=
 def reregistered_students(data):
   students = set()
   for student, _, _, time in data:

@@ -1,0 +1,114 @@
+\documentclass[a4paper]{report}
+\usepackage{noweb}
+% Needed to relax penalty for breaking code chunks across pages, otherwise 
+% there might be a lot of space following a code chunk.
+\def\nwendcode{\endtrivlist \endgroup}
+\let\nwdocspar=\smallbreak
+
+\usepackage[hyphens]{url}
+\usepackage{hyperref}
+\usepackage{authblk}
+
+\input{preamble.tex}
+
+\title{%
+  A LADOK3 Python API
+}
+\author{%
+  Alexander Baltatzis,
+  Daniel Bosk,
+  Gerald Q.\ \enquote{Chip} Maguire Jr.
+}
+\affil{%
+  KTH EECS\\
+  \texttt{\{alba,dbosk,maguire\}@kth.se}
+}
+
+\begin{document}
+\maketitle
+
+\vspace*{\fill}
+\VerbatimInput{../LICENSE}
+\clearpage
+
+\begin{abstract}
+  \input{abstract.tex}
+\end{abstract}
+\clearpage
+
+\tableofcontents
+\clearpage
+
+@
+\chapter{Introduction}
+
+This is the documented source code of the LADOK3 API wrapper for Python, the 
+package [[ladok3]].
+You can install it by running
+\begin{minted}{bash}
+pip3 install ladok3
+\end{minted}
+in the terminal.
+You can find a quick reference by running
+\begin{minted}[firstnumber=last]{bash}
+pydoc ladok3
+\end{minted}
+
+We provide the main class [[LadokSession]].
+The [[LadokSession]] class acts like \enquote{factories} and will return 
+objects representing various LADOK data.
+These data objects' classes inherit the [[LadokData]] and [[LadokRemoteData]] 
+classes.
+Data of the type [[LadokData]] is not expected to change, unlike 
+[[LadokRemoteData]], which is.
+Objects of type [[LadokRemoteData]] know how to update themselves, \ie fetch 
+and refresh their data from LADOK.
+When relevant they can also write data to LADOK, \ie update entries such as 
+results.
+
+One design criteria is to improve performance.
+We do this by caching all factory methods of any [[LadokSession]].
+The [[LadokSession]] itself is also designed to be cacheable: if the session to 
+LADOK expires, it will automatically reauthenticate to establish a new session.
+
+
+
+\part{The library}
+
+\input{../src/ladok3/ladok3.tex}
+
+
+
+\part{API calls}
+
+\input{../src/ladok3/api.tex}
+
+
+
+\part{A command-line interface}
+
+\chapter{The base interface}
+
+\input{../src/ladok3/cli.tex}
+
+
+\chapter{The \texttt{data} command}
+
+\input{../src/ladok3/data.tex}
+
+
+
+\part{Other example applications}
+
+\chapter{Transfer results from KTH Canvas to LADOK}
+
+Here we provide an example program~[[prgi.py]] which exports results from KTH 
+Canvas to LADOK for the introductory programming course~prgi (DD1315).
+
+\input{../examples/prgi.tex}
+
+
+\printbibliography
+
+
+\end{document}
