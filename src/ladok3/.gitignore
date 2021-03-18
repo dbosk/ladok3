@@ -16,4 +16,7 @@ cli.py
 cli.tex
 data.py
 data.tex
+report.py
+report.tex
+
 ladok.bash

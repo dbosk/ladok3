@@ -248,3 +248,12 @@ import ladok3.data
 <<add subparsers to subp>>=
 ladok3.data.add_command_options(subp)
 @
+
+We add the [[report]] command.
+<<modules>>=
+import ladok3.report
+@
+<<add subparsers to subp>>=
+ladok3.report.add_command_options(subp)
+@
+

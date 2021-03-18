@@ -12,7 +12,7 @@ between (similar) courses?
 \end{enumerate}
 
 We provide the module [[data]] ([[<<data.py>>]]) to extract the necessary data 
-from LADOK (\cref{StatsData}).
+from LADOK (\cref{DataCommand}).
 This is a subcommand for the [[ladok]] command-line interface.
 It can be used like this:
 \begin{minted}{bash}
@@ -98,7 +98,7 @@ This yields \cref{GradeStatsAvg}.
 
 \stdoutpythontex
 
-\section{The [[data]] subcommand}\label{StatsData}
+\section{The [[data]] subcommand}\label{DataCommand}
 
 This is a subcommand run as part of the [[ladok3.cli]] module.
 We provide a function [[add_command_options]] that adds the subcommand options 
@@ -125,7 +125,7 @@ def command(ladok, args):
 \subsection{Setting up the data command options}
 
 We add a subparser.
-We set it up to use the function [[data_command]].
+We set it up to use the function [[command]].
 <<add data parser to parser>>=
 data_parser = parser.add_parser("data",
   help="Returns course results data in CSV form")
