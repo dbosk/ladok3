@@ -1,485 +1,46 @@
-# ladok3
+# ladok3: Python wrapper for LADOK3 API
 
-## class LadokSession
-
-Det här är ett gränssnitt för att läsa och skriva resultat
- till ladok 3. Det består av:
-
-* \_\_init__         konstruktor som loggar in och hämtar grunddata
-* get_results      returnerar en dictionary med momentnamn och resultat
-* save_result      sparar resultat för en student som utkast
-* get_student_name
-
-### \_\_init__
+This package provides a wrapper for the LADOK3 API used by 
+[start.ladok.se][ladok]. This makes it easy to automate reporting grades, 
+compute statistics etc.
 
 ```python
-    #####################################################################
-    #
-    # init
-    #
-    # Konstruktorn loggar in på ladok3 över https genom att härma en
-    # webbläsare. 
-    #
-    # username            - ditt loginid t.ex. alba
-    # password            - lösenord
-    # testenvironment_flag  - set to True to run in the Ladok test environment, by default it is False
-   
-    def __init__(self, username, password, testenvironment_flag = False):
+import ladok3
+
+ls = ladok3.LadokSessionKTH("user", "password")
+
+student = ls.get_student("123456-1234")
+
+course_participation = student.courses(code="AB1234")[0]
+for result in course_participation.results():
+  print(f"{course_participation.code} {result.component}: "
+    f"{result.grade} ({result.date})")
+
+component_result = course_participation.results(component="LAB1")[0]
+component_result.set_grade("P", "2021-03-15")
 ```
 
-### get_results
+There are more detailed usage examples in the details documentation that can be 
+round with the [releases][releases] and in the `examples` directory.
 
-```python
-    #####################################################################
-    #
-    # get_results
-    #
-    # person_nr           - personnummer, flera format accepteras
-    #                       t.ex. 19461212-1212
-    # course_code         - kurskod t.ex. DD1321
-    #
-    # RETURNERAR en dictionary från ladok med momentnamn, resultat
-    #
-    # {'LABP': {'date': '2019-01-14', 'grade': 'P', 'status': 'attested'},
-    #  'LABD': {'date': '2019-03-23', 'grade': 'E', 'status': 'pending(1)'},
-    #  'TEN1': {'date': '2019-03-13', 'grade': 'F', 'status': 'pending(2)'}}
-    #
-    #  status:  kan ha följande värden vilket gissningsvis betyder: 
-    #           attested   - attesterad
-    #           pending(1) - utkast
-    #           pending(2) - klarmarkerad
-    #
-
-    def get_results(self, person_nr_raw, course_code):
-```
-
-### save_result
-
-```python
-    #####################################################################
-    #
-    # save_result
-    #
-    # person_nr           - personnummer, flera format accepteras enligt regex:
-    #                       (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
-    # course_code         - kurskod t.ex. DD1321
-    # course_moment       - ladokmoment/kursbetyg t.ex. TEN1, LAB1, DD1321 (!)
-    #                       om labmomententet är samma som course_code så sätts kursbetyg!
-    # result_date         - betygsdatum, flera format accepteras enligt regex
-    #                       (\d\d)?(\d\d)-?(\d\d)-?(\d\d)
-    # grade_code          - det betyg som ska sättas
-    # grade_scale         - betygsskala t.ex. AF eller PF. Möjliga betygsskalor
-    #                       listas i self.__grade_scales. 
-    #
-    # RETURNERAR True om det gått bra, kastar (förhoppningsvis) undantag
-    #            om det går dåligt. 
-    
-    def save_result(self, person_nr_raw, course_code, course_moment, result_date_raw, grade_raw, grade_scale):
-```
-
-### get_student_name
-
-```python
-    #####################################################################
-    #
-    # get_student_name
-    #
-    # person_nr           - personnummer, flera format accepteras enligt regex:
-    #                       (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
-    #
-    # RETURNERAR en dictionary med för- och efternamn
-    #
-    # {"first_name" : 'Anna', "last_name : 'Andersson'}
-    #
-    
-    def get_student_name(self, person_nr_raw):
-```
-
-### get_student_data_JSON
-```python
-    #####################################################################
-    #
-    # get_student_data_JSON
-    #
-    # person_nr           - personnummer, flera format accepteras enligt regex:
-    #                       (\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)
-    #
-    # RETURNERAR JSON of the request for studentinformation/student
-    def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
-```
-### logout
-```python
-    #####################################################################
-    #
-    # logout
-    #                        Terminate the Ladok session
-    #
-    # RETURNERAR response to the request
-    #
-    # Example:     status=ladok_session.logout()
-    def logout(self):
-```
-
-### all_grading_scale
-```python
-    #####################################################################
-    #
-    # all_grading_scale
-    #
-    #
-    # RETURNERAR en dictionary of the grading scales
-    def all_grading_scale(self):
-```
-### grading_rights
-```python
-    #####################################################################
-    #
-    # grading_rights
-    #
-    #
-    # RETURNERAR en dictionary of the grading rights (of the logged in user)
-    def grading_rights(self):
-```
-### change_local
-```python
-    #####################################################################
-    #
-    # change_locale
-    #
-    # lang               - language code 'en' or 'sv', defaults to 'sv'
-    #
-    # RETURNERAR reponse to the request
-    #
-    # Example:     status=ladok_session.change_locale('en')
-    def change_locale(self, lang = 'sv'):
-```
-### course_instances_JSON
-
-```python
-    #####################################################################
-    #
-    # course_instances_JSON
-    #
-    # course_code        - course code, such as "II2202"
-    #
-    # lang               - language code 'en' or 'sv', defaults to 'sv'
-    #
-    # RETURNERAR JSON of resultat/kurstillfalle
-    #
-    # Example: ladok_session.course_instances_JSON('II2202', 'en')
-    def course_instances_JSON(self, course_code, lang = 'sv'):
-```
-### organization_info_JSON
-```python
-    #####################################################################
-    #
-    # organization_info_JSON
-    #
-    # RETURNERAR JSON of resultat/organisation/utanlankar for the entire institution of the logged in user
-    def organization_info_JSON(self):
-```
-
-### period_info_JSON
-```python
-    #####################################################################
-    #
-    # period_info_JSON
-    #
-    # RETURNERAR JSON of /resultat/grunddata/period
-    def period_info_JSON(self):
-```
-### instance_info
-```python
-    #####################################################################
-    #
-    # instance_info
-    #
-    # course_code        - course code, such as "II2202"
-    #
-    # instance_code      - instance of the course ('TillfallesKod')
-    # 
-    # lang               - language code 'en' or 'sv', defaults to 'sv'
-    #
-    # RETURNERAR en dictionary of course instance information
-    #
-    # Example: info=ladok_session.instance_info('II2202', instance_code, 'en')
-    def instance_info(self, course_code, instance_code, lang = 'sv'):
-```
-### course_instance_JSON
-```python
-    #####################################################################
-    #
-    # course_instance_JSON
-    #
-    # uid                -  uid of c course instance
-    #
-    # RETURNERAR JSON of resultat/utbildningsinstans/kursinstans
-    #
-    # Example: kurs=ladok_session.course_instance_JSON(ii['Utbildningsinstans']['Uid']
-    def course_instance_JSON(self, uid):
-```
-### participants_JSON
-```python
-    #####################################################################
-    #
-    # participants
-    #
-    # uid                -  uid of c course instance
-    #
-    # RETURNERAR JSON of participants in a given course instance
-    # 
-    # Example:         instance_code='50287'
-    #                  ii=ladok_session.instance_info('II2202', instance_code, 'en')
-    #                  pl=ladok_session.participants(ii['Uid'])
-    def participants_JSON(self, uid):
-```
-### studystructure_student_JSON
-```python
-    #####################################################################
-    #
-    # studystructure_student_JSON
-    #
-    # uid                -  uid of a student
-    #
-    # RETURNERAR en dictionary of student information
-    def studystructure_student_JSON(self, uid):
-```
-### undervisningssprak_JSON
-```python
-    #####################################################################
-    #
-    # undervisningssprak
-    #
-    # RETURNERAR en dictionary of languages used for instruction
-    def undervisningssprak_JSON(self):
-```
-### i18n_translation_JSON
-```python
-    #####################################################################
-    #
-    # i18n_translation_JSON
-    #
-    # lang               - language code 'en' or 'sv', defaults to 'sv'
-    # RETURNERAR JSON of i18n translations used in Ladok3
-    def i18n_translation_JSON(self, lang = 'sv'):
-```
-Example use is:
-```python
-    translation_table_English=dict()
-    for i in translations_English['Oversattningar']:
-        translation_table_English[i['I18nNyckel']]=i['Text']
-
-    translation_table_Swedish=dict()
-    for i in translations_Swedish['Oversattningar']:
-        translation_table_Swedish[i['I18nNyckel']]=i['Text']
-
-    translations_table=[]
-    for i in translations_English['Oversattningar']:
-        translations_table.append({'key': i['I18nNyckel'],
-                                  'en': translation_table_English[i['I18nNyckel']],
-                                  'sv': translation_table_Swedish[i['I18nNyckel']]})
-
-    translations_df=pd.json_normalize(translations_table)
-
-    output_file="ladoki18n-translations"
-    write_xlsx(output_file, translations_df, 'i18n')
-```
-### svenskort_JSON
-```python
-    #####################################################################
-    #
-    # svenskort_JSON
-    #
-    # RETURNERAR JSON of places in Sweden with their KommunID
-    def svenskort_JSON(self):
-```
-
-### kommuner_JSON
-```python
-    #####################################################################
-    #
-    # kommuner_JSON
-    #
-    # RETURNERAR JSON of Kommun in Sweden
-    def kommuner_JSON(self):
-```
-
-### lander_JSON
-```python
-    #####################################################################
-    #
-    # lander_JSON
-    #
-    # RETURNERAR JSON of countries
-    def lander_JSON(self):
-```
-### undervisningstid_JSON
-```python
-    #####################################################################
-    #
-    # undervisningstid_JSON
-    #
-    # RETURNERAR JSON of teaching times
-    def undervisningstid_JSON(self):
-```
-
-### successivfordjupning_JSON
-```python
-    #####################################################################
-    #
-    # successivfordjupning_JSON
-    #
-    # RETURNERAR JSON of Successive Specializations
-    def successivfordjupning_JSON(self):
-```
-
-### undervisningsform_JSON
-```python
-    #####################################################################
-    #
-    # undervisningsform_JSON
-    #
-    # RETURNERAR JSON of forms of education
-    def undervisningsform_JSON(self):
-```
-
-### LokalaPerioder_JSON
-```python
-    #####################################################################
-    #
-    # LokalaPerioder_JSON
-    #
-    # RETURNERAR JSON of local periods
-    def LokalaPerioder_JSON(self):
-```
-
-### nivainomstudieordning_JSON
-```python
-    #####################################################################
-    #
-    # nivainomstudieordning_JSON
-    #
-    # RETURNERAR JSON of education levels
-    def nivainomstudieordning_JSON(self):
-```
-
-### amnesgrupp_JSON
-```python
-    #####################################################################
-    #
-    # amnesgrupp_JSON
-    #
-    # RETURNERAR JSON of subject area groups
-    def amnesgrupp_JSON(self):
-```
-### studietakt_JSON
-```python
-    #####################################################################
-    #
-    # studietakt_JSON
-    #
-    # RETURNERAR JSON of study tempos
-    def studietakt_JSON(self):
-```
-### finansieringsform_JSON
-```python
-    #####################################################################
-    #
-    # finansieringsform_JSON
-    #
-    # RETURNERAR JSON forms of financing
-    def finansieringsform_JSON(self):
-```
-### utbildningsomrade_JSON
-```python
-    #####################################################################
-    #
-    # utbildningsomrade_JSON
-    #
-    # RETURNERAR JSON of subjects
-    def utbildningsomrade_JSON(self):
-```
-### kravpatidigarestudier_JSON
-```python
-    #####################################################################
-    #
-    # kravpatidigarestudier_JSON
-    #
-    # RETURNERAR JSON of krequirements for earlier studies
-    def kravpatidigarestudier_JSON(self):
-```
-### studieordning_JSON
-```python
-    #####################################################################
-    #
-    # studieordning_JSON
-    #
-    # RETURNERAR JSON of study regulation
-    def studieordning_JSON(self):
-```
-### organisation_by_uid_JSON
-```python
-    #####################################################################
-    #
-    # organisation_by_uid_JSON
-    #
-    # organisationUid           -- organization's UID
-    #
-    # RETURNERAR JSON of selected organization
-    def organisation_by_uid_JSON(self, organisationUid):
-```
-### utbildningstyp_JSON
-```python
-    #####################################################################
-    #
-    # utbildningstyp_JSON
-    #
-    # RETURNERAR JSON of types of education
-    def utbildningstyp_JSON(self):
-```
-
-### aktivitetstillfallestyp_JSON
-```python
-    #####################################################################
-    #
-    # aktivitetstillfallestyp_JSON
-    #
-    # RETURNERAR JSON of activities
-    def aktivitetstillfallestyp_JSON(self):
-```
-### catalog_service_index__JSON
-```python
-    #####################################################################
-    #
-    # catalog_service_index__JSON
-    #
-    # RETURNERAR JSON of admission round
-    def catalog_service_index__JSON(self):
-```
-### omradesbehorighet_JSON
-```python
-    #####################################################################
-    #
-    # omradesbehorighet_JSON
-    #
-    # RETURNERAR JSON of "omradesbehorighet"
-    def omradesbehorighet_JSON(self):
-```
-### instance_info_uid
-```python
-    #####################################################################
-    #
-    # instance_info_uid
-    #
-    # instance_uid       -- course's Uid (from course_integration_id)
-    # 
-    # RETURNERAR en dictionary of course instance information
-    #
-    # Example: ii=ladok_session.instance_info_uid(instance_uid)
-```
+[ladok]: https://start.ladok.se
+[releases]: https://github.com/dbosk/ladok3/releases
 
 
-### canvas_ladok3_spreadsheet.py
+## More examples
+
+There are some examples that can be found in the `examples` directory:
+
+  - `example_LadokSession.py` just shows how to establish a session.
+  - `example_Course.py` shows course data related examples.
+  - `example_Student.py` shows student data related examples.
+  - `prgi.py` shows how to transfer grades from KTH Canvas to LADOK.
+  - `statsdata.py` shows how to extract data for doing statistics for a course 
+    and the students' results.
+
+We also have a few more examples described in the sections below.
+
+### `canvas_ladok3_spreadsheet.py`
 
 Purpose: Use the data in a Canvas course room together with the data from Ladok3 to create a spreadsheet of students in the course
 and include their Canvas user_id, name, Ladok3 Uid, program_code, program name, etc.
@@ -499,7 +60,9 @@ canvas_ladok3_spreadsheet.py 12162
 
 canvas_ladok3_spreadsheet.py -t 'II2202 HT20-1'
 ```
-### ladok3_course_instance_to_spreadsheet.py
+
+
+### `ladok3_course_instance_to_spreadsheet.py`
 
 Purpose: Use the data in Ladok3 together with the data from Canvas to create a spreadsheet of students in a course
 instance and include their Canvas user_id (or "not in Canvas" if they do not have a Canvas user_id), name, Ladok3 Uid, program_code, program name, etc.
@@ -535,12 +98,13 @@ or
 ladok3_course_instance_to_spreadsheet.py 20979
 ```
 or
-# P1P2 is a nickname on a dashboard card for II2202 duing P1 and P2
 ```
+# P1P2 is a nickname on a dashboard card for II2202 duing P1 and P2
 ./ladok3_course_instance_to_spreadsheet.py P1P2
 ```
 
-### canvas_students_missing_integration_ids.py
+
+### `canvas_students_missing_integration_ids.py`
 
 Purpose: Use the data in a Canvas course room to create a spreadsheet of students in the course who are missing an integration ID.
 
@@ -551,7 +115,7 @@ canvas_students_missing_integration_ids.py canvas_course_id
 Output: outputs a file ('users_without_integration_ids-COURSE_ID.xlsx) containing a spreadsheet of the users information
 
 
-### cl_user_info.py
+### `cl_user_info.py`
 
 Purpose: Use the data in a Canvas course room together with the data from Ladok3 to find information about a user.
 

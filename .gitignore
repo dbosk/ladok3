@@ -1,3 +1,7 @@
+build/
+dist/
+*.egg-info/
+
 # ignore my Canvas configuration file
 config*.json*
 *.xslx
@@ -10,5 +14,7 @@ z*
 #ignore all backup files
 *~
 # ingnore .*
-.*
+#.*
 
+# ignore python files
+__pycache__

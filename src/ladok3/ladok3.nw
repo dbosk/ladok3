@@ -1,0 +1,1789 @@
+\chapter{Overview}
+
+This is the documented source code of the LADOK3 API wrapper for Python, the 
+package [[ladok3]].
+We use the standard structure for the script.
+We start with the imports and then our class definitions follow in 
+[[<<classes>>]] and some helper functions in [[<<functions>>]].
+<<ladok3.py>>=
+"""A Python wrapper for the LADOK3 API"""
+# -*- coding: utf-8 -*-
+import cachetools
+import datetime
+import functools
+import html
+import json
+import operator
+import re
+import requests
+import urllib.parse
+
+<<classes>>
+<<functions>>
+@
+
+
+\chapter{Accessing LADOK}\label{AccessingLADOK}
+
+To access LADOK we provide a class [[LadokSession]].
+An instance of this class provides the [[session]] attribute, which is an 
+authenticated session to LADOK's REST API.
+It uses the [[requests]] module.
+
+We can use the class as follows.
+\inputminted{python}{../examples/example_LadokSession.py}
+
+This chapter covers how the [[LadokSession]] and [[LadokSessionKTH]] classes 
+work.
+The remaining chapters cover what the [[ladok]] object can be used for.
+\Cref{StudentClasses} covers how we can work with student data.
+\Cref{CourseClasses} covers how we can work with course data.
+
+
+\section{The [[LadokSession]] class}\label{LadokSession}
+
+There are two categories of functionality that we want from the 
+[[LadokSession]] object.
+The first is the [[session]] attribute.
+This is an active and logged-in session that can be used to query LADOK (REST 
+API over HTTPS).
+The second is the set of methods to get objects of interest, these methods use 
+the [[session]] attribute to query data to create the objects.
+We cover the first (the [[session]] attribute) in this section and the second 
+(the data methods) in \cref{LadokSession-data-methods}.
+
+We want to provide the attribute [[session]] which is an active and logged-in 
+session for querying LADOK.
+We must thus handle authentication to LADOK.
+The authentication for using LADOK is performed using a university CAS system.
+The [[login]] method will set up a [[session]] object which is logged in.
+The [[login]] method will in turn use the [[cas_saml_login]] method at the 
+suitable place in the code to actually log in to LADOK by authenticating to the 
+appropriate university.
+We can provide the interactions with LADOK, but not with the CAS system.
+So that one is left to implement by a university-specific child class.
+We provide [[LadokSessionKTH]] as an example.
+
+We let the [[session]] attribute be a property, this way we can ensure that 
+there exists an active session whenever it is used.
+This also means that we don't log in until we actually need to use the 
+[[session]] attribute.
+We also automatically reauthenticate whenever the session has timed out.
+<<classes>>=
+class LadokSession:
+  """This is an interface for reading and writing data from and to LADOK."""
+  def __init__(self, test_environment=False):
+    """Log in and fetch base data"""
+    self.__session = None
+    self.__login_time = None
+    <<LadokSession constructor body>>
+
+  def login(self):
+    """Log in to LADOK"""
+    self.__login_time = datetime.datetime.now()
+    try:
+      <<log in to LADOK>>
+    except Exception as err:
+      self.__login_time = None
+      raise err
+
+  def cas_saml_login(self, url):
+    """Perform authentication to university CAS"""
+    raise NotImplementedError()
+
+  def logged_in(self):
+    """Check if we have an active, logged-in session"""
+    if self.__login_time:
+      timeout = datetime.timedelta(minutes=15)
+      return datetime.datetime.now() - self.__login_time < timeout
+    return False
+
+  def logout(self):
+    """Close the session"""
+    self.__login_time = None
+    <<log out from LADOK>>
+
+  @property
+  def session(self):
+    """A guaranteed to be active and logged in requests session to LADOK"""
+    if not self.logged_in():
+      self.login()
+    self.__login_time = datetime.datetime.now()
+    return self.__session
+
+  @property
+  def xsrf_token(self):
+    cookies = self.session.cookies.get_dict()
+    return next(cookies[cookie] for cookie in cookies if cookie == 'XSRF-TOKEN')
+
+  @session.setter
+  def session(self, new_value):
+    self.__session = new_value
+
+  <<LadokSession data methods>>
+
+class LadokSessionKTH(LadokSession):
+  def __init__(self, username, password, test_environment=False):
+    """Initialize KTH version of LadokSession"""
+    super().__init__(test_environment=test_environment)
+    self.__username = username
+    self.__password = password
+
+  def cas_saml_login(self, url):
+    """Do the CAS login"""
+    <<KTH CAS login procedure>>
+@
+
+Note that it's important to set [[login_time]] as soon as we start logging in 
+(first thing in the [[login]] method), because the login function will actually 
+use the [[session]] property.
+
+\subsection{Data about the session}
+
+The data that we must keep track of is which URL to use, \ie which system to 
+access: the production system or test system.
+To run against the test environment, change the base URL to
+\begin{center}
+\url{https://www.test.ladok.se}\footnote{%
+  According to 
+  \url{https://ladok.se/drift-och-support/produktionsmiljo-for-nya-ladok}.
+}
+\end{center}
+<<LadokSession constructor body>>=
+self.base_url = "https://www.start.ladok.se" if not test_environment \
+  else "https://www.test.ladok.se"
+self.base_gui_url = self.base_url + "/gui"
+self.base_gui_proxy_url = self.base_gui_url + "/proxy"
+@
+
+We also set the headers that we will accept.
+<<LadokSession constructor body>>=
+self.headers = { 'Accept' : 'application/vnd.ladok-resultat+json, \
+application/vnd.ladok-kataloginformation+json, \
+application/vnd.ladok-studentinformation+json, \
+application/vnd.ladok-studiedeltagande+json, \
+application/vnd.ladok-utbildningsinformation+json, \
+application/vnd.ladok-examen+json, application/vnd.ladok-extintegration+json, \
+application/vnd.ladok-uppfoljning+json, application/vnd.ladok-extra+json, \
+application/json, text/plain' }
+@
+
+\subsection{Signing in to LADOK}
+
+The aim of the [[self.login()]] method is to set up the [[self.session]] object 
+which will be used for requests to LADOK.
+What we do here is to go through the same steps as a user would do with the web 
+browser\footnote{%
+  This neat trick is due to Alexander Baltatzis.
+}.
+<<log in to LADOK>>=
+self.session = requests.session()
+<<get shibboleth url>>
+response = self.cas_saml_login(url)
+<<post CAS SAML response to LADOK>>
+@
+
+We let [[self.session]] be our (HTTP) session to LADOK.
+The login functions set this up.
+<<get shibboleth url>>=
+response = self.session.get(url = self.base_gui_url+'/loggain')
+response = self.session.get(url = self.base_gui_url+'/shiblogin')
+        
+shibstate = re.search('return=(.*?)(&|$)', response.url).group(1)
+url = urllib.parse.unquote(shibstate)
+@
+
+Now, we can use that URL to authenticate to the university using the 
+[[cas_saml_login]] method.
+In the case of the KTH CAS system, we do the following.
+<<KTH CAS login procedure>>=
+response = self.session.get(
+  url=url+'&entityID=https://saml.sys.kth.se/idp/shibboleth')
+        
+post_data = {
+  'shib_idp_ls_exception.shib_idp_session_ss': '',
+  'shib_idp_ls_success.shib_idp_session_ss': 'true',
+  'shib_idp_ls_value.shib_idp_session_ss': '',
+  'shib_idp_ls_exception.shib_idp_persistent_ss': '',
+  'shib_idp_ls_success.shib_idp_persistent_ss': 'true',
+  'shib_idp_ls_value.shib_idp_persistent_ss': '',
+  'shib_idp_ls_supported': 'true',
+  '_eventId_proceed': ''
+}
+
+response = self.session.post(
+  url=
+    'https://saml-5.sys.kth.se/idp/profile/SAML2/Redirect/SSO?execution=e1s1',
+  data=post_data)
+
+action = re.search('<form id="fm1" action="(.*?)" method="post">',
+  response.text).group(1)
+lt = re.search('<input type="hidden" name="lt" value="(.*?)" />',
+  response.text).group(1)
+execution = re.search('<input type="hidden" name="execution" value="(.*?)" />',
+  response.text).group(1)
+
+post_data = {
+  'username': self.__username,
+  'password': self.__password,
+  'lt': lt,
+  'execution': execution,
+  '_eventId': 'submit',
+  'subimt': 'Logga in'
+}
+
+response = self.session.post(
+  url='https://login.kth.se' + action,
+  data=post_data)
+
+action = re.search('<form action="(.*?)" method="post"', response.text)
+@ The new page has
+\begin{minted}{html}
+<form action="/idp/profile/SAML2/Redirect/SSO?execution=e1s3"
+  method="post" style="padding:10px" >
+\end{minted}
+So we don't want to match the closing of the tag, which we did before, since 
+that [[style]] attribute will break things.
+<<KTH CAS login procedure>>=
+if action is None:
+  raise Exception('Invalid username or password OR possibly the SAML \
+    configuration has changed, manually login an accept the changed \
+    information.')
+action = html.unescape(action.group(1))
+
+relay_state = re.search(
+  '<input type="hidden" name="RelayState" value="([^"]+)"\/>',
+  response.text)
+try:
+  relay_state = html.unescape(relay_state.group(1))
+except AttributeError:
+  raise Exception("Try to log in using a web browser and accept sharing data.")
+
+saml_response = re.search(
+  '<input type="hidden" name="SAMLResponse" value="(.*?)"/>',
+  response.text)
+saml_response = html.unescape(saml_response.group(1))
+
+post_data = {
+    'RelayState': relay_state,
+    'SAMLResponse': saml_response
+}
+
+response = self.session.post(url = action, data = post_data)
+
+return response
+@
+
+When we have [[relay_state]] and [[saml_response]] from the CAS system, we can 
+post them back to LADOK.
+<<post CAS SAML response to LADOK>>=
+if 'Din användare finns inte i Ladok' in response.text:
+  raise Exception('Signed in successfully, but not as a teacher.')
+@
+
+
+\subsection{Signing out of LADOK}
+
+We might also want to close the session\footnote{%
+  This code is a slight modification of the code provided by Maguire.
+}.
+<<log out from LADOK>>=
+def logout(self):
+  response = self.session.get(
+    url=self.base_gui_proxy_url + '/logout',
+    headers=self.headers)
+
+  if response.status_code == 200:
+    self.session.close()
+    self.session = None
+  else:
+    raise Exception("Failed to log out of LADOK.")
+@
+
+       
+\section{The [[LadokSession]] data methods}\label{LadokSession-data-methods}
+
+The data methods are essentially factories for various objects mapping to data 
+in LADOK.
+We will first look at the base classes and then provide methods that return 
+instances of various subclasses.
+
+\subsection{LADOK data base class: [[LadokData]]}
+
+Some objects will only have read-only attributes, like grade scales, whereas 
+others, like students, will have modifiable attributes, such as results, which 
+must be synced.
+
+We will provide properties for the various attributes.
+This way we can have read-only properties for attributes that cannot be 
+changed, such as students' names, and read--write properties for attributes 
+that can be changed, such as results.
+
+We also want to serialize the data.
+We will use the JSON format for this.
+We provide this as a read only property [[json]].
+If the output of [[json]] is given as the [[kwargs]] parameter to the 
+[[make_properties]] method, it will restore all the attributes.
+
+We provide the [[LadokData]] class with a constructor that takes keyword 
+arguments ([[**kwargs]]).
+These are not used, but just so that we can add [[super().__init__(**kwargs)]] 
+at the top of every constructor of the child classes.
+
+Thus, we have the following base class.
+<<classes>>=
+class LadokData:
+  """Base class for LADOK data"""
+  def __init__(self, /, **kwargs):
+    pass
+
+  def make_properties(self, kwargs):
+    """Turn keywords into private attributes and read-only properties"""
+    <<set up read-only properties>>
+
+  def __eq__(self, other):
+    if type(self) == type(other):
+      return self.__dict__ == other.__dict__
+    return False
+
+  def __repr__(self):
+    return str(self.json)
+
+  @property
+  def json(self):
+    """JSON compatible dictionary representation of the object"""
+    json_format = self.__dict__.copy()
+    for key, value in json_format.items():
+      if isinstance(value, LadokData):
+        json_format[key] = value.json
+    json_format["type"] = type(self).__name__
+    return json_format
+@
+
+\subsection{To and from JSON format}
+
+We want to be able to restore an object from that JSON formatted dictionary.
+We provide a function~[[restore]], which restores an object from a JSON-like 
+dictionary.
+The [[restore]] function uses the constructor and, in turn, the 
+[[__setup_properties]] method.
+<<function>>=
+def restore(json_dict):
+  if "type" not in json_dict:
+    return LadokData(**json_dict)
+
+  <<check type and return such object>>
+
+  raise TypeError(f"cannot restor type {json_dict.type}, not a known type")
+@
+
+For completeness, we also provide [[LadokDataEncoder]], a subclass of 
+[[JSONEncoder]].
+<<classes>>=
+class LadokDataEncoder(json.JSONEncoder):
+  def default(self, object):
+    if isinstance(object, LadokData):
+      return object.json
+    return super().default(object)
+@
+
+For the [[__setup_properties]] method, we want it to set up private attributes 
+and read-only properties for them.
+For each keyword in [[kwargs]], we add the private attribute using 
+[[setattr(self, ...)]] and the corresponding property to the class itself using 
+[[setattr(type(self), ...)]].
+(Note that we only add the property if it doesn't already exist.)
+We check the names, if the attributes already match the pattern for a private 
+attribute name, we don't \enquote{privatize} it again.
+<<set up read-only properties>>=
+for attribute in kwargs:
+  # private attributes are named on the form _class__attribute
+  priv_attr_prefix = f"_{type(self).__name__}__"
+  if priv_attr_prefix in attribute:
+    priv_attr_name = attribute
+    property_name = attribute.replace(priv_attr_prefix, "")
+  else:
+    priv_attr_name = priv_attr_prefix + attribute
+    property_name = attribute
+
+  setattr(self, priv_attr_name, kwargs[attribute])
+  if not hasattr(type(self), property_name):
+    setattr(type(self), property_name,
+      property(operator.attrgetter(priv_attr_name)))
+@
+
+\subsection{LADOK remote data base class: [[LadokRemoteData]]}
+
+The objects that can be modified can also be updated.
+They can be updated locally, which must be pushed to LADOK; they can be changed 
+remotely, which must be pulled from LADOK.
+These objects must also keep a LADOK session internally ([[self.ladok]]).
+<<classes>>=
+class LadokRemoteData(LadokData):
+  """Base class for remote LADOK data"""
+  def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
+    if "_LadokRemoteData__ladok" in kwargs:
+      self.make_properties(**kwargs)
+    else:
+      self.__ladok = kwargs.pop("ladok")
+
+  @property
+  def ladok(self):
+    return self.__ladok
+
+  def pull(self):
+    """Pull updates for object from LADOK"""
+    raise NotImplementedError("This object doesn't support pulling from LADOK")
+
+  def push(self):
+    """Push changes made to the object to LADOK"""
+    raise NotImplementedError("This object doesn't support pushing to LADOK")
+@
+
+The LADOK session object provides some methods for searching for data, \eg 
+students.
+These methods will return instances of [[LadokData]] or [[LadokRemoteData]].
+
+\subsection{Cached methods}
+
+Since the objects that can be updated can update themselves 
+([[LadokRemoteData]]), we can cache the factories to speed up interaction with 
+LADOK.
+Since Python uses references for objects, a cached object will always be 
+up-to-date if the program has made changes to it.
+This way we don't have to interact with the LADOK servers for every request, 
+but only when necessary.
+
+We will have a shared cache for all methods.
+<<LadokSession constructor body>>=
+self.cache = {}
+@ Then we can make the method caching by the following code.
+\begin{minted}{python}
+@cachetools.cachedmethod(
+  operator.attrgetter("cache"),
+  key=functools.partial(cachetools.keys.hashkey, "method"))
+def method(self, *args):
+  pass
+\end{minted}
+
+However, this construction cannot handle non-hashable objects (\eg dictionaries 
+and lists) as arguments.
+But the JSON representation of objects should be possible to make hashable.
+
+
+\chapter{Helper functions}
+
+We have several helper functions that are useful throughout.
+
+
+\section{Filter on keys}
+
+Many data methods will filter based on keys.
+We will provide the following function which does exactly that.
+This implementation runs through the (remaining) items once per keyword, 
+meaning it's conjunctive.
+<<functions>>=
+def filter_on_keys(items, /, **kwargs):
+  for key in kwargs:
+    items = filter(
+      lambda x: operator.attrgetter(key)(x) == kwargs[key],
+      items)
+  return list(items)
+@
+
+To achieve disjunctive behaviour, we must run [[filter_on_keys]] once per 
+keyword.
+However, that causes problems if an item matches on more than one key.
+The following function solves that problem by not checking an item against more 
+keys once it has matched one key.
+<<functions>>=
+def filter_on_any_key(items, /, **kwargs):
+  matching_items = []
+  for item in items:
+    for key in kwargs:
+      if operator.attrgetter(key)(item) == kwargs[key]:
+        matching_items.append(item)
+        break
+
+  return matching_items
+@
+
+
+\section{Extracting translations}
+
+In many cases, LADOK provides several translations.
+The do that in the form of this JSON structure:
+\begin{minted}{JSON}
+{
+  "Benamning": [
+    {
+      "Sprakkod": "sv",
+      "Text": "Laborationer",
+      "link": []
+    },
+    {
+      "Sprakkod": "en",
+      "Text": "Programming 
+          Assignments",
+      "link": []
+    }
+  ]
+}
+\end{minted}
+We provide the function [[get_translation]] to get the [[Text]] based on a 
+specified [[Sprakkod]].
+<<functions>>=
+def get_translation(lang_code, list_of_translations):
+  for translation in list_of_translations:
+    if translation["Sprakkod"] == lang_code:
+      return translation["Text"]
+  raise KeyError(f"no translation for language {lang_code}")
+@
+
+
+\chapter{Grading scales}
+
+LADOK has various grading scales.
+Whenever we deal with results, we must use them and their identifiers.
+We provide classes that wraps LADOK's grading scales: [[GradeScale]] and 
+[[Grade]].
+We also provide a method, [[get_grade_scales]], which returns a list of 
+[[GradeScale]] objects.
+
+
+\section{The [[get_grade_scales]] method}
+
+We start with the method that returns the grading-scales objects.
+This method interacts with LADOK, so we want to cache its responses.
+We also want to be able to filter the responses, we do this by keyword 
+arguments.
+<<LadokSession data methods>>=
+@cachetools.cachedmethod(
+  operator.attrgetter("cache"),
+  key=functools.partial(cachetools.keys.hashkey, "grade_scale"))
+def get_grade_scales(self, /, **kwargs):
+  """Return a list of (un)filtered grade scales"""
+  if len(kwargs) == 0:
+    return [GradeScale(**scale_data)
+              for scale_data in self.grade_scales_JSON()]
+
+  return filter_on_keys(self.get_grade_scales(), **kwargs)
+@
+
+The [[grade_scales_JSON]] method is part of the LADOK API and is documented in 
+\cref{GradeScalesJSON}.
+
+
+\section{The [[GradeScale]] and [[Grade]] classes}
+
+We need a class for grade scales.
+This object should be read only and we never need to update it, so we can base 
+it on [[LadokData]].
+[[kwargs]] will have the following format:
+\begin{pycode}
+import json
+import ladok3
+import os
+
+ladok = ladok3.LadokSessionKTH(
+          os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+          test_environment=True)
+
+print("\\begin{minted}{JSON}")
+print(json.dumps(ladok.grade_scales_JSON()[0], indent=2))
+print("\\end{minted}")
+\end{pycode}
+
+This makes the follow class design suitable.
+<<classes>>=
+class GradeScale(LadokData):
+  """A grade scale"""
+  def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
+
+    if "_GradeScale__id" in kwargs:
+      self.make_properties(**kwargs)
+    else:
+      self.__id = int(kwargs.pop("ID"))
+      self.__code = kwargs.pop("Kod")
+      self.__name = kwargs.pop("Benamning")["sv"]
+      self.__grades = [Grade(**grade_data)
+                        for grade_data in kwargs.pop("Betygsgrad")]
+
+  @property
+  def id(self):
+    return self.__id
+
+  @property
+  def code(self):
+    return self.__code
+
+  @property
+  def name(self):
+    return self.__name
+
+  def grades(self, /, **kwargs):
+    """Returns grades filtered on keyword"""
+    return filter_on_keys(self.__grades, **kwargs)
+
+  def __contains__(self, grade):
+    <<test if grade is in grading scale>>
+
+  def __iter__(self):
+    <<iterate over grades in grading scale>>
+@
+
+Then we need a class for the grades themselves.
+We construct a grade from the LADOK JSON data.
+We also implement easy comparison so that we can search for the string 
+\enquote{A} instead of the [[Grade]] object for the A grade.
+<<classes>>=
+class Grade(LadokData):
+  """An individual grade part of a grade scale"""
+  def __init__(self, /, **json_data):
+    """Constructor taking a dictionary (JSON-like) structure"""
+    if "_Grade__id" in json_data:
+      self.make_properties(**json_data)
+    else:
+      self.__id = int(json_data.pop("ID"))
+      self.__code = json_data.pop("Kod")
+      self.__accepted = json_data.pop("GiltigSomSlutbetyg")
+
+  @property
+  def id(self):
+    return self.__id
+
+  @property
+  def code(self):
+    return self.__code
+
+  def __str__(self):
+    return self.code
+
+  @property
+  def accepted(self):
+    return self.__accepted
+
+  def __eq__(self, other):
+    if isinstance(other, Grade):
+      return self.__dict__ == other.__dict__
+    elif isinstance(other, str):
+      self.code == other
+    else:
+      raise NotImplementedError(f"can't test equality with {type(other)}")
+@
+
+
+\paragraph{Checking if a grade is in a grading scale}
+
+We can now easily implement the check if a grade is in a grading scale.
+<<test if grade is in grading scale>>=
+return grade in self.__grades
+@ This works even if [[grade]] is a string, thanks to how [[__eq__]] is 
+implemented in the [[Grade]] class.
+
+Similarly, we can iterate over the grades in the grading scale.
+<<iterate over grades in grading scale>>=
+return iter(self.__grades)
+@
+
+
+
+\chapter{Students}\label{StudentClasses}
+
+This chapter treats how we can work with student data.
+We can get student data from LADOK using the [[LadokSession]] class.
+We first create the [[ladok]] object, an instance of a LADOK session.
+\inputminted[lastline=6]{python}{../examples/example_Student.py}
+This is the same as in \cref{AccessingLADOK}.
+
+Next we want to access data of a student.
+We can refer to the student by personnummer or the unique LADOK ID.
+\inputminted[firstline=8,lastline=13]{python}{../examples/example_Student.py}
+This gives us objects of the [[Student]] class.
+The objects [[me]] and [[me2]] both refer to the same person, so the outputs 
+should be the same.
+
+We can see which course instances the student is registered on (throughout 
+history).
+\inputminted[firstline=16,lastline=17]{python}{../examples/example_Student.py}
+We can select a particular course and we can get the results for that course in 
+the same way.
+\inputminted[firstline=19,lastline=29]{python}{../examples/example_Student.py}
+We can check if the result is attested or not.
+If it's not attested, we can change it.
+\inputminted[firstline=32,lastline=51]{python}{../examples/example_Student.py}
+
+
+\section{Getting students from LADOK}
+
+Perhaps the main data that we want to access is that of a student.
+We provide two ways to identify the student.
+The personal identity number (Swedish 
+\emph{\foreignlanguage{swedish}{personnummer}}) and the unique LADOK 
+identifier.
+These are so different in format that we can distinguish one from the other.
+However, we an delegate this job to the [[Student]] class.
+<<LadokSession data methods>>=
+@cachetools.cachedmethod(
+  operator.attrgetter("cache"),
+  key=functools.partial(cachetools.keys.hashkey, "get_student"))
+def get_student(self, id):
+  """Get a student by unique ID, returns a Student object"""
+  # note that self is the required LadokSession object
+  return Student(ladok=self, id=id)
+@
+
+
+\section{The [[Student]] class}
+
+We can create a [[Student]] object from an identifier and a [[LadokSession]] 
+object.
+Then the [[Student]] object can fetch data from LADOK and update any changes.
+
+We can determine if an identifier is a personnummer or LADOK ID.
+Based on either of those unique identifiers we can fetch the rest of the data 
+using the LADOK session~[[self.ladok]].
+<<classes>>=
+class Student(LadokRemoteData):
+  """Class representing a student and related data"""
+  def __init__(self, /, **kwargs):
+    """Requires ladok (a LadokSession object),
+    id (either a personnummer or LADOK ID)"""
+    super().__init__(**kwargs)
+    id = kwargs.pop("id")
+    self.__personnummer = format_personnummer(id)
+    if not self.__personnummer:
+      self.__ladok_id = id
+    else:
+      self.__ladok_id = None
+
+  def pull(self):
+    """pull student data from LADOK"""
+    <<pull all attributes from LADOK>>
+
+  <<student attribute methods>>
+@
+
+We use the function [[format_personnummer]] to format a personnummer according 
+to LADOK's requirements.
+This function returns [[None]] if it's not a personnummer, in which case we 
+assume that it is a LADOK ID in the code above.
+<<functions>>=
+def format_personnummer(person_nr_raw):
+  """Returns None or a LADOK-formated person nr"""
+  pnrregex = re.compile("^(\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)$")
+  pnr = pnrregex.match(person_nr_raw)
+  if pnr:
+    now = datetime.datetime.now()
+    if pnr.group(1) == None: # first digits 19 or 20 missing
+      if now.year - 2000 >= int(pnr.group(2)) + 5: # must be > 5 years old
+        return "20" + pnr.group(2) + pnr.group(3) + pnr.group(4)
+      else:
+        return "19" + pnr.group(2) + pnr.group(3) + pnr.group(4)
+    else:
+      return pnr.group(1) + pnr.group(2) + pnr.group(3) + pnr.group(4)
+  else:
+    return None
+@ Note that we must match the start and end in the regex, otherwise we 
+sometimes match parts of LADOK IDs as personnummer.
+
+\section{Students' personal attributes}
+
+The student's personal attributes are the following.
+We use the helper method [[__get_personal_attributes]] which pulls all personal 
+attributes, since LADOK returns all of these in one call.
+<<student attribute methods>>=
+def __get_personal_attributes(self):
+  """Helper method that fetches personal attributes"""
+  <<pull student attributes from LADOK>>
+
+@property
+def ladok_id(self):
+  """Return the student's LADOK ID"""
+  try:
+    if self.__ladok_id:
+      return self.__ladok_id
+  except:
+    pass
+  self.__get_personal_attributes()
+  return self.__ladok_id
+
+@property
+def personnummer(self):
+  """Return the student's personnummer"""
+  try:
+    if self.__personnummer:
+      return self.__personnummer
+  except:
+    pass
+  self.__get_personal_attributes()
+  return self.__personnummer
+
+@property
+def first_name(self):
+  """Return the student's first name"""
+  try:
+    return self.__first_name
+  except:
+    self.__get_personal_attributes()
+  return self.__first_name
+
+@property
+def last_name(self):
+  """Return the student's last name"""
+  try:
+    return self.__last_name
+  except:
+    self.__get_personal_attributes()
+  return self.__last_name
+
+def __str__(self):
+  return f"{self.personnummer} {self.first_name} {self.last_name}"
+
+@property
+def alive(self):
+  """Return whether student is alive or not"""
+  try:
+    return self.__alive
+  except:
+    self.__get_personal_attributes()
+  return self.__alive
+@
+
+Then we can call that method to update all attributes.
+<<pull all attributes from LADOK>>=
+self.__get_personal_attributes()
+@
+
+When we pull the student attributes from LADOK, we can use either of the two 
+IDs: [[self.personnummer]] and [[self.ladok_id]].
+(However, we avoid using the properties above in this code, since we don't want 
+to recursively trigger the fetch ad absurdum.)
+Depending on which attribute is set, we pull the data differently.
+<<pull student attributes from LADOK>>=
+if self.__ladok_id:
+  <<pull student record based on LADOK ID>>
+elif self.__personnummer:
+  <<pull student record based on personnummer>>
+else:
+  raise AttributeError("neither personnummer, nor LADOK ID set")
+
+self.__ladok_id = record['Uid']
+self.__personnummer = record['Personnummer'] # twelve digits only
+self.__first_name = record['Fornamn']
+self.__last_name = record['Efternamn']
+self.__alive = not record['Avliden']
+@
+
+The record has the following attributes,
+from [[schemas/schemas.ladok.se-studentinformation.xsd]]:
+\begin{minted}{xml}
+<xs:complexType name="Student">
+  <xs:complexContent>
+    <xs:extension base="base:BaseEntitet">
+      <xs:sequence>
+        <xs:element name="Avliden" type="xs:boolean"/>
+        <xs:element minOccurs="0" name="Efternamn" type="xs:string"/>
+        <xs:element minOccurs="0" name="ExterntUID" type="xs:string"/>
+        <xs:element name="FelVidEtableringExternt" type="xs:boolean"/>
+        <xs:element minOccurs="0" name="Fodelsedata" type="xs:string"/>
+        <xs:element minOccurs="0" name="Fornamn" type="xs:string"/>
+        <xs:element minOccurs="0" name="KonID" type="xs:int"/>
+        <xs:element minOccurs="0" name="Personnummer" type="xs:string"/>
+        <xs:element minOccurs="0" name="Skyddsstatus" type="xs:string"/>
+        <xs:element minOccurs="0" ref="si:UnikaIdentifierare"/>
+      </xs:sequence>
+    </xs:extension>
+  </xs:complexContent>
+</xs:complexType>
+\end{minted}
+
+To pull the data based on personnummer we must actually form a search query.
+(This code is a slight adaptation of the code by Baltatzis.)
+<<pull student record based on personnummer>>=
+response = self.ladok.session.get(
+  url=self.ladok.base_gui_proxy_url +
+    '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' +
+      self.personnummer + '&skipCount=false&sprakkod=sv',
+        headers=self.ladok.headers).json()['Resultat']
+
+if len(response) != 1:
+  raise ValueError("can't find student based on personnummer")
+
+record = response[0]
+@
+
+To pull the data based on LADOK ID is a more direct query.
+(This code is a slight adaptation of the code by Maguire.)
+<<pull student record based on LADOK ID>>=
+response = self.ladok.session.get(
+  url=self.ladok.base_gui_proxy_url +
+    '/studentinformation/student/' + self.ladok_id,
+  headers=self.ladok.headers)
+if response.status_code == 200:
+  record = response.json()
+else:
+  raise AttributeError("can't fetch student attributes by LADOK ID")
+@
+
+
+\section{Students' study-related attributes}
+
+The study related attributes are courses and course results.
+Similarly to above, we use the [[__get_study_attributes]] helper method to 
+populate all study-related attributes that LADOK returns in one request.
+<<student attribute methods>>=
+def __get_study_attributes(self):
+  """Helper method to fetch study related attributes"""
+  <<create a list of the student's course objects>>
+
+def courses(self, /, **kwargs):
+  """Returns a list of courses that the student is registered on.
+  Filtered based on keywords."""
+  try:
+    courses = self.__courses
+  except:
+    self.__get_study_attributes()
+    courses = self.__courses
+
+  return filter_on_keys(courses, **kwargs)
+@
+
+Then we can call the last method when we want to pull all attributes too (using 
+the [[pull]] method).
+<<pull all student attributes>>=
+self.__get_study_attributes()
+@
+
+<<create a list of the student's course objects>>=
+# detta är egentligen kurstillfällen, inte kurser (ID-numret är alltså ett 
+# ID-nummer för ett kurstillfälle)
+response = self.ladok.session.get(
+  url=self.ladok.base_gui_proxy_url+
+    '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/'+
+      self.ladok_id,
+  headers=self.ladok.headers).json()
+    
+self.__courses = []
+
+for course in response['Tillfallesdeltaganden']:
+  if not course['Nuvarande'] or \
+    'Utbildningskod' not in course['Utbildningsinformation']:
+    continue
+  
+  self.__courses.append(CourseRegistration(
+    ladok=self.ladok,
+    student=self,
+    **course["Utbildningsinformation"]))
+@
+
+
+\chapter{Courses}\label{CourseClasses}
+
+We can use the course-related classes as follows.
+\inputminted{python}{../examples/example_Course.py}
+
+\section{Course rounds}
+
+We can search for courses like this.
+The result consists of a list of [[CourseRound]] objects.
+<<LadokSession data methods>>=
+@cachetools.cachedmethod(
+  operator.attrgetter("cache"),
+  key=functools.partial(cachetools.keys.hashkey, "search_courses"))
+def search_course_rounds(self, /, **kwargs):
+  """Query LADOK about course rounds, possible keys:
+  code, round_code, name
+  """
+  url = self.base_gui_proxy_url + "/resultat/kurstillfalle/filtrera?"
+
+  if "code" in kwargs:
+    url += f"kurskod={kwargs['code']}&"
+  if "name" in kwargs:
+    url += f"benamning={kwargs['name']}&"
+  if "round_code" in kwargs:
+    url += f"tillfalleskod={kwargs['round_code']}&"
+
+  url += "page=1&limit=100&skipCount=false&sprakkod=sv"
+
+  response = self.session.get(
+    url=url,
+    headers=self.headers)
+
+  results = response.json()["Resultat"]
+  
+  return [CourseRound(ladok=self, **result) for result in results]
+@
+
+The response consists of this JSON data:
+\begin{minted}{JSON}
+{
+	"Resultat": [
+		"0": {
+			"Slutdatum": "2021-01-15",
+			"Startdatum": "2020-08-24",
+			"StudielokaliseringID": 135195,
+			"StudietaktID": 6,
+			"TillfallesKod": "51386",
+			"Uid": "4e94fe55-1cef-11ea-a622-3565135944de",
+			"UndervisningsformID": 1,
+			"Utbildningsinstans": {
+				"Avvecklad": false,
+				"Benamning": [
+					{
+						"Sprakkod": "sv",
+						"Text": "Programmeringsteknik och Matlab",
+						"link": []
+					},
+					{
+						"Sprakkod": "en",
+						"Text": "Programming Techniques and Matlab",
+						"link": []
+					}
+				],
+				"Enhet": "HP",
+				"GallerUtbildningUtanAngivenOmfattning": false,
+				"Omfattning": 7.5,
+				"OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+				"ResultatPaKursVidAttesteringAvModul": false,
+				"Uid": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+				"UtbildningUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
+				"Utbildningskod": "DD1315",
+				"Versionsnummer": 2,
+				"link": []
+			},
+			"link": [ ... ]
+    },
+    "1": { ... },
+    ...
+  ],
+  TotaltAntalPoster: 32
+}
+\end{minted}
+
+We have two classes that are relevant here, [[CourseInstance]] and 
+[[CourseRound]].
+The [[CourseInstance]] corresponds to the data in [[Utbildningsinstans]] above.
+And the [[CourseRound]] is the data \enquote{wrapping around} that of the 
+[[CourseInstance]].
+Thus, we will make [[CourseRound]] a specialization of [[CourseInstance]].
+This makes sense as it contains additional data, such as start and end date.
+This class takes care of those and then defers the rest to the 
+[[CourseInstance]] class (by calling its constructor).
+<<classes>>=
+class CourseInstance(LadokRemoteData):
+  """Represents a course instance. Must be constructed from at least
+  ladok (a LadokSession object),
+  UtbildningsinstansUID (an instance_id from LADOK),
+  optionally a data dictionary from LADOK"""
+  <<CourseInstance methods>>
+
+class CourseRound(CourseInstance):
+  """Represents a course round"""
+  def __init__(self, /, **kwargs):
+    """Must be constructed from at least:
+    Uid, TillfallesKod, Startdatum, Slutdatum"""
+    <<prepare kwargs and call CourseInstance constructor>>
+
+    self.__round_id = kwargs.pop("Uid")
+    self.__round_code = kwargs.pop("TillfallesKod")
+
+    self.__start = datetime.date.fromisoformat(kwargs.pop("Startdatum"))
+    self.__end = datetime.date.fromisoformat(kwargs.pop("Slutdatum"))
+
+  @property
+  def round_id(self):
+    return self.__round_id
+
+  @property
+  def round_code(self):
+    return self.__round_code
+
+  @property
+  def start(self):
+    return self.__start
+
+  @property
+  def end(self):
+    return self.__end
+
+  <<CourseRound data methods>>
+@
+
+The [[CourseInstance]] constructor expects only the [[Utbildningsinstans]] part 
+of the data.
+However, the [[Uid]] should be renamed [[UtbildningsinstansUID]].
+We must also pass on the [[ladok]] object.
+<<prepare kwargs and call CourseInstance constructor>>=
+instance_data = kwargs.pop("Utbildningsinstans")
+instance_data["UtbildningsinstansUID"] = instance_data.pop("Uid")
+super().__init__(ladok=kwargs.pop("ladok"), **instance_data)
+@
+
+\section{Course instances}
+
+We have the course instance as the base class.
+This is essentially an \enquote{instance of a course syllabus}.
+We know from above that it inherits from [[LadokRemoteData]] and that it must 
+be initialized with the keywords [[ladok]] (for its parent) and 
+[[UtbildningsinstansUID]] (for itself) and optionally some data.
+This leaves the following methods.
+<<CourseInstance methods>>=
+def __init__(self, /, **kwargs):
+  super().__init__(**kwargs)
+  self.__instance_id = kwargs.pop("UtbildningsinstansUID")
+
+  try:
+    self.__assign_attr(kwargs)
+  except:
+    self.__pull_attributes()
+
+def __assign_attr(self, data):
+  <<assign CourseInstance data to private attributes>>
+
+def __pull_attributes(self):
+  <<fetch CourseInstance data object from LADOK>>
+  self.__assign_attr(data)
+
+def pull(self):
+  self.__pull_attributes()
+
+@property
+def instance_id(self):
+  return self.__instance_id
+
+@property
+def education_id(self):
+  return self.__education_id
+
+@property
+def code(self):
+  return self.__code
+
+@property
+def name(self):
+  return self.__name.copy()
+
+@property
+def version(self):
+  return self.__version
+
+@property
+def grade_scale(self):
+  return self.__grade_scale
+
+@property
+def credits(self):
+  return self.__credits
+
+@property
+def unit(self):
+  return self.__unit
+
+def components(self, /, **kwargs):
+  """Returns the list of components, filtered on keywords"""
+  return filter_on_keys(self.__components, **kwargs)
+@
+
+Now we must fetch data from LADOK.
+<<fetch CourseInstance data object from LADOK>>=
+headers = self.ladok.headers.copy()
+headers["Content-Type"] = "application/vnd.ladok-resultat+json"
+headers["X-XSRF-TOKEN"] = self.ladok.get_xsrf_token()
+headers["Referer"] = self.ladok.base_gui_url
+
+put_data = {"Identitet": [self.__instance_id]}
+
+response = self.ladok.session.put(
+  url=self.ladok.base_gui_proxy_url + '/resultat/utbildningsinstans/moduler',
+  json=put_data,
+  headers=headers)
+response = response.json()
+
+data = response["Utbildningsinstans"][0]
+@
+
+Then data will be populated with the following values:
+\begin{minted}{JSON}
+{
+  "Avvecklad": false,
+  "Benamning": [
+    {
+      "Sprakkod": "sv",
+      "Text": "Programmeringsteknik och Matlab",
+      "link": []
+    },
+    {
+      "Sprakkod": "en",
+      "Text": "Programming Techniques and Matlab",
+      "link": []
+    }
+  ],
+  "BetygsskalaID": 131657,
+  "Enhet": "HP",
+  "GallerUtbildningUtanAngivenOmfattning": false,
+  "KravPaHanvisningTillBeslutshandling": false,
+  "KravPaProjekttitel": false,
+  "Moduler": [
+    {
+      "Avvecklad": false,
+      "Benamning": [
+        {
+          "Sprakkod": "sv",
+          "Text": "Laborationer",
+          "link": []
+        },
+        {
+          "Sprakkod": "en",
+          "Text": "Programming Assignments",
+          "link": []
+        }
+      ],
+      "BetygsskalaID": 131656,
+      "Enhet": "HP",
+      "GallerUtbildningUtanAngivenOmfattning": false,
+      "KravPaHanvisningTillBeslutshandling": false,
+      "KravPaProjekttitel": false,
+      "Moduler": [],
+      "Omfattning": 1.5,
+      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+      "ResultatPaKursVidAttesteringAvModul": false,
+      "Uid": "387c7248-73d8-11e8-b4e0-063f9afb40e3",
+      "UtbildningUID": "387c99a9-73d8-11e8-afa7-8e408e694e54",
+      "Utbildningskod": "MAT1",
+      "Versionsnummer": 1,
+      "link": [ ... ]
+    },
+    {
+      "Avvecklad": false,
+      "Benamning": [
+        {
+          "Sprakkod": "sv",
+          "Text": "Laborationer",
+          "link": []
+        },
+        {
+          "Sprakkod": "en",
+          "Text": "Programming Assignments",
+          "link": []
+        }
+      ],
+      "BetygsskalaID": 131657,
+      "Enhet": "HP",
+      "GallerUtbildningUtanAngivenOmfattning": false,
+      "KravPaHanvisningTillBeslutshandling": false,
+      "KravPaProjekttitel": false,
+      "Moduler": [],
+      "Omfattning": 3,
+      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+      "ResultatPaKursVidAttesteringAvModul": false,
+      "Uid": "389b1dda-73d8-11e8-b4e0-063f9afb40e3",
+      "UtbildningUID": "389b1e62-73d8-11e8-afa7-8e408e694e54",
+      "Utbildningskod": "LAB3",
+      "Versionsnummer": 1,
+      "link": [ ... ]
+    },
+    {
+      "Avvecklad": false,
+      "Benamning": [
+        {
+          "Sprakkod": "sv",
+          "Text": "Laborationer",
+          "link": []
+        },
+        {
+          "Sprakkod": "en",
+          "Text": "Programming Assignments",
+          "link": []
+        }
+      ],
+      "BetygsskalaID": 131656,
+      "Enhet": "HP",
+      "GallerUtbildningUtanAngivenOmfattning": false,
+      "KravPaHanvisningTillBeslutshandling": false,
+      "KravPaProjekttitel": false,
+      "Moduler": [],
+      "Omfattning": 1.5,
+      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+      "ResultatPaKursVidAttesteringAvModul": false,
+      "Uid": "38a1867d-73d8-11e8-b4e0-063f9afb40e3",
+      "UtbildningUID": "38a1d44d-73d8-11e8-afa7-8e408e694e54",
+      "Utbildningskod": "LAB2",
+      "Versionsnummer": 1,
+      "link": [ ... ]
+    },
+    {
+      "Avvecklad": false,
+      "Benamning": [
+        {
+          "Sprakkod": "sv",
+          "Text": "Laborationer",
+          "link": []
+        },
+        {
+          "Sprakkod": "en",
+          "Text": "Programming Assignments",
+          "link": []
+        }
+      ],
+      "BetygsskalaID": 131656,
+      "Enhet": "HP",
+      "GallerUtbildningUtanAngivenOmfattning": false,
+      "KravPaHanvisningTillBeslutshandling": false,
+      "KravPaProjekttitel": false,
+      "Moduler": [],
+      "Omfattning": 1.5,
+      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+      "ResultatPaKursVidAttesteringAvModul": false,
+      "Uid": "38a6416f-73d8-11e8-b4e0-063f9afb40e3",
+      "UtbildningUID": "38a66848-73d8-11e8-afa7-8e408e694e54",
+      "Utbildningskod": "LAB1",
+      "Versionsnummer": 1,
+      "link": [ ... ]
+    }
+  ],
+  "Omfattning": 7.5,
+  "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
+  "ResultatPaKursVidAttesteringAvModul": false,
+  "Uid": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
+  "UtbildningUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
+  "Utbildningskod": "DD1315",
+  "Versionsnummer": 2,
+  "link": [ ... ]
+}
+\end{minted}
+
+Now that we have the [[data]] object, we can assign its values to the private 
+attributes.
+<<assign CourseInstance data to private attributes>>=
+self.__education_id = data.pop("UtbildningUID")
+
+self.__code = data.pop("Utbildningskod")
+self.__name = {}
+names = data.pop("Benamning")
+for name in names:
+  self.__name[name["Sprakkod"]] = name["Text"]
+self.__version = data.pop("Versionsnummer")
+
+self.__credits = data.pop("Omfattning")
+self.__unit = data.pop("Enhet")
+
+self.__grade_scale = self.ladok.get_grade_scales(
+  id=data.pop("BetygsskalaID"))
+
+self.__components = [CourseComponent(
+    ladok=self.ladok,
+    **component) for component in data["Moduler"]]
+@
+
+
+\section{Course components}
+
+The [[CourseComponent]] class will make the attributes available.
+We specify the most interesting ones and let the [[LadokData]] constructor turn 
+the rest into properties as well, so that they are available for the curious.
+<<classes>>=
+class CourseComponent(LadokData):
+  """Represents a course component of a course registration"""
+  def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
+
+    if "UtbildningsinstansUID" in kwargs:
+      self.__instance_id = kwargs.pop("UtbildningsinstansUID")
+    else:
+      self.__instance_id = kwargs.pop("Uid")
+
+    self.__education_id = kwargs.pop("UtbildningUID")
+
+    self.__code = kwargs.pop("Utbildningskod")
+    description = kwargs.pop("Benamning")
+    if isinstance(description, dict):
+      self.__description = get_translation("sv", description)
+    else:
+      self.__description = description
+
+    self.__credits = kwargs.pop("Omfattning")
+    self.__unit = kwargs.pop("Enhet")
+
+    ladok = kwargs.pop("ladok")
+    grade_scale_id = kwargs.pop("BetygsskalaID")
+    self.__grade_scale = ladok.get_grade_scales(id=grade_scale_id)[0]
+
+  @property
+  def instance_id(self):
+    return self.__instance_id
+
+  @property
+  def education_id(self):
+    return self.__education_id
+
+  @property
+  def code(self):
+    """Returns the name of the component (as in syllabus)"""
+    return self.__code
+
+  @property
+  def description(self):
+    """Returns description of component (as in syllabus)"""
+    return self.__description
+
+  @property
+  def unit(self):
+    """Returns the unit for the credits"""
+    return self.__unit
+
+  @property
+  def credits(self):
+    """Returns the number of credits"""
+    return self.__credits
+
+  @property
+  def grade_scale(self):
+    return self.__grade_scale
+
+  def __str__(self):
+    return self.code
+
+  def __eq__(self, other):
+    if isinstance(other, str):
+      return self.code == other
+    return self.__dict__ == other.__dict__
+@ We have the latter method, [[__eq__]], so that we can filter on keys and 
+compare with strings.
+
+
+\section{Results for a course round}
+
+We can access the results of all the students during a course round.
+We do this through the method [[results]], which takes keyword arguments to 
+possibly filter the results.
+<<CourseRound data methods>>=
+def results(self, /, **kwargs):
+  """Returns all students' results on the course"""
+  try:
+    return filter_on_keys(self.__results, **kwargs)
+  except:
+    self.__fetch_results()
+  return filter_on_keys(self.__results, **kwargs)
+@
+
+To fetch the results from LADOK, we must do the following query.
+<<CourseRound data methods>>=
+def __fetch_results(self):
+  pass
+@
+
+
+\chapter{Course objects related to students}
+
+\section{Course registrations and a student's results}
+
+Every student is registered on a course.
+The [[CourseRegistration]] class represents this data from LADOK.
+This is the object that must be used to get results for a student.
+<<classes>>=
+class CourseRegistration(CourseInstance):
+  """Represents a student's participation in a course instance"""
+  def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
+
+    self.__student = kwargs.pop("student")
+
+    # ett Ladok-ID för kursomgången
+    self.__round_id = kwargs.pop("UtbildningstillfalleUID")
+
+    dates = kwargs.pop("Studieperiod")
+    self.__start = datetime.date.fromisoformat(dates["Startdatum"])
+    self.__end = datetime.date.fromisoformat(dates["Slutdatum"])
+
+  @property
+  def round_id(self):
+    """Returns LADOK ID for the course round (kursomgång)"""
+    return self.__round_id
+
+  @property
+  def start(self):
+    return self.__start
+
+  @property
+  def end(self):
+    return self.__end
+
+  def results(self, /, **kwargs):
+    """Returns the student's results on the course, filtered on keywords"""
+    try:
+      return filter_on_keys(self.__results, **kwargs)
+    except:
+      self.__fill_results()
+    return filter_on_keys(self.__results, **kwargs)
+
+  def __fill_results(self):
+    """Helper method to fetch results from LADOK"""
+    <<pull existing CourseResult objects from LADOK>>
+    <<add new CourseResult objects for missing components>>
+
+  def push(self):
+    """Pushes any new results"""
+    for result in self.results():
+      result.push()
+@
+
+We can pull these from LADOK as well.
+We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
+From the response we get from LADOK, we construct [[CourseResult]] objects that 
+deal with the details.
+<<pull existing CourseResult objects from LADOK>>=
+response = self.ladok.session.get(
+  url=self.ladok.base_gui_proxy_url +
+    '/resultat/studieresultat/student/' + self.__student.ladok_id +
+      '/utbildningstillfalle/' + self.round_id,
+  headers=self.ladok.headers).json()
+    
+self.__results_id = response["Uid"]
+self.__results = []
+for result in response["ResultatPaUtbildningar"]:
+  try:
+    self.__results.append(CourseResult(
+      ladok=self.ladok,
+      components=self.components(),
+      student=self.__student,
+      study_results_id=self.__results_id,
+      **result))
+  except TypeError:
+    pass
+@
+
+Now we can see which components from [[self.components]] are missing from 
+[[self.__results]] and just add empty results for those.
+<<add new CourseResult objects for missing components>>=
+for component in self.components():
+  if not list(filter_on_keys(self.__results, component=component.code)):
+    self.__results.append(
+      CourseResult(
+        ladok=self.ladok,
+        component=component,
+        student=self.__student,
+        study_results_id=self.__results_id))
+@
+
+
+\section{Course results}
+
+The [[CourseResult]] objects have the following form.
+We have two cases: the result exists in LADOK and the result doesn't exist in 
+LADOK.
+The difference is in how results are pushed to LADOK, \ie the implementation of 
+the [[push]] method.
+<<classes>>=
+class CourseResult(LadokRemoteData):
+  """Represents a result on a course module"""
+  def __init__(self, /, **kwargs):
+    """To construct this object we must give existing data, i.e.
+    Arbetsunderlag or SenastAttesteradeResultat directly from LADOK."""
+    super().__init__(**kwargs)
+
+    self.__student = kwargs.pop("student")
+
+    if "component" in kwargs and "study_results_id" in kwargs:
+      self.__component = kwargs.pop("component")
+      self.__study_results_id = kwargs.pop("study_results_id")
+      self.__populate_attributes()
+    elif "components" in kwargs and \
+        ("Arbetsunderlag" in kwargs or "SenastAttesteradeResultat" in kwargs):
+      components = kwargs.pop("components")
+      if "Arbetsunderlag" in kwargs:
+        data = kwargs.pop("Arbetsunderlag")
+        self.__last_modified = data.pop("SenasteResultatandring")
+      elif "SenastAttesteradeResultat" in kwargs:
+        data = kwargs.pop("SenastAttesteradeResultat")
+      self.__populate_attributes(**data, components=components)
+    else:
+      raise TypeError("not enough keys given to construct object")
+
+  def __populate_attributes(self, /, **data):
+    if not data:
+      <<populate CourseResult attributes for empty result>>
+    else:
+      <<populate CourseResult attributes from data>>
+
+  @property
+  def component(self):
+    """Returns the component the results is for"""
+    return self.__component
+
+  @property
+  def grade_scale(self):
+    """Returns the grade scale for the component"""
+    return self.__grade_scale
+
+  @property
+  def grade(self):
+    """Returns the grade set for the component"""
+    return self.__grade
+
+  def set_grade(self, grade, date):
+    """Sets a new grade and date for the component"""
+    if self.attested:
+      raise AttributeError("can't change already attested grade")
+
+    <<set the grade for CourseResult>>
+
+    self.__modified = True
+    self.push()
+
+  @property
+  def modified(self):
+    """Returns True if there are unpushed changes"""
+    return self.__modified
+
+  @property
+  def date(self):
+    """Returns the date of the grade"""
+    return self.__date
+
+  @property
+  def attested(self):
+    """Returns True if the grade has been attested in LADOK"""
+    try:
+      self.__last_modified
+      return False
+    except:
+      pass
+    return True
+
+  def push(self):
+    if self.__uid:
+      <<push the existing CourseResult grade data to LADOK>>
+    else:
+      <<push the new CourseResult grade data to LADOK>>
+@
+
+If we get the data from LADOK, then we can fill in all the attributes.
+<<populate CourseResult attributes from data>>=
+self.__uid = data.pop("Uid")
+self.__instance_id = data.pop("UtbildningsinstansUID")
+
+grade_scale_id = data.pop("BetygsskalaID")
+grade = data.pop("Betygsgrad")
+
+self.__date = data.pop("Examinationsdatum")
+self.__grade_scale = self.ladok.get_grade_scales(id=grade_scale_id)[0]
+self.__grade = self.__grade_scale.grades(id=grade)[0]
+
+if "components" in data:
+  components = data.pop("components")
+  component_list = filter_on_keys(components, instance_id=self.__instance_id)
+  self.__component = component_list[0] if component_list \
+                                      else None
+self.__modified = False
+@
+
+However, if this is a completely new result, it doesn't exist in LADOK.
+Then we lack quite a few of the attributes.
+<<populate CourseResult attributes for empty result>>=
+self.__uid = None
+self.__instance_id = self.__component.instance_id
+
+self.__date = None
+self.__grade_scale = self.__component.grade_scale
+self.__grade = None
+
+self.__modified = False
+self.__last_modified = None
+@
+
+\subsection{Setting the grade}
+
+We can accept the grade either as a grade object or as a string.
+We must check both values for correctness before we update either of the 
+attributes --- otherwise we might end up in an inconsistent state.
+<<set the grade for CourseResult>>=
+if isinstance(grade, Grade) and grade not in self.grade_scale.grades():
+  raise TypeError(f"The grade {grade} is not in"
+    f"the scale {self.grade_scale.code}")
+elif isinstance(grade, str):
+  try:
+    grade = self.grade_scale.grades(code=grade)[0]
+  except:
+    raise TypeError(
+      f"The grade {grade} is not in the scale {self.grade_scale.code}")
+else:
+  raise TypeError(f"Can't use type {type(grade)} for grade")
+
+if isinstance(date, str):
+  date = datetime.date.fromisoformat(date)
+elif not isinstance(date, datetime.date):
+  raise TypeError(f"Type {type(date)} not supported for date")
+
+self.__grade = grade
+self.__date = date
+@
+
+
+\subsection{Working with existing results}
+
+To push an updated result to LADOK, we do the following.
+<<push the existing CourseResult grade data to LADOK>>=
+headers = self.ladok.headers.copy()
+headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
+headers['X-XSRF-TOKEN'] = self.ladok.xsrf_token
+headers['Referer'] = self.ladok.base_gui_url
+
+put_data = {
+  'Resultat': [{
+    'ResultatUID': self.__uid,
+    'Betygsgrad': self.grade.id,
+    'Noteringar': [],
+    'BetygsskalaID': self.grade_scale.id,
+    'Examinationsdatum': self.date.isoformat(),
+    'SenasteResultatandring': self.__last_modified
+  }]
+}
+response = self.ladok.session.put(
+  url=self.ladok.base_gui_proxy_url + '/resultat/studieresultat/uppdatera',
+  json=put_data,
+  headers=headers)
+
+if 'Resultat' not in response.json():
+  raise Exception(f"couldn't update {self.code} to {self.grade} ({self.date})"
+    " to LADOK: {response.json()['Meddelande']}")
+@
+
+\subsection{Adding new results}
+
+We treat new results differently.
+Since we don't update an already existing item, we must add a new result to 
+LADOK.
+Particularly, we must add something to the student's study results.
+<<push the new CourseResult grade data to LADOK>>=
+headers = self.ladok.headers.copy()
+headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
+headers['X-XSRF-TOKEN'] = self.ladok.get_xsrf_token()
+headers['Referer'] = self.ladok.base_gui_url
+
+post_data = {
+  'Resultat': [{
+    'StudieresultatUID': self.__study_results_id,
+    'UtbildningsinstansUID': self.__instance_id,
+    'Betygsgrad': self.grade.id,
+    'Noteringar': [],
+    'BetygsskalaID': self.grade_scale.id,
+    'Examinationsdatum': self.date.isoformat()
+  }]
+}
+
+response = self.ladok.session.post(
+  url=self.ladok.base_gui_proxy_url + '/resultat/studieresultat/skapa',
+  json=post_data,
+  headers=headers)
+
+if not 'Resultat' in response.json():
+  raise Exception("Couldn't register "
+    f"{self.component} {self.grade} {self.date}: " +
+      response.json()["Meddelande"])
+
+self.__populate_attributes(**response.json()["Resultat"][0])
+@
+
