@@ -39,11 +39,11 @@
 \tableofcontents
 \clearpage
 
-@
+
 \chapter{Introduction}
 
 This is the documented source code of the LADOK3 API wrapper for Python, the 
-package [[ladok3]].
+package \texttt{ladok3}.
 You can install it by running
 \begin{minted}{bash}
 pip3 install ladok3
@@ -54,21 +54,21 @@ You can find a quick reference by running
 pydoc ladok3
 \end{minted}
 
-We provide the main class [[LadokSession]].
-The [[LadokSession]] class acts like \enquote{factories} and will return 
+We provide the main class \texttt{LadokSession}.
+The \texttt{LadokSession} class acts like \enquote{factories} and will return 
 objects representing various LADOK data.
-These data objects' classes inherit the [[LadokData]] and [[LadokRemoteData]] 
+These data objects' classes inherit the \texttt{LadokData]] and [[LadokRemoteData} 
 classes.
-Data of the type [[LadokData]] is not expected to change, unlike 
-[[LadokRemoteData]], which is.
-Objects of type [[LadokRemoteData]] know how to update themselves, \ie fetch 
+Data of the type \texttt{LadokData} is not expected to change, unlike 
+\texttt{LadokRemoteData}, which is.
+Objects of type \texttt{LadokRemoteData} know how to update themselves, \ie fetch 
 and refresh their data from LADOK.
 When relevant they can also write data to LADOK, \ie update entries such as 
 results.
 
 One design criteria is to improve performance.
-We do this by caching all factory methods of any [[LadokSession]].
-The [[LadokSession]] itself is also designed to be cacheable: if the session to 
+We do this by caching all factory methods of any \texttt{LadokSession}.
+The \texttt{LadokSession} itself is also designed to be cacheable: if the session to 
 LADOK expires, it will automatically reauthenticate to establish a new session.
 
 
@@ -102,7 +102,7 @@ LADOK expires, it will automatically reauthenticate to establish a new session.
 
 \chapter{Transfer results from KTH Canvas to LADOK}
 
-Here we provide an example program~[[prgi.py]] which exports results from KTH 
+Here we provide an example program~\texttt{prgi.py} which exports results from KTH 
 Canvas to LADOK for the introductory programming course~prgi (DD1315).
 
 \input{../examples/prgi.tex}
