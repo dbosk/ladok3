@@ -18,5 +18,4 @@ clean:
 
 .PHONY: distclean
 distclean:
-	-for v in ${VERSION}; do docker image rm ladok3:$$v; done
-	-docker image rm ladok3
+	-docker image rm -f ladok3 dbosk/ladok3
