@@ -82,7 +82,7 @@ argp = argparse.ArgumentParser(
   epilog="Web: https://github.com/dbosk/ladok3"
 )
 <<add configuration options>>
-subp = argp.add_subparsers(required=True)
+subp = argp.add_subparsers(dest="command", required=True)
 <<add subparsers to subp>>
 argcomplete.autocomplete(argp)
 args = argp.parse_args()
