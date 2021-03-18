@@ -10,18 +10,26 @@ all:
 	true
 
 .PHONY: install
-install: all
+install: build
 	pip3 install -e .
 
+LADOK3+=	src/ladok3/__init__.py
+LADOK3+=	src/ladok3/cli.py
+LADOK3+=	src/ladok3/data.py
+LADOK3+=	src/ladok3/ladok.bash
+
+${LADOK3}:
+	${MAKE} -C $(dir $@) $(notdir $@)
+
 .PHONY: build
-build: all
+build: ${LADOK3}
 	python3 -m build
 
 .PHONY: publish publish-ladok3 publish-docker
 publish: publish-ladok3 publish-docker
 
 publish-ladok3: build
-	python3 -m twine upload -r testpypi dist/*
+	python3 -m twine upload -r pypi dist/*
 
 publish-docker: publish-ladok3
 	${MAKE} -C docker publish
@@ -29,6 +37,7 @@ publish-docker: publish-ladok3
 
 .PHONY: clean
 clean:
+	true
 
 .PHONY: distclean
 distclean:
