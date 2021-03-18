@@ -1677,6 +1677,8 @@ if "components" in data:
   component_list = filter_on_keys(components, instance_id=self.__instance_id)
   self.__component = component_list[0] if component_list \
                                       else None
+
+self.__last_modified = data.pop("SenasteResultatandring")
 self.__modified = False
 @
 
@@ -1747,8 +1749,10 @@ response = self.ladok.session.put(
   headers=headers)
 
 if 'Resultat' not in response.json():
-  raise Exception(f"couldn't update {self.code} to {self.grade} ({self.date})"
-    " to LADOK: {response.json()['Meddelande']}")
+  raise Exception(
+    f"couldn't update {self.component.code} to {self.grade} ({self.date})"
+    f" to LADOK: {response.json()['Meddelande']}"
+  )
 @
 
 \subsection{Adding new results}
