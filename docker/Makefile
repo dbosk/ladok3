@@ -12,3 +12,11 @@ docker-image:
 	docker build -t ladok3 .
 	for v in ${VERSION}; do docker tag ladok3 dbosk/ladok3:$$v; done
 
+.PHONY: clean
+clean:
+	true
+
+.PHONY: distclean
+distclean:
+	-for v in ${VERSION}; do docker image rm ladok3:$$v; done
+	-docker image rm ladok3
