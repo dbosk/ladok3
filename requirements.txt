@@ -2,3 +2,4 @@ cachetools==4.0.0
 requests==2.24.0
 urllib3==1.25.8
 appdirs
+argcomplete
