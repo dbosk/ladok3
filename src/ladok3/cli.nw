@@ -133,7 +133,9 @@ file.
 <<add configuration options>>=
 argp.add_argument("-f", "--config-file",
   default=f"{dirs.user_config_dir}/config.json",
-  help=f"Path to configuration file, default: {dirs.user_config_dir}/config.json")
+  help="Path to configuration file "
+    f"(default: {dirs.user_config_dir}/config.json) "
+    "or set LADOK_USER and LADOK_PASS environment variables.")
 @ Since we provide the default value here, we can always rely on it to be 
 available, so we can use [[args.config_file]] directly when we get the 
 credentials.
