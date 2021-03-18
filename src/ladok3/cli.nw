@@ -87,7 +87,11 @@ argp = argparse.ArgumentParser(
   epilog="Web: https://github.com/dbosk/ladok3"
 )
 <<add global configuration options>>
-subp = argp.add_subparsers(dest="command", required=True)
+subp = argp.add_subparsers(
+  title="commands",
+  dest="command",
+  required=True
+)
 <<add subparsers to subp>>
 argcomplete.autocomplete(argp)
 args = argp.parse_args()
@@ -231,6 +235,48 @@ def load_credentials(filename):
     return config["username"], config["password"]
   except:
     raise Exception("Cannot find credentials.")
+@
+
+
+\section{Managing the cache}
+
+We need a command to control the cache.
+For this purpose we provide the [[cache]] subcommand.
+This command will in turn have subcommands.
+<<add subparsers to subp>>=
+cache_parser = subp.add_parser("cache",
+  help="Manage cache",
+  description="Manages the cache of LADOK data"
+)
+cache_subp = cache_parser.add_subparsers(
+  title="subcommands",
+  dest="subcommand",
+  required=True
+)
+<<add subcommands to cache command>>
+@
+
+
+\subsection{Clear the cache}
+
+Since the cache stores sensitive data (student data) and the login credentials, 
+we want to be able to clear the cache.
+<<add subcommands to cache command>>=
+cache_clear = cache_subp.add_parser("clear",
+  help="Clear the cache",
+  description="Clears everything from the cache"
+)
+cache_clear.set_defaults(func=clear_cache)
+@
+
+The [[clear_cache]] function will clear the cache.
+We simply remove the existing cache file and then exit.
+If we don't exit using [[sys.exit]], the main program will write the cache back 
+again on its exit.
+<<functions>>=
+def clear_cache(ls, args):
+  os.remove(dirs.user_cache_dir + "/LadokSession")
+  sys.exit(0)
 @
 
 
