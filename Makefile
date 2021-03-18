@@ -21,8 +21,11 @@ LADOK3+=	src/ladok3/ladok.bash
 ${LADOK3}:
 	${MAKE} -C $(dir $@) $(notdir $@)
 
+requirements.txt:
+	poetry export -f requirements.txt --output $@
+
 .PHONY: build
-build: ${LADOK3}
+build: ${LADOK3} requirements.txt
 	python3 -m build
 
 .PHONY: publish publish-ladok3 publish-docker

@@ -5,3 +5,19 @@ requires = [
 ]
 build-backend = "setuptools.build_meta"
 
+[tool.poetry]
+name = "ladok3"
+version = "1.2"
+description = "Python wrapper for the LADOK3 REST API"
+authors = ["Daniel Bosk, Alexander Baltatzis, Gerald Q. Maguire Jr"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+cachetools = "^4.2.1"
+requests = "^2.25.1"
+appdirs = "^1.4.4"
+argcomplete = "^1.12.2"
+
+[tool.poetry.dev-dependencies]
+
