@@ -17,7 +17,7 @@ ladok3.pdf: ../examples/example_Course.py
 ladok3.pdf: ../examples/prgi.tex
 ladok3.pdf: DD1315.csv
 
-../%:
+../%::
 	${MAKE} -C $(dir $@) $(notdir $@)
 
 

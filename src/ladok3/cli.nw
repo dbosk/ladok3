@@ -22,6 +22,7 @@ import appdirs
 import argcomplete, argparse
 import json
 import os
+import pickle
 import re
 import sys
 import traceback
@@ -38,9 +39,10 @@ dirs = appdirs.AppDirs("ladok", "dbosk@kth.se")
 \section{A command-line interface}%
 \label{command-line-interface}
 
-If we run this script as a program, we want to provide a command-line 
-interface.
-This is a standard Pythonic if-main construction.
+The idea is that we have the basic command that can take some options and 
+ultimately some subcommand.
+The subcommands do the heavy lifting.
+We use a standard Pythonic if-main construction.
 <<command-line interface>>=
 def main():
   """Run the command-line interface for the ladok command"""
@@ -71,24 +73,28 @@ def warn(msg):
 \subsection{Process command-line options}%
 \label{process-command-line-options}
 
+The main part done here is to set up a [[LadokSession]] object~[[ls]].
+We can do this in two ways:
+\begin{enumerate*}
+\item create a new object using the user's credentials to log in; or
+\item restore the [[ls]] object from a previous run.
+\end{enumerate*}
+
 We'll use [[argparse]] to parse the command-line options.
-Remember that we process [[argv]] passed to the function, not [[sys.argv]] 
-directly.
-Then we must first add the global options (to [[argp]]) and then the subparsers 
-(to [[subp]]).
 <<process command-line options>>=
 argp = argparse.ArgumentParser(
   description="Command-line interface for LADOK3",
   epilog="Web: https://github.com/dbosk/ladok3"
 )
-<<add configuration options>>
+<<add global configuration options>>
 subp = argp.add_subparsers(dest="command", required=True)
 <<add subparsers to subp>>
 argcomplete.autocomplete(argp)
 args = argp.parse_args()
-<<process configuration options>>
-ls = ladok3.LadokSessionKTH(LADOK_USER, LADOK_PASS)
+<<process global configuration options>>
+<<create or restore the LadokSession ls>>
 <<execute subcommand>>
+<<save LadokSession ls>>
 @
 
 For each subcommand, we will add a subparser ([[subp.add_parser]]) that will 
@@ -99,6 +105,58 @@ We must also pass on a LADOK session object~[[ls]].
 <<execute subcommand>>=
 if "func" in args:
   args.func(ls, args)
+@
+
+
+\section{Create the LadokSession~[[ls]]}
+
+We have several options for creating the LadokSession object~[[ls]] that must 
+be passed to the subcommand:
+\begin{enumerate}
+\item The first one is to read the credentials from a configuration file (or 
+the environment) and create the [[ls]] object by instantiating the 
+[[LadokSession]] class (technically the [[LadokSessionKTH]] class).
+\item Read a pickled [[LadokSession]] object from file.
+\end{enumerate}
+The second option allows us to save time by not having to reestablish an 
+authenticated session to LADOK.
+The authentication step takes much more time that individual LADOK requests.
+
+This leads to the following approach.
+<<create or restore the LadokSession ls>>=
+ls = restore_ladok_session()
+if not ls:
+  ls = ladok3.LadokSessionKTH(LADOK_USER, LADOK_PASS)
+@
+<<save LadokSession ls>>=
+store_ladok_session(ls)
+@
+
+
+\subsection{Saving and restoring the [[LadokSession]] object}
+
+Now we need to implement the [[store_ladok_session]] and 
+[[restore_ladok_session]] functions.
+For storing, we simply use [[pickle.dump]] to a suitably chosen file.
+For restoring, we simply [[pickle.load]] from the same suitably chosen file.
+<<functions>>=
+def store_ladok_session(ls):
+  if not os.path.isdir(dirs.user_cache_dir):
+    os.mkdir(dirs.user_cache_dir)
+
+  file_path = dirs.user_cache_dir + "/LadokSession"
+
+  with open(file_path, "wb") as file:
+    pickle.dump(ls, file)
+  
+def restore_ladok_session():
+  file_path = dirs.user_cache_dir + "/LadokSession"
+
+  if os.path.isfile(file_path):
+    with open(file_path, "rb") as file:
+      return pickle.load(file)
+
+  return None
 @
 
 
@@ -130,7 +188,7 @@ We want to allow the user to specify different locations for the configuration.
 
 We want the user to be able to specify the location of the configuration 
 file.
-<<add configuration options>>=
+<<add global configuration options>>=
 argp.add_argument("-f", "--config-file",
   default=f"{dirs.user_config_dir}/config.json",
   help="Path to configuration file "
@@ -142,7 +200,7 @@ credentials.
 
 We want to read the LADOK credentials to construct a LADOK-session 
 object~[[ls]] that will be used throughout.
-<<process configuration options>>=
+<<process global configuration options>>=
 LADOK_USER, LADOK_PASS = load_credentials(args.config_file)
 @
 
