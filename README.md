@@ -4,12 +4,28 @@ This package provides a wrapper for the LADOK3 API used by
 [start.ladok.se][ladok]. This makes it easy to automate reporting grades, 
 compute statistics etc.
 
+## Installation
+
 To install, run:
 ```bash
 pip install ladok3
+sudo cp $(find / -name ladok.bash) /etc/bash_completion.d
 ```
+If you run the second line above, you'll get tab completion for the `ladok` 
+command when you use the `bash` shell.
 
-Then it's just to import the package as usual.
+An alternative to installing the package is to run the [Docker image][docker].
+```bash
+docker run -it dbosk/ladok3 /bin/bash
+```
+Or simply adapt your own image.
+
+## Usage
+
+There are two ways to use the package: as a Python package or through the 
+command-line tool `ladok`.
+
+To use the package, it's just to import the package as usual.
 ```python
 import ladok3
 
@@ -24,16 +40,22 @@ for result in course_participation.results():
 
 component_result = course_participation.results(component="LAB1")[0]
 component_result.set_grade("P", "2021-03-15")
+component_result.finalize()
+```
+Or, the same, but through the command line:
+```bash
+ladok report 123456-1234 AB1234 LAB1 -d 2021-03-15 -f
 ```
 
 There are more detailed usage examples in the details documentation that can be 
 round with the [releases][releases] and in the `examples` directory.
 
 [ladok]: https://start.ladok.se
+[docker]: https://hub.docker.com/repository/docker/dbosk/ladok3
 [releases]: https://github.com/dbosk/ladok3/releases
 
 
-## The examples
+# The examples
 
 There are some examples that can be found in the `examples` directory:
 
@@ -46,7 +68,7 @@ There are some examples that can be found in the `examples` directory:
 
 We also have a few more examples described in the sections below.
 
-### `canvas_ladok3_spreadsheet.py`
+## `canvas_ladok3_spreadsheet.py`
 
 Purpose: Use the data in a Canvas course room together with the data from Ladok3 to create a spreadsheet of students in the course
 and include their Canvas user_id, name, Ladok3 Uid, program_code, program name, etc.
@@ -68,7 +90,7 @@ canvas_ladok3_spreadsheet.py -t 'II2202 HT20-1'
 ```
 
 
-### `ladok3_course_instance_to_spreadsheet.py`
+## `ladok3_course_instance_to_spreadsheet.py`
 
 Purpose: Use the data in Ladok3 together with the data from Canvas to create a spreadsheet of students in a course
 instance and include their Canvas user_id (or "not in Canvas" if they do not have a Canvas user_id), name, Ladok3 Uid, program_code, program name, etc.
@@ -110,7 +132,7 @@ or
 ```
 
 
-### `canvas_students_missing_integration_ids.py`
+## `canvas_students_missing_integration_ids.py`
 
 Purpose: Use the data in a Canvas course room to create a spreadsheet of students in the course who are missing an integration ID.
 
@@ -121,7 +143,7 @@ canvas_students_missing_integration_ids.py canvas_course_id
 Output: outputs a file ('users_without_integration_ids-COURSE_ID.xlsx) containing a spreadsheet of the users information
 
 
-### `cl_user_info.py`
+## `cl_user_info.py`
 
 Purpose: Use the data in a Canvas course room together with the data from Ladok3 to find information about a user.
 
