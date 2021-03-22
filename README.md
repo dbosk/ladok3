@@ -4,6 +4,12 @@ This package provides a wrapper for the LADOK3 API used by
 [start.ladok.se][ladok]. This makes it easy to automate reporting grades, 
 compute statistics etc.
 
+To install, run:
+```bash
+pip install ladok3
+```
+
+Then it's just to import the package as usual.
 ```python
 import ladok3
 
@@ -27,7 +33,7 @@ round with the [releases][releases] and in the `examples` directory.
 [releases]: https://github.com/dbosk/ladok3/releases
 
 
-## More examples
+## The examples
 
 There are some examples that can be found in the `examples` directory:
 
