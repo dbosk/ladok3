@@ -1,4 +1,4 @@
-LIB=	ladok3.nw api.nw
+LIB=	ladok3.nw api.nw undoc.nw
 CLI=	cli.nw data.nw report.nw
 
 .PHONY: all
@@ -8,7 +8,7 @@ all: ${CLI:.nw=.tex} ${CLI:.nw=.py} ladok.bash
 __init__.py: ladok3.py
 	mv $^ $@
 
-ladok3.py: ladok3.nw api.nw
+ladok3.py: ${LIB}
 
 ladok.bash: __init__.py ${CLI:.nw=.py}
 	register-python-argcomplete ladok > $@

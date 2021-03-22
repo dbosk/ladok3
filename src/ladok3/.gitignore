@@ -3,6 +3,7 @@ ladok3.py
 __init__.py
 ladok3.tex
 api.tex
+undoc.tex
 ltxobj/
 prgi.out
 prgi.pdf
