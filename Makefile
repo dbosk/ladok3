@@ -31,7 +31,7 @@ publish: publish-ladok3 publish-docker
 publish-ladok3: build
 	python3 -m twine upload -r pypi dist/*
 
-publish-docker: publish-ladok3
+publish-docker:
 	${MAKE} -C docker publish
 
 
