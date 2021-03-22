@@ -713,7 +713,7 @@ the same way.
 \inputminted[firstline=19,lastline=29]{python}{../examples/example_Student.py}
 We can check if the result is attested or not.
 If it's not attested, we can change it.
-\inputminted[firstline=32,lastline=51]{python}{../examples/example_Student.py}
+\inputminted[firstline=32,lastline=53]{python}{../examples/example_Student.py}
 
 
 \section{Getting students from LADOK}
@@ -1535,12 +1535,10 @@ We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
 From the response we get from LADOK, we construct [[CourseResult]] objects that 
 deal with the details.
 <<pull existing CourseResult objects from LADOK>>=
-response = self.ladok.session.get(
-  url=self.ladok.base_gui_proxy_url +
-    '/resultat/studieresultat/student/' + self.__student.ladok_id +
-      '/utbildningstillfalle/' + self.round_id,
-  headers=self.ladok.headers).json()
-    
+response = self.ladok.student_results_JSON(
+  self.__student.ladok_id, self.round_id
+)
+
 self.__results_id = response["Uid"]
 self.__results = []
 for result in response["ResultatPaUtbildningar"]:
@@ -1585,17 +1583,16 @@ class CourseResult(LadokRemoteData):
     super().__init__(**kwargs)
 
     self.__student = kwargs.pop("student")
+    self.__study_results_id = kwargs.pop("study_results_id")
 
-    if "component" in kwargs and "study_results_id" in kwargs:
+    if "component" in kwargs:
       self.__component = kwargs.pop("component")
-      self.__study_results_id = kwargs.pop("study_results_id")
       self.__populate_attributes()
     elif "components" in kwargs and \
         ("Arbetsunderlag" in kwargs or "SenastAttesteradeResultat" in kwargs):
       components = kwargs.pop("components")
       if "Arbetsunderlag" in kwargs:
         data = kwargs.pop("Arbetsunderlag")
-        self.__last_modified = data.pop("SenasteResultatandring")
       elif "SenastAttesteradeResultat" in kwargs:
         data = kwargs.pop("SenastAttesteradeResultat")
       self.__populate_attributes(**data, components=components)
@@ -1633,6 +1630,13 @@ class CourseResult(LadokRemoteData):
     self.__modified = True
     self.push()
 
+  def finalize(self, notify=False):
+    """Finalizes the set grade"""
+    if self.modified:
+      self.push()
+
+    <<finalize the grade for CourseResult>>
+
   @property
   def modified(self):
     """Returns True if there are unpushed changes"""
@@ -1658,12 +1662,15 @@ class CourseResult(LadokRemoteData):
       <<push the existing CourseResult grade data to LADOK>>
     else:
       <<push the new CourseResult grade data to LADOK>>
+    self.__modified = False
 @
 
 If we get the data from LADOK, then we can fill in all the attributes.
 <<populate CourseResult attributes from data>>=
 self.__uid = data.pop("Uid")
 self.__instance_id = data.pop("UtbildningsinstansUID")
+self.__results_id = data.pop("ResultatUID")
+self.__study_results_id = data.pop("StudieresultatUID")
 
 grade_scale_id = data.pop("BetygsskalaID")
 grade = data.pop("Betygsgrad")
@@ -1728,31 +1735,18 @@ self.__date = date
 
 To push an updated result to LADOK, we do the following.
 <<push the existing CourseResult grade data to LADOK>>=
-headers = self.ladok.headers.copy()
-headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
-headers['X-XSRF-TOKEN'] = self.ladok.xsrf_token
-headers['Referer'] = self.ladok.base_gui_url
-
-put_data = {
-  'Resultat': [{
-    'ResultatUID': self.__uid,
-    'Betygsgrad': self.grade.id,
-    'Noteringar': [],
-    'BetygsskalaID': self.grade_scale.id,
-    'Examinationsdatum': self.date.isoformat(),
-    'SenasteResultatandring': self.__last_modified
-  }]
-}
-response = self.ladok.session.put(
-  url=self.ladok.base_gui_proxy_url + '/resultat/studieresultat/uppdatera',
-  json=put_data,
-  headers=headers)
-
-if 'Resultat' not in response.json():
+try:
+  response = self.ladok.update_result_JSON(
+    self.grade.id, self.grade_scale.id, self.date.isoformat(),
+    self.__uid, self.__last_modified
+  )
+except Exception as err:
   raise Exception(
     f"couldn't update {self.component.code} to {self.grade} ({self.date})"
-    f" to LADOK: {response.json()['Meddelande']}"
+    f" to LADOK: {err}"
   )
+
+self.__populate_attributes(**response[0])
 @
 
 \subsection{Adding new results}
@@ -1762,32 +1756,33 @@ Since we don't update an already existing item, we must add a new result to
 LADOK.
 Particularly, we must add something to the student's study results.
 <<push the new CourseResult grade data to LADOK>>=
-headers = self.ladok.headers.copy()
-headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
-headers['X-XSRF-TOKEN'] = self.ladok.get_xsrf_token()
-headers['Referer'] = self.ladok.base_gui_url
-
-post_data = {
-  'Resultat': [{
-    'StudieresultatUID': self.__study_results_id,
-    'UtbildningsinstansUID': self.__instance_id,
-    'Betygsgrad': self.grade.id,
-    'Noteringar': [],
-    'BetygsskalaID': self.grade_scale.id,
-    'Examinationsdatum': self.date.isoformat()
-  }]
-}
-
-response = self.ladok.session.post(
-  url=self.ladok.base_gui_proxy_url + '/resultat/studieresultat/skapa',
-  json=post_data,
-  headers=headers)
-
-if not 'Resultat' in response.json():
+try:
+  response = self.ladok.create_result_JSON(
+    self.grade.id, self.grade_scale.id, self.date.isoformat(),
+    self.__study_results_id, self.__instance_id
+  )
+except Exception as err:
   raise Exception("Couldn't register "
-    f"{self.component} {self.grade} {self.date}: " +
-      response.json()["Meddelande"])
+    f"{self.component} {self.grade} {self.date}: {err}")
 
-self.__populate_attributes(**response.json()["Resultat"][0])
+self.__populate_attributes(**response[0])
 @
 
+
+\subsection{Finalizing a result}
+
+When we finalize the result, we must know who reported the result.
+<<finalize the grade for CourseResult>>=
+reporter_id = self.ladok.user_info_JSON()["AnvandareUID"]
+
+if notify:
+  response = self.ladok.finalize_result_JSON(
+    self.__results_id, self.__last_modified, reporter_id, reporter_id
+  )
+else:
+  response = self.ladok.finalize_result_JSON(
+    self.__results_id, self.__last_modified, reporter_id
+  )
+
+self.__populate_attributes(**response)
+@
