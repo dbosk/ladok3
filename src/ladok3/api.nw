@@ -268,6 +268,11 @@ The output looks like this.
 \stdoutpythontex[verbatim]
 
 
+\chapter{Results-related API calls}
+
+In this chapter we look at how to fetch results from LADOK and report new 
+results to LADOK.
+
 \section{Reported results}
 
 There are two ways to get results.
