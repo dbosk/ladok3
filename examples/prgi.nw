@@ -126,6 +126,7 @@ def report_results(course_code, component_name, results):
       course = student.courses(code=course_code)[0]
       result = course.results(component=component_name)[0]
       result.set_grade(result.grade, result.date)
+      result.finalize()
     except Exception as err:
       try:
         print(f"{student}: {err}")

@@ -2,8 +2,9 @@
 
 We will now document some possible API calls to LADOK.
 
-To make things easier, we will add two methods, [[get_query]] and 
-[[put_query]], which are shortcuts to make GET and PUT queries to LADOK.
+To make things easier, we will add three methods: [[get_query]], [[put_query]] 
+and [[post_query]], which are shortcuts to make GET, PUT and POST queries to 
+LADOK.
 <<LadokSession data methods>>=
 def get_query(self, path, content_type="application/vnd.ladok-resultat+json"):
   """Returns GET query response for path on the LADOK server"""
@@ -25,6 +26,19 @@ def put_query(self, path, put_data,
   return self.session.put(
     url=self.base_gui_proxy_url + path,
     json=put_data,
+    headers=headers)
+
+def post_query(self, path, post_data,
+  content_type="application/vnd.ladok-resultat+json"):
+  """Returns POST query response for path on the LADOK server"""
+  headers = self.headers.copy()
+  headers["Content-Type"] = content_type
+  headers["X-XSRF-TOKEN"] = self.get_xsrf_token()
+  headers["Referer"] = self.base_gui_url
+
+  return self.session.post(
+    url=self.base_gui_proxy_url + path,
+    json=post_data,
     headers=headers)
 @
 
@@ -202,9 +216,80 @@ The output looks like this.
 \stdoutpythontex[verbatim]
 
 
+\section{Course components}
+
+There are two ways to get the components for a course.
+
+\subsection{[[course_round_components_JSON]]}
+
+This method fetches the course components of a course round from LADOK.
+It requires the course round ID.
+This one includes data such as the number of registered students as well, 
+unlike the method in the next section.
+<<LadokSession data methods>>=
+def course_round_components_JSON(self, round_id):
+  response = self.put_query(
+    "/resultat/kurstillfalle/moment",
+    {"Identitet": [round_id]}
+  )
+
+  if response.status_code == 200:
+    return response.json()["MomentPerKurstillfallen"]
+  raise Exception(response.json()["Meddelande"])
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+try:
+  components = ladok.course_round_components_JSON(dasak10.round_id)
+except Exception as err:
+  print(f"error: {err}")
+else:
+  ladok3.clean_data(components)
+  print(json.dumps(components, indent=2))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+
+\subsection{[[course_instance_components_JSON]]}
+
+This method fetches the course components for a course instance, \ie a version 
+of the syllabus.
+<<LadokSession data methods>>=
+def course_instance_components_JSON(self, course_instance_id):
+  response = self.put_query(
+    "/resultat/utbildningsinstans/moduler",
+    {"Identitet": [course_instance_id]}
+  )
+
+  if response.status_code == 200:
+    return response.json()["Utbildningsinstans"][0]
+  raise Exception(response.json()["Meddelande"])
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+try:
+  components = ladok.course_instance_components_JSON(dasak10.instance_id)
+except Exception as err:
+  print(f"error: {err}")
+else:
+  ladok3.clean_data(components)
+  print(json.dumps(components, indent=2))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+
+\chapter{Results-related API calls}
+
+In this chapter we look at how to fetch results from LADOK and report new 
+results to LADOK.
+
 \section{Reported results}
 
-There are two ways to get results.
+There are two ways to get results for a course.
 One method gives more data than the other.
 
 \subsection{[[search_reported_results_JSON]]}
@@ -292,6 +377,208 @@ print(json.dumps(results, indent=2))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
+
+
+\section{Results for a student: [[student_results_JSON]]}
+
+This method pulls results for an individual student for a particular course.
+<<LadokSession data methods>>=
+def student_results_JSON(self, student_id, course_round_id):
+  """Returns the results for a student on a course round"""
+  response = self.get_query(
+    '/resultat/studieresultat/student/' + student_id +
+        '/utbildningstillfalle/' + course_round_id
+  )
+
+  if response.status_code == 200:
+    return response.json()
+  raise Exception(response.json()["Meddelande"])
+@
+ 
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+results = ladok.student_results_JSON(me.ladok_id, dasak10.round_id)
+
+ladok3.clean_data(results)
+print(json.dumps(results, indent=2))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+
+\section{Modifying results}
+
+We have two alternatives: add a new result or update and existing result draft.
+
+\subsection{[[create_result_JSON]]}
+
+This method is used to create a new result.
+This result will be a draft.
+It must later be finalized and then attested.
+
+Note that since this is a new result, we must provide the [[StudieresultatUID]] 
+where we want to add the result.
+When we've done this, we'll get a [[ResultatUID]] back in the response.
+From then on, it's the [[ResultatUID]] that's interesting.
+<<LadokSession data methods>>=
+def create_result_JSON(self,
+      grade_id, grade_scale_id, date,
+      study_result_id, instance_id,
+      notes=[]):
+  """Creates a new result"""
+  response = self.post_query(
+    "/resultat/studieresultat/skapa",
+    {"Resultat": [{
+      "Betygsgrad": grade_id,
+      "BetygsskalaID": grade_scale_id,
+      "Examinationsdatum": date,
+      "Noteringar": notes,
+      "StudieresultatUID": study_result_id,
+      "UtbildningsinstansUID": instance_id
+    }]}
+  )
+
+  if response.status_code == 200:
+    return response.json()["Resultat"]
+  raise Exception(response.json()["Meddelande"])
+@
+
+\subsection{[[update_result_JSON]]}
+
+This method updates an existing result draft.
+Note that we cannot use this method to update a finalized result.
+Note also that we use the [[ResultatUID]] and not the [[StudieresultatUID]] as 
+we did for [[create_result_JSON]].
+<<LadokSession data methods>>=
+def update_result_JSON(self,
+      grade_id, grade_scale_id, date,
+      result_id, last_modified, notes=[]):
+  response = self.put_query(
+    '/resultat/studieresultat/uppdatera',
+    {
+      'Resultat': [{
+        'ResultatUID': result_id,
+        'Betygsgrad': grade_id,
+        'BetygsskalaID': grade_scale_id,
+        'Noteringar': notes,
+        'Examinationsdatum': date,
+        'SenasteResultatandring': last_modified
+      }]
+    }
+  )
+
+  if response.status_code == 200:
+    return response.json()["Resultat"]
+  raise Exception(response.json()["Meddelande"])
+@
+
+\section{Finalizing a result}
+
+Here we cover the API calls needed to finalize (klarmarkera) a result in LADOK.
+
+\subsection{[[result_attestants_JSON]] and [[result_reporters_JSON]]}
+
+To finalize a result, we must know two things: who is reporting and who can 
+attest.
+We start with who can attest.
+<<LadokSession data methods>>=
+def result_attestants_JSON(self, result_id):
+  """Returns a list of result attestants"""
+  response = self.put_query(
+    "/resultat/anvandare/resultatrattighet/attestanter/kurstillfallesrapportering",
+    {"Identitet": [result_id]}
+  )
+
+  if response.status_code == 200:
+    return response.json()["Anvandare"]
+  raise Exception(response.json()["Meddelande"])
+@ The [[result_id]] is the ID returned in the [[ResultatUID]] field in the 
+response from the [[create_result_JSON]] method.
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+attestants = ladok.result_attestants_JSON(
+  "a1ff1fda-881e-11eb-b9f5-10126f8746d1")
+
+print(json.dumps(attestants[0], indent=2))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+Now, we get a list of who can report (basically anyone registered in the entire 
+organization).
+<<LadokSession data methods>>=
+def result_reporters_JSON(self, organization_id):
+  """Returns a list of who can report results in an organization"""
+  response = self.get_query(
+    "/kataloginformation/anvandare/organisation/" +
+      organization_id + "/resultatrapportorer",
+    "application/vnd.ladok-kataloginformation+json"
+  )
+
+  if response.status_code == 200:
+    return response.json()["Anvandare"]
+  raise Exception(response.text)
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+reporters = ladok.result_reporters_JSON(components["OrganisationUID"])
+ladok3.remove_links(reporters)
+
+print(json.dumps(reporters[8], indent=2))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+\subsection{[[user_info_JSON]]}
+
+Usually, we want to set the reporter to the logged-in user.
+We can use the following API call to get information about the logged-in user.
+<<LadokSession data methods>>=
+def user_info_JSON(self):
+  response = self.get_query(
+    "/kataloginformation/anvandare/anvandarinformation",
+    "application/vnd.ladok-kataloginformation+json"
+  )
+
+  if response.status_code == 200:
+    return response.json()
+  raise Exception(response.text)
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+me_teacher = ladok.user_info_JSON()
+ladok3.remove_links(me_teacher)
+
+print(json.dumps(me_teacher, indent=2))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+\subsection{[[finalize_result_JSON]]}
+
+Finally, we can finalize the reported grade.
+If [[attestant_id]] is not [[None]], then LADOK will send a notification to 
+that person.
+<<LadokSession data methods>>=
+def finalize_result_JSON(self,
+    result_id, last_modified, reporter_id, attestant_id=None):
+  """Marks a result as finalized (klarmarkera)"""
+  response = self.put_query(
+    f"/resultat/studieresultat/resultat/{result_id}/klarmarkera",
+    {
+      "Beslutsfattare": [attestant_id] if attestant_id else [],
+      "RattadAv": [reporter_id],
+      "ResultatetsSenastSparad": last_modified
+    }
+  )
+
+  if response.status_code == 200:
+    return response.json()
+  raise Exception(response.json()["Meddelande"])
+@ This method returns a copy of the finalized result.
 
 
 \section{[[participants_JSON]]}

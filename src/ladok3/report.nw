@@ -40,6 +40,8 @@ try:
   course = student.courses(code=args.course_code)[0]
   result = course.results(component=args.component_code)[0]
   result.set_grade(args.grade, args.date)
+  if args.finalize:
+    result.finalize()
 except Exception as err:
   try:
     print(f"{student}: {err}")
@@ -66,7 +68,7 @@ report_parser.add_argument("grade",
 )
 @
 
-Finally, we have the date.
+Next, we have the date.
 To ensure it's a valid date we'll make [[argparse]] convert it to [[datetime]] 
 format.
 If it's not provided, we let [[argparse]] set it to today's date.
@@ -76,6 +78,16 @@ report_parser.add_argument("-d", "--date",
     f"defaults to today's date ({datetime.date.today()})",
   type=datetime.date.fromisoformat,
   default=datetime.date.today()
+)
+@
+
+Finally, we add an option whether we want to finalize the grade for attestation 
+by the examiner.
+<<add report command arguments to report parser>>=
+report_parser.add_argument("-f", "--finalize",
+  help="Finalize the grade (mark as ready/klarmarkera) for examiner to attest",
+  action="store_true",
+  default=False
 )
 @
 
