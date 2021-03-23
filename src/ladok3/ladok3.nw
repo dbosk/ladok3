@@ -669,7 +669,7 @@ class Grade(LadokData):
     if isinstance(other, Grade):
       return self.__dict__ == other.__dict__
     elif isinstance(other, str):
-      self.code == other
+      return self.code == other
     else:
       raise NotImplementedError(f"can't test equality with {type(other)}")
 @
@@ -1587,14 +1587,19 @@ class CourseResult(LadokRemoteData):
 
     if "component" in kwargs:
       self.__component = kwargs.pop("component")
+      self.__attested = False
       self.__populate_attributes()
     elif "components" in kwargs and \
         ("Arbetsunderlag" in kwargs or "SenastAttesteradeResultat" in kwargs):
       components = kwargs.pop("components")
+
       if "Arbetsunderlag" in kwargs:
+        self.__attested = False
         data = kwargs.pop("Arbetsunderlag")
       elif "SenastAttesteradeResultat" in kwargs:
+        self.__attested = True
         data = kwargs.pop("SenastAttesteradeResultat")
+
       self.__populate_attributes(**data, components=components)
     else:
       raise TypeError("not enough keys given to construct object")
@@ -1650,12 +1655,7 @@ class CourseResult(LadokRemoteData):
   @property
   def attested(self):
     """Returns True if the grade has been attested in LADOK"""
-    try:
-      self.__last_modified
-      return False
-    except:
-      pass
-    return True
+    return self.__attested
 
   def push(self):
     if self.__uid:
