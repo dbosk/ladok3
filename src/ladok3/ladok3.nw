@@ -713,7 +713,7 @@ the same way.
 \inputminted[firstline=19,lastline=29]{python}{../examples/example_Student.py}
 We can check if the result is attested or not.
 If it's not attested, we can change it.
-\inputminted[firstline=32,lastline=53]{python}{../examples/example_Student.py}
+\inputminted[firstline=32,lastline=51]{python}{../examples/example_Student.py}
 
 
 \section{Getting students from LADOK}

@@ -40,17 +40,15 @@ for result in prgi.results():
         print("*")
     else:
         print()
-    print(f"component instance: {result.component.instance_id}")
 
 print("Changing grades")
 
 try:
-    lab2 = prgi.results(component="LAB2")[0]
+    lab2 = prgi.results(component="LAB1")[0]
     lab2.set_grade("P", "2021-02-18")
+    lab2.finalize()
 except Exception as err:
-    print(f"Couldn't change LAB2: {err}")
-
-lab2.finalize()
+    print(f"Couldn't change LAB1: {err}")
 
 for result in prgi.results():
     print(f"{result.component} {result.grade} ({result.date})", end="")
