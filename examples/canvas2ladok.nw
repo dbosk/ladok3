@@ -33,12 +33,57 @@ When running the program we must have the following environment variables set:
 use and a token to authenticate.
 \end{itemize}
 
-\paragraph{Accessing the systems}
+We provide a Docker image for running this program.
+
+\subsection{Building files}
+
+We provide the following files:
+\begin{itemize}
+\item [[<<canvas2ladok.mk>>]].
+\item [[<<Dockerfile>>]],
+\item [[<<canvas2ladok.py>>]],
+\end{itemize}
+
+We provide an include file for GNU make to build all the targets.
+<<canvas2ladok.mk>>=
+.PHONY: all
+all: canvas2ladok.py prgi2ladok
+
+.PHONY: prgi2ladok
+prgi2ladok: canvas2ladok.py Dockerfile
+	docker build -t prgi2ladok .
+
+Dockerfile: canvas2ladok.nw
+	${NOTANGLE}
+
+.PHONY: clean
+clean:
+	${RM} canvas2ladok.pdf canvas2ladok.py
+	${RM} Dockerfile canvas2ladok.mk
+
+.PHONY: distclean
+distclean:
+	-docker image rm prgi2ladok
+@
+
+The Docker image will just contain the [[canvas2ladok.py]] file and run it by 
+default.
+<<Dockerfile>>=
+FROM dbosk/ladok3
+
+RUN pip install --no-cache-dir canvasapi
+COPY canvas2ladok.py ./
+
+CMD ["python", "./canvas2ladok.py"]
+@
+
+
+\section{[[canvas2ladok.py]]: configuration and dependencies}
 
 We use the standard structure for the script.
 We start with the imports and set up our [[ladok]] and [[canvas]] objects, 
 these are used to access the two systems.
-<<prgi.py>>=
+<<canvas2ladok.py>>=
 import cachetools
 from canvasapi import Canvas
 import collections
@@ -52,7 +97,7 @@ PASSWD = os.environ["LADOK_PASS"]
 
 ladok = ladok3.LadokSessionKTH(
         LOGIN, PASSWD,
-        test_environment=True) # for experiments
+        test_environment=False) # for experiments
 
 API_URL = os.environ["CANVAS_SERVER"]
 API_KEY = os.environ["CANVAS_TOKEN"]

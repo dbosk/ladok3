@@ -1,7 +1,7 @@
 .PHONY: all
-all: prgi.py
+all: canvas2ladok.py
 
-prgi.py: prgi.nw
+canvas2ladok.py: canvas2ladok.nw
 
 
 .PHONY: stats
@@ -19,7 +19,7 @@ DD1312.csv: statsdata.py
 
 .PHONY: clean
 clean:
-	${RM} prgi.pdf prgi.py prgi.tex
+	${RM} canvas2ladok.pdf canvas2ladok.py canvas2ladok.tex
 
 .PHONY: distclean
 distclean:

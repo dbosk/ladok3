@@ -21,7 +21,7 @@ ladok3.pdf: preamble.tex abstract.tex ../LICENSE
 ladok3.pdf: ../examples/example_LadokSession.py
 ladok3.pdf: ../examples/example_Student.py
 ladok3.pdf: ../examples/example_Course.py
-ladok3.pdf: ../examples/prgi.tex
+ladok3.pdf: ../examples/canvas2ladok.tex
 ladok3.pdf: DD1315.csv
 
 ../%::
