@@ -128,17 +128,47 @@ The output looks like this.
 
 \section{[[registrations_JSON]]}
 
+This methods returns all registrations for a student.
+<<LadokSession data methods>>=
+def registrations_JSON(self, student_id):
+  """Return all registrations for student with ID student_id."""
+  response = self.get_query(
+    "/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/"+
+      student_id)
+
+  if response.status_code == 200:
+    return response.json()
+  return None
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
+
+results = ladok.registrations_JSON(me.ladok_id)
+
+ladok3.clean_data(results)
+print(json.dumps(results, indent=2))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+
+
+\section{[[registrations_on_course_JSON]]}
+
 This method returns all registrations on a particular course for a particular 
 student.
 This way we can check if a student has been registered several times on a 
 course.
 <<LadokSession data methods>>=
-def registrations_JSON(self, course_education_id, student_id):
+def registrations_on_course_JSON(self,
+    course_education_id, student_id):
   """Return a list of registrations on course with education_id for student 
   with student_id. JSON format."""
   response = self.get_query(
-    "/studiedeltagande/tillfallesdeltagande/"
-      f"utbildning/{course_education_id}/student/{student_id}",
+    "/studiedeltagande/tillfallesdeltagande"
+      f"/utbildning/{course_education_id}/student/{student_id}",
     "application/vnd.ladok-studiedeltagande+json")
   
   if response.status_code == 200:
@@ -151,7 +181,8 @@ This method is used as follows.
 me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
 dasak = me.courses(code="DD2395")[0]
 
-results = ladok.registrations_JSON(dasak.education_id, me.ladok_id)
+results = ladok.registrations_on_course_JSON(dasak.education_id,
+  me.ladok_id)
 
 ladok3.clean_data(results)
 print(json.dumps(results, indent=2))
