@@ -64,7 +64,7 @@ If we convert the grades to numbers, then we can also compute the average grade
 with standard deviation \etc.
 \begin{pyblock}[statstest][numbers=left,firstnumber=last]
 grade_map = {
-  "A": 5, "B": 4, "C": 3, "D": 2, "E": 1, "-": 0, np.nan: 0
+  "A": 5, "B": 4, "C": 3, "D": 2, "E": 1, "-": 0
 }
 grades_num = prgi_LAB3[ ["Round", "Grade"] ].replace(grade_map)
 
@@ -272,12 +272,20 @@ if component.instance_id != result_data["UtbildningsinstansUID"]:
 Finally, if there is a grade, we can extract the grade and compute the 
 normalized date.
 However, if there are no results, we set [[None]].
+We also only consider grades finished during the course.
+\Ie if the student has finished after the course ended, we set it as not 
+finished.
+Otherwise, we cannot compare with earlier courses, since then students have had 
+the chance to finish, so we want to see how many didn't finish on time.
 <<extract grade and normalized date from result data>>=
 if "Betygsgradsobjekt" in result_data:
   grade = result_data["Betygsgradsobjekt"]["Kod"]
   date = datetime.date.fromisoformat(
     result_data["Examinationsdatum"])
   normalized_date = (date - course_start) / course_length
+  if normalized_date > 1:
+    grade = "-"
+    normalized_date = None
 else:
   grade = "-"
   normalized_date = None
