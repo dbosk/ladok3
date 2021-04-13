@@ -36,11 +36,11 @@ import pandas as pd
 prgi = pd.read_csv("DD1315.csv")
 
 rounds_years = {
-  "51386": "2020",
-  "50869": "2019",
-  "50662": "2018",
-  "50650": "2017",
-  "50523": "2016"
+  51386: "2020",
+  50869: "2019",
+  50662: "2018",
+  50650: "2017",
+  50523: "2016"
 }
 prgi_LAB3 = prgi[
   prgi.Component.eq("LAB3") & prgi.Round.isin(rounds_years.keys())
