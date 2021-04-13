@@ -137,16 +137,18 @@ The output looks like this.
 
 \section{[[registrations_JSON]]}
 
-This methods returns all registrations for a student.
+This methods returns \emph{all} registrations for a student, \ie registrations 
+on courses and programmes.
 <<LadokSession data methods>>=
 def registrations_JSON(self, student_id):
   """Return all registrations for student with ID student_id."""
   response = self.get_query(
-    "/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/"+
-      student_id)
+    '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/'+
+      student_id,
+    "application/vnd.ladok-studiedeltagande+json")
 
   if response.status_code == 200:
-    return response.json()
+    return response.json()["Tillfallesdeltaganden"]
   return None
 @
 
