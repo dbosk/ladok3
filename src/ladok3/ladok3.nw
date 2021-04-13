@@ -308,7 +308,7 @@ in LADOK.
 We will first look at the base classes and then provide methods that return 
 instances of various subclasses.
 
-\subsection{LADOK data base class: [[LadokData]]}
+\subsection{LADOK data base class: [[LadokData]]}\label{LadokData}
 
 Some objects will only have read-only attributes, like grade scales, whereas 
 others, like students, will have modifiable attributes, such as results, which 
@@ -412,7 +412,8 @@ for attribute in kwargs:
       property(operator.attrgetter(priv_attr_name)))
 @
 
-\subsection{LADOK remote data base class: [[LadokRemoteData]]}
+\subsection{LADOK remote data base class: [[LadokRemoteData]]}%
+\label{LadokRemoteData}
 
 The objects that can be modified can also be updated.
 They can be updated locally, which must be pushed to LADOK; they can be changed 
@@ -513,7 +514,7 @@ def filter_on_any_key(items, /, **kwargs):
 \section{Extracting translations}
 
 In many cases, LADOK provides several translations.
-The do that in the form of this JSON structure:
+They do that in the form of this JSON structure:
 \begin{minted}{JSON}
 {
   "Benamning": [
@@ -1006,7 +1007,7 @@ def search_course_rounds(self, /, **kwargs):
   if "round_code" in kwargs:
     url += f"tillfalleskod={kwargs['round_code']}&"
 
-  url += "page=1&limit=100&skipCount=false&sprakkod=sv"
+  url += "page=1&limit=400&skipCount=false&sprakkod=sv"
 
   response = self.session.get(
     url=url,
@@ -1509,7 +1510,7 @@ def __fetch_participants(self):
 
 \section{Course registrations and a student's results}
 
-Every student is registered on a course.
+Students register for a course.
 The [[CourseRegistration]] class represents this data from LADOK.
 This is the object that must be used to get results for a student.
 <<classes>>=

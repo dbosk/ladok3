@@ -126,7 +126,7 @@ def grade_scales_JSON(self):
 
 This method is used as follows.
 \begin{pyblock}[apitest][numbers=left,firstnumber=last]
-print(json.dumps(ladok.grade_scales_JSON()[0], indent=2))
+print(json.dumps(ladok.grade_scales_JSON()[0], indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -159,7 +159,7 @@ me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
 results = ladok.registrations_JSON(me.ladok_id)
 
 ladok3.clean_data(results)
-print(json.dumps(results, indent=2))
+print(json.dumps(results, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -168,7 +168,7 @@ The output looks like this.
 
 \section{[[registrations_on_course_JSON]]}
 
-This method returns all registrations on a particular course for a particular 
+This method returns all registrations for a particular course for a particular 
 student.
 This way we can check if a student has been registered several times on a 
 course.
@@ -196,7 +196,7 @@ results = ladok.registrations_on_course_JSON(dasak.education_id,
   me.ladok_id)
 
 ladok3.clean_data(results)
-print(json.dumps(results, indent=2))
+print(json.dumps(results, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -225,7 +225,7 @@ dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
 results = ladok.course_rounds_JSON(dasak10.instance_id)
 
 ladok3.clean_data(results)
-print(json.dumps(results[:1]+results[-1:], indent=2))
+print(json.dumps(results[:1]+results[-1:], indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -235,7 +235,7 @@ The output looks like this.
 
 This method fetches the data for a given course instance.
 It requires the course instance ID.
-(This is a slightly rewritten version o Chip's original method.)
+(This is a slightly rewritten version of Maguire's original method.)
 <<LadokSession data methods>>=
 def course_instance_JSON(self, instance_id):
   """Returns course instance data for a course with instance ID instance_id"""
@@ -252,7 +252,7 @@ This method is used as follows.
 results = ladok.course_instance_JSON(dasak10.instance_id)
 
 ladok3.clean_data(results)
-print(json.dumps(results, indent=2))
+print(json.dumps(results, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -288,7 +288,7 @@ except Exception as err:
   print(f"error: {err}")
 else:
   ladok3.clean_data(components)
-  print(json.dumps(components, indent=2))
+  print(json.dumps(components, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -318,7 +318,7 @@ except Exception as err:
   print(f"error: {err}")
 else:
   ladok3.clean_data(components)
-  print(json.dumps(components, indent=2))
+  print(json.dumps(components, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -377,7 +377,7 @@ ladok3.clean_data(results)
 results = list(filter(
   lambda x: x["Student"]["Uid"] == me.ladok_id,
   results))
-print(json.dumps(results, indent=2))
+print(json.dumps(results, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -415,7 +415,7 @@ ladok3.clean_data(results)
 results = list(filter(
   lambda x: x["Student"]["Uid"] == me.ladok_id,
   results))
-print(json.dumps(results, indent=2))
+print(json.dumps(results, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -442,7 +442,7 @@ This method is used as follows.
 results = ladok.student_results_JSON(me.ladok_id, dasak10.round_id)
 
 ladok3.clean_data(results)
-print(json.dumps(results, indent=2))
+print(json.dumps(results, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -450,7 +450,7 @@ The output looks like this.
 
 \section{Modifying results}
 
-We have two alternatives: add a new result or update and existing result draft.
+We have two alternatives: add a new result or update an existing result draft.
 
 \subsection{[[create_result_JSON]]}
 
@@ -542,7 +542,7 @@ This method is used as follows.
 attestants = ladok.result_attestants_JSON(
   "d05c1e97-4c1e-11eb-8e41-bc743cd4482b")
 
-print(json.dumps(attestants[0], indent=2))
+print(json.dumps(attestants[0], indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -568,7 +568,7 @@ This method is used as follows.
 reporters = ladok.result_reporters_JSON(components["OrganisationUID"])
 ladok3.remove_links(reporters)
 
-print(json.dumps(reporters[8], indent=2))
+print(json.dumps(reporters[8], indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -594,7 +594,7 @@ This method is used as follows.
 me_teacher = ladok.user_info_JSON()
 ladok3.remove_links(me_teacher)
 
-print(json.dumps(me_teacher, indent=2))
+print(json.dumps(me_teacher, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]
@@ -625,9 +625,9 @@ def finalize_result_JSON(self,
 
 \section{[[participants_JSON]]}
 
-The method returns JSON data containing a list of students (the participants of 
+The method returns JSON data containing a list of students (the participants in 
 the course round).
-(This is an extension of Chip's original [[participants_JSON]] method.
+(This is an extension of Maguire's original [[participants_JSON]] method.
 The essential difference is keyword arguments to filter which students to 
 include.)
 <<LadokSession data methods>>=
@@ -682,7 +682,7 @@ ladok3.clean_data(results)
 results = list(filter(
   lambda x: x["Student"]["Uid"] == me.ladok_id,
   results))
-print(json.dumps(results, indent=2))
+print(json.dumps(results, indent=2, ensure_ascii=False))
 \end{pyblock}
 The output looks like this.
 \stdoutpythontex[verbatim]

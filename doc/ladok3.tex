@@ -1,4 +1,6 @@
-\documentclass[a4paper]{report}
+\documentclass[a4paper,oneside]{book}
+\newenvironment{abstract}{}{}
+\usepackage{abstract}
 \usepackage{noweb}
 % Needed to relax penalty for breaking code chunks across pages, otherwise 
 % there might be a lot of space following a code chunk.
@@ -25,6 +27,7 @@
 }
 
 \begin{document}
+\frontmatter
 \maketitle
 
 \vspace*{\fill}
@@ -39,8 +42,12 @@
 \tableofcontents
 \clearpage
 
-
+\mainmatter
 \chapter{Introduction}
+
+LADOK (abbreviation of \foreignlanguage{swedish}{Lokalt Adb–baserat 
+DOKumentationssystem}, in Swedish) is the national documentation system for 
+higher education in Sweden.
 
 This is the documented source code of the LADOK3 API wrapper for Python, the 
 package \texttt{ladok3}.
@@ -54,11 +61,11 @@ You can find a quick reference by running
 pydoc ladok3
 \end{minted}
 
-We provide the main class \texttt{LadokSession}.
+We provide the main class \texttt{LadokSession} (\cref{LadokSession}).
 The \texttt{LadokSession} class acts like \enquote{factories} and will return 
 objects representing various LADOK data.
-These data objects' classes inherit the \texttt{LadokData]] and [[LadokRemoteData} 
-classes.
+These data objects' classes inherit the \texttt{LadokData} (\cref{LadokData}) 
+and \texttt{LadokRemoteData} (\cref{LadokRemoteData}) classes.
 Data of the type \texttt{LadokData} is not expected to change, unlike 
 \texttt{LadokRemoteData}, which is.
 Objects of type \texttt{LadokRemoteData} know how to update themselves, \ie fetch 
@@ -117,6 +124,7 @@ You can find an up-to-date version of this chapter at
 \input{../examples/canvas2ladok.tex}
 
 
+\backmatter
 \printbibliography
 
 
