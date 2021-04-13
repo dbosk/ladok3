@@ -156,7 +156,7 @@ data_writer.writerow([
   "Course", "Round", "Component", "Student", "Grade", "Time"
 ])
 for course_round in course_rounds:
-  data = extract_data_for_round(ladok, course_round)
+  data = extract_data_for_round(ladok, course_round, args)
 
   for student, component, grade, time in data:
     data_writer.writerow(
@@ -174,7 +174,7 @@ We need access to LADOK through the [[ladok]] object of type [[LadokSession]].
 We also need the course round through the [[course_round]] object of type 
 [[CourseRound]].
 <<functions>>=
-def extract_data_for_round(ladok, course_round):
+def extract_data_for_round(ladok, course_round, args):
   <<compute start and length of the course>>
   <<get the results for the course round>>
 
@@ -283,12 +283,18 @@ if "Betygsgradsobjekt" in result_data:
   date = datetime.date.fromisoformat(
     result_data["Examinationsdatum"])
   normalized_date = (date - course_start) / course_length
-  if normalized_date > 1:
+  if normalized_date > args.limit:
     grade = "-"
     normalized_date = None
 else:
   grade = "-"
   normalized_date = None
+@ We must add the command line argument for the limit for the normalized date.
+<<add data command arguments to data parser>>=
+data_parser.add_argument("-t", "--time-limit",
+  type=float, default=1.0,
+  help="The time (normalized) for cutting off results, "
+    "default is 1.0 (i.e. at course end)")
 @
 
 However, we don't want to include all students.
