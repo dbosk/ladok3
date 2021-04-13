@@ -2,6 +2,9 @@
 
 We will now document some possible API calls to LADOK.
 
+
+\section{HTTP queries to LADOK}
+
 To make things easier, we will add three methods: [[get_query]], [[put_query]] 
 and [[post_query]], which are shortcuts to make GET, PUT and POST queries to 
 LADOK.
@@ -41,6 +44,9 @@ def post_query(self, path, post_data,
     json=post_data,
     headers=headers)
 @
+
+
+\section{Cleaning data for printing}
 
 We sometimes want to print the data, for instance, example output in this 
 document.
@@ -86,6 +92,9 @@ def pseudonymize(json_obj):
     for item in json_obj:
       pseudonymize(item)
 @
+
+
+\section{Test code for the API}
 
 We will use the following to test the following API methods.
 \begin{pyblock}[apitest][numbers=left]

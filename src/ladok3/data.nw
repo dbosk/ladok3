@@ -98,6 +98,7 @@ This yields \cref{GradeStatsAvg}.
 
 \stdoutpythontex
 
+
 \section{The [[data]] subcommand}\label{DataCommand}
 
 This is a subcommand run as part of the [[ladok3.cli]] module.
