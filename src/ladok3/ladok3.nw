@@ -1522,6 +1522,7 @@ class CourseRegistration(CourseInstance):
 
     # ett Ladok-ID för kursomgången
     self.__round_id = kwargs.pop("UtbildningstillfalleUID")
+    self.__round_code = kwargs.pop("Utbildningstillfalleskod")
 
     dates = kwargs.pop("Studieperiod")
     self.__start = datetime.date.fromisoformat(dates["Startdatum"])
@@ -1533,12 +1534,23 @@ class CourseRegistration(CourseInstance):
     return self.__round_id
 
   @property
+  def round_code(self):
+    """Returns the human-readable round code (tillfälleskod)"""
+    return self.__round_code
+
+  @property
   def start(self):
     return self.__start
 
   @property
   def end(self):
     return self.__end
+
+  def __str__(self):
+    return f"{self.code} {self.round_code} ({self.start}--{self.end})"
+
+  def __repr__(self):
+    return f"{self.code}:{self.round_code}:{self.start}--{self.end}"
 
   def results(self, /, **kwargs):
     """Returns the student's results on the course, filtered on keywords"""
