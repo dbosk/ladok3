@@ -938,17 +938,27 @@ populate all study-related attributes that LADOK returns in one request.
 def __get_study_attributes(self):
   """Helper method to fetch study related attributes"""
   <<create a list of the student's course objects>>
+@
 
+The [[courses]] method returns all registrations on courses.
+This means that the same course can occur multiple times if the student has 
+reregistered.
+We return the list sorted on the starting date, the newest course last.
+(LADOK already seems to return them in sorted order, but we sort them anyway to 
+ensure that this is not just a coincidence.)
+<<student attribute methods>>=
 def courses(self, /, **kwargs):
   """Returns a list of courses that the student is registered on.
-  Filtered based on keywords."""
+  Filtered based on keywords. Sorted on start-date, most recent last."""
   try:
     courses = self.__courses
   except:
     self.__get_study_attributes()
     courses = self.__courses
 
-  return filter_on_keys(courses, **kwargs)
+  courses = filter_on_keys(courses, **kwargs)
+  courses.sort(key=operator.attrgetter("start"))
+  return courses
 @
 
 Then we can call the last method when we want to pull all attributes too (using 
@@ -956,21 +966,14 @@ the [[pull]] method).
 <<pull all student attributes>>=
 self.__get_study_attributes()
 @
-
 <<create a list of the student's course objects>>=
-# detta är egentligen kurstillfällen, inte kurser (ID-numret är alltså ett 
-# ID-nummer för ett kurstillfälle)
-response = self.ladok.session.get(
-  url=self.ladok.base_gui_proxy_url+
-    '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/'+
-      self.ladok_id,
-  headers=self.ladok.headers).json()
+registrations = self.ladok.registrations_JSON(self.ladok_id)
     
 self.__courses = []
 
-for course in response['Tillfallesdeltaganden']:
-  if not course['Nuvarande'] or \
-    'Utbildningskod' not in course['Utbildningsinformation']:
+for course in registrations:
+  # Only get courses, not programmes
+  if 'Utbildningskod' not in course['Utbildningsinformation']:
     continue
   
   self.__courses.append(CourseRegistration(
