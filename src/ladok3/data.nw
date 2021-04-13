@@ -129,7 +129,10 @@ We add a subparser.
 We set it up to use the function [[command]].
 <<add data parser to parser>>=
 data_parser = parser.add_parser("data",
-  help="Returns course results data in CSV form")
+  help="Returns course results data in CSV form",
+  description="""
+Returns the results in CSV form for all first-time registered students.
+""".strip())
 data_parser.set_defaults(func=command)
 @
 
@@ -154,7 +157,6 @@ data_writer.writerow([
 ])
 for course_round in course_rounds:
   data = extract_data_for_round(ladok, course_round)
-  data = clean_data(data)
 
   for student, component, grade, time in data:
     data_writer.writerow(
@@ -176,18 +178,27 @@ def extract_data_for_round(ladok, course_round):
   <<compute start and length of the course>>
   <<get the results for the course round>>
 
-  for result in results:
-    student = result["Student"]["Uid"]
+  for student in course_round.participants():
+    student_results = filter_student_results(student, results)
 
-    for component_result in result["ResultatPaUtbildningar"]:
-      if component_result["HarTillgodoraknande"]:
-        continue
+    <<determine if student should be included>>
 
-      <<get the component result data>>
-      <<extract component code from result data>>
-      <<extract grade and normalized date from result data>>
+    if len(student_results) < 1:
+      for component in course_round.components():
+        yield student, component, "-", None
+      continue
 
-      yield (student, component_code, grade, normalized_date)
+    for component in course_round.components():
+      result_data = filter_component_result(
+        component, student_results[0]["ResultatPaUtbildningar"])
+
+      if result_data:
+        <<extract grade and normalized date from result data>>
+      else:
+        grade = "-"
+        normalized_date = None
+
+      yield student, component, grade, normalized_date
 @
 
 We need the start of the course and the length to be able to normalize the 
@@ -205,6 +216,31 @@ requested for.
 component = course_round.components()[0]
 results = ladok.search_reported_results_JSON(
   course_round.round_id, component.instance_id)
+@
+
+Now, we don't iterate over these results.
+We iterate over the students and the components of a course round.
+LADOK doesn't report \enquote{none results}.
+But we want to have a result showing that a student hasn't done anything, that 
+should affect the statistics.
+Then we must search for a student's result in the batch of results we received 
+from LADOK.
+<<functions>>=
+def filter_student_results(student, results):
+  return list(filter(
+    lambda x: x["Student"]["Uid"] == student.ladok_id,
+    results))
+@
+
+Similarly, we want to find the result for a particular component.
+<<functions>>=
+def filter_component_result(component, results):
+  for component_result in results:
+    <<get the component result data>>
+    <<check component code in result data>>
+    return result_data
+
+  return None
 @
 
 Depending on whether the data is attested or not, we can get the actual grade 
@@ -228,12 +264,9 @@ The [[course_round]] object allows us to do exactly that with the
 [[components]] method.
 We note that we can ignore the grade on the whole course, since that one is 
 determined by the other components.
-<<extract component code from result data>>=
-matching_component = course_round.components(
-  instance_id=result_data["UtbildningsinstansUID"])
-if len(matching_component) < 1:
+<<check component code in result data>>=
+if component.instance_id != result_data["UtbildningsinstansUID"]:
   continue
-component_code = matching_component[0].code
 @
 
 Finally, if there is a grade, we can extract the grade and compute the 
@@ -250,34 +283,57 @@ else:
   normalized_date = None
 @
 
-
-\section{Clean the data}
-
-We want to filter out some values from the data.
-We only want to keep students who are registered on the course the first time.
-<<functions>>=
-def clean_data(data):
-  data = list(data)
-  students_to_remove = reregistered_students(data)
-  return remove_students(students_to_remove, data)
+However, we don't want to include all students.
+We check if a student should be included or not, the criteria are discussed in 
+\cref{WhoToInclude}.
+<<determine if student should be included>>=
+if not should_include(ladok, student, course_round, student_results):
+  continue
 @
 
-We approximate first time registrations with grades reported before the course 
-started.
-Thus we remove any student who has a result before the course.
-It would be more exact to remove students who are in fact reregistered in 
-LADOK, but we leave that for a future version.
-<<functions>>=
-def reregistered_students(data):
-  students = set()
-  for student, _, _, time in data:
-    if time and time < 0:
-      students.add(student)
-  return students
 
-def remove_students(students, data):
-  for row in data:
-    if row[0] not in students:
-      yield row
+\section{Which students to exclude}\label{WhoToInclude}
+
+We want to filter out some values from the data.
+We only want to keep students who are registered on the course the first time 
+and who doesn't have any credit transfer on the course.
+<<functions>>=
+def should_include(ladok, student, course_round, result):
+  """Returns True if student should be included, False if to be excluded"""
+  if is_reregistered(ladok, student.ladok_id, course_round):
+    return False
+
+  if has_credit_transfer(result):
+    return False
+
+  return True
+@
+
+A student should be counted on the first round they were registered on.
+We check if a student is reregistered by checking if the course round is the 
+first round the student was registered on.
+<<functions>>=
+def is_reregistered(ladok, student_id, course):
+  """Check if the student is reregistered on the course round course."""
+  registrations = ladok.registrations_on_course_JSON(
+    course.education_id, student_id)
+  registrations.sort(
+    key=lambda x: x["Utbildningsinformation"]["Studieperiod"]["Startdatum"])
+  first_reg = registrations[0]
+  return first_reg["Utbildningsinformation"]["Utbildningstillfalleskod"] != \
+    course.round_code
+@
+
+If the student has a credit transfer for any part of the course, we should 
+exclude the student.
+<<functions>>=
+def has_credit_transfer(results):
+  """Returns True if there exists a credit tranfer among the results."""
+  for result in results:
+    for component_result in result["ResultatPaUtbildningar"]:
+      if component_result["HarTillgodoraknande"]:
+        return True
+
+  return False
 @
 
