@@ -1463,16 +1463,45 @@ possibly filter the results.
 def results(self, /, **kwargs):
   """Returns all students' results on the course"""
   try:
-    return filter_on_keys(self.__results, **kwargs)
+    self.__results
   except:
     self.__fetch_results()
+
   return filter_on_keys(self.__results, **kwargs)
 @
 
 To fetch the results from LADOK, we must do the following query.
 <<CourseRound data methods>>=
 def __fetch_results(self):
-  pass
+  raise NotImplementedError(
+    f"{type(self).__name__}.__fetch_results not implemented")
+@
+
+
+\section{Participants for a course round}
+
+We want to get a list of participants for a course round, \ie a list of 
+[[Student]] objects.
+<<CourseRound data methods>>=
+def participants(self, /, **kwargs):
+  """Returns a Student object for each participant in the course."""
+  try:
+    self.__participants
+  except:
+    self.__fetch_participants()
+
+  return filter_on_keys(self.__participants, **kwargs)
+@
+
+When we fetch the participants, we don't create new [[Student]] objects.
+We use the [[get_student]] method of the LADOK session object to fetch objects 
+from the cache if they already exist.
+<<CourseRound data methods>>=
+def __fetch_participants(self):
+  self.__participants = []
+  for student in self.ladok.participants_JSON(self.round_id):
+    self.__participants.append(
+      self.ladok.get_student(student["Student"]["Uid"]))
 @
 
 
