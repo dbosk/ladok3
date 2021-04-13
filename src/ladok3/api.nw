@@ -540,7 +540,7 @@ response from the [[create_result_JSON]] method.
 This method is used as follows.
 \begin{pyblock}[apitest][numbers=left,firstnumber=last]
 attestants = ladok.result_attestants_JSON(
-  "a1ff1fda-881e-11eb-b9f5-10126f8746d1")
+  "d05c1e97-4c1e-11eb-8e41-bc743cd4482b")
 
 print(json.dumps(attestants[0], indent=2))
 \end{pyblock}
