@@ -201,18 +201,14 @@ def extract_data_for_round(ladok, course_round, args):
   <<compute start and length of the course>>
   <<get the results for the course round>>
 
-  students = course_round.participants()
-  if "students" in args:
-    students = filter_students(students, args.students)
+  students = filter_students(course_round.participants(), args.students)
 
   for student in students:
     student_results = filter_student_results(student, results)
 
     <<determine if student should be included>>
 
-    components = course_round.components()
-    if "components" in args:
-      components = filter_components(components, args.components)
+    components = filter_components(course_round.components(), args.components)
 
     for component in components:
       if len(student_results) < 1:
@@ -314,7 +310,7 @@ if "Betygsgradsobjekt" in result_data:
   date = datetime.date.fromisoformat(
     result_data["Examinationsdatum"])
   normalized_date = (date - course_start) / course_length
-  if normalized_date > args.time_limit:
+  if args.time_limit and normalized_date > args.time_limit:
     grade = "-"
     normalized_date = None
 else:
@@ -322,10 +318,9 @@ else:
   normalized_date = None
 @ We must add the command line argument for the limit for the normalized date.
 <<add data command arguments to data parser>>=
-data_parser.add_argument("-t", "--time-limit",
-  type=float, default=1.0,
+data_parser.add_argument("-t", "--time-limit", type=float,
   help="The time (normalized) for cutting off results, "
-    "default is 1.0 (i.e. at course end)")
+    "use `-t 1.0` to cut off at course end.")
 @
 
 \subsection{Filtering data}
