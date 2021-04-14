@@ -27,9 +27,16 @@ build: ${LADOK3}
 
 .PHONY: publish publish-ladok3 publish-docker
 publish: publish-ladok3 publish-docker
+	git push
+	gh release create \
+		$(sed -n 's/^ *version *= *"\([^"]\+\)",/v\1/p' setup.py) \
+		doc/ladok3.pdf
 
-publish-ladok3: build
+publish-ladok3: build doc/ladok3.pdf
 	python3 -m twine upload -r pypi dist/*
+
+doc/ladok3.pdf:
+	${MAKE} -C $(dir $@) $(notdir $@)
 
 publish-docker:
 	sleep 60
