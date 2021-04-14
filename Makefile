@@ -5,6 +5,10 @@ SUBDIR+=	examples
 SUBDIR+=	doc
 SUBDIR+=	docker
 
+version=$(shell sed -n 's/^ *version *= *\"\([^\"]\+\)\",/\1/p' setup.py)
+dist=$(addprefix dist/ladok3-${version}, -py3-none-any.whl .tar.gz)
+
+
 .PHONY: all
 all:
 	true
@@ -26,17 +30,18 @@ build: ${LADOK3}
 	python3 -m build
 
 .PHONY: publish publish-ladok3 publish-docker
-publish: publish-ladok3 publish-docker
+publish: publish-ladok3 publish-docker doc/ladok3.pdf
 	git push
-	gh release create \
-		$(sed -n 's/^ *version *= *"\([^"]\+\)",/v\1/p' setup.py) \
-		doc/ladok3.pdf
-
-publish-ladok3: build doc/ladok3.pdf
-	python3 -m twine upload -r pypi dist/*
+	gh release create -t v${version} v${version} doc/ladok3.pdf
 
 doc/ladok3.pdf:
 	${MAKE} -C $(dir $@) $(notdir $@)
+
+publish-ladok3: ${dist}
+	python3 -m twine upload -r pypi ${dist}
+
+${dist}: ${LADOK3}
+	python3 -m build
 
 publish-docker:
 	sleep 60
