@@ -143,10 +143,10 @@ We fetch the data from LADOK and print it in CSV format to standard out
 ([[sys.stdout]]).
 This way the user can deal with how to store the data.
 <<produce data about course specified in args>>=
-data_writer = csv.writer(sys.stdout)
-course_rounds = ladok.search_course_rounds(code=args.course_code)
-if "rounds" in args:
-  course_rounds = list(filter_rounds(course_rounds, args.rounds))
+data_writer = csv.writer(sys.stdout, delimiter=args.delimiter)
+course_rounds = filter_rounds(
+  ladok.search_course_rounds(code=args.course_code),
+  args.rounds)
 
 data_writer.writerow([
   "Course", "Round", "Component", "Student", "Grade", "Time"
@@ -159,10 +159,16 @@ for course_round in course_rounds:
       [course_round.code, course_round.round_code, component,
         student, grade, time]
     )
-@ We take a course code as an argument.
+@ We must take a course code and a delimiter as arguments.
 <<add data command arguments to data parser>>=
 data_parser.add_argument("course_code",
   help="The course code of the course for which to export data")
+
+data_parser.add_argument("-d", "--delimiter",
+  default="\t",
+  help="The delimiter for the CSV output; "
+    "default is a tab character to be compatible with POSIX commands, "
+    "use `-d,` or `-d ,` to get comma-separated values.")
 @
 
 We filter the rounds.
