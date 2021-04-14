@@ -43,7 +43,7 @@ def command(ladok, args):
 As mentioned above, we provide two ways of doing this.
 <<add report command arguments to report parser>>=
 one_parser = report_parser.add_argument_group(
-  "one result as positional args")
+  "one result as positional args, only date is optional")
 <<add one result group arguments>>
 many_parser = report_parser.add_argument_group(
   "many results read from standard input as CSV, columns: "
@@ -79,26 +79,10 @@ report_parser.add_argument("-f", "--finalize",
 
 \section{Report a result given on command line}
 
-If we've chosen to give one result on the command line, then we do the 
-following.
-<<report results given in args>>=
-try:
-  student = ladok.get_student(args.student_id)
-  course = student.courses(code=args.course_code)[0]
-  result = course.results(component=args.component_code)[0]
-  result.set_grade(args.grade, args.time)
-  if args.finalize:
-    result.finalize()
-except Exception as err:
-  try:
-    print(f"{student}: {err}")
-  except ValueError as verr:
-    print(f"{verr}: {args.student_id}: {err}")
-@ This means that we need the following command-line arguments.
-The option [[args.finalize]] is already set above, so we don't need to add that 
-one here.
+If we've chosen to give one result on the command line, then we'll need the 
+following arguments.
 
-We start with the student ID, course and component code, and grade.
+We start with the course, component code, the student's ID and grade.
 <<add one result group arguments>>=
 one_parser.add_argument("course_code", nargs="?",
   help="The course code (e.g. DD1315) for which the grade is for"
@@ -115,6 +99,15 @@ one_parser.add_argument("student_id", nargs="?",
 one_parser.add_argument("grade", nargs="?",
   help="The grade (e.g. A or P)"
 )
+@ We must make them optional like this to make it work with out second 
+alternative, so we must check ourselves that we got the arguments.
+<<check that we got all positional arguments>>=
+if not (args.course_code and args.component_code and
+  args.student_id and args.grade):
+  print(f"{sys.argv[0]} report: "
+    "not all positional args given: course_code, component, student, grade",
+    file=sys.stderr)
+  sys.exit(1)
 @
 
 Next, we have the date.
@@ -122,7 +115,7 @@ To ensure it's a valid date we'll make [[argparse]] convert it to [[datetime]]
 format.
 If it's not provided, we let [[argparse]] set it to today's date.
 <<add one result group arguments>>=
-one_parser.add_argument("-t", "--time",
+one_parser.add_argument("date", nargs="?",
   help="Date on ISO format (e.g. 2021-03-18), "
     f"defaults to today's date ({datetime.date.today()})",
   type=datetime.date.fromisoformat,
@@ -130,13 +123,33 @@ one_parser.add_argument("-t", "--time",
 )
 @
 
+Now that we have the arguments, we can just execute the following code using 
+them.
+<<report results given in args>>=
+<<check that we got all positional arguments>>
+try:
+  student = ladok.get_student(args.student_id)
+  course = student.courses(code=args.course_code)[0]
+  result = course.results(component=args.component_code)[0]
+  result.set_grade(args.grade, args.date)
+  if args.finalize:
+    result.finalize()
+except Exception as err:
+  try:
+    print(f"{student}: {err}")
+  except ValueError as verr:
+    print(f"{verr}: {args.student_id}: {err}")
+@ This means that we need the following command-line arguments.
+The option [[args.finalize]] is already set above, so we don't need to add that 
+one here.
+
 
 \section{Report many results given in standard input}
 
 We want to read CSV data from standard input.
 <<report results given in stdin>>=
 data_reader = csv.reader(sys.stdin, delimiter=args.delimiter)
-for course_code, component_code, student_id, grade, time in data_reader:
+for course_code, component_code, student_id, grade, date in data_reader:
   <<report a result read from stdin>>
 @ We need to add an argument for the delimiter.
 <<add many results group arguments>>=
@@ -155,7 +168,7 @@ try:
   student = ladok.get_student(student_id)
   course = student.courses(code=course_code)[0]
   result = course.results(component=component_code)[0]
-  result.set_grade(grade, time)
+  result.set_grade(grade, date)
   if args.finalize:
     result.finalize()
 except Exception as err:
