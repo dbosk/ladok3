@@ -42,10 +42,11 @@ def command(ladok, args):
 
 As mentioned above, we provide two ways of doing this.
 <<add report command arguments to report parser>>=
-one_parser = report_parser.add_argument_group(
+mutex_group = report_parser.add_mutually_exclusive_group()
+one_parser = mutex_group.add_argument_group(
   "one result as positional args")
 <<add one result group arguments>>
-many_parser = report_parser.add_argument_group(
+many_parser = mutex_group.add_argument_group(
   "many results read from standard input as CSV, columns: "
   "course, component, student, grade, date.")
 <<add many results group arguments>>
@@ -100,19 +101,19 @@ one here.
 
 We start with the student ID, course and component code, and grade.
 <<add one result group arguments>>=
-one_parser.add_argument("course_code", nargs="?",
+one_parser.add_argument("course_code",
   help="The course code (e.g. DD1315) for which the grade is for"
 )
 
-one_parser.add_argument("component_code", nargs="?",
+one_parser.add_argument("component_code",
   help="The component code (e.g. LAB1) for which the grade is for"
 )
 
-one_parser.add_argument("student_id", nargs="?",
+one_parser.add_argument("student_id",
   help="Student identifier (personnummer or LADOK ID)"
 )
 
-one_parser.add_argument("grade", nargs="?",
+one_parser.add_argument("grade",
   help="The grade (e.g. A or P)"
 )
 @
