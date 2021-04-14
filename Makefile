@@ -32,7 +32,7 @@ publish-ladok3: build
 	python3 -m twine upload -r pypi dist/*
 
 publish-docker:
-	sleep 30
+	sleep 60
 	${MAKE} -C docker publish
 
 
