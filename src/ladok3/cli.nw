@@ -20,6 +20,7 @@ set up a global [[dirs]] that we can use.
 
 import appdirs
 import argcomplete, argparse
+from cryptography.fernet import Fernet
 import getpass
 import json
 import keyring
@@ -143,8 +144,8 @@ store_ladok_session(ls)
 
 Now we need to implement the [[store_ladok_session]] and 
 [[restore_ladok_session]] functions.
-For storing, we simply use [[pickle.dump]] to a suitably chosen file.
-For restoring, we simply [[pickle.load]] from the same suitably chosen file.
+We will use [[pickle]] for storing and restoring the object.
+But we also want to encrypt the stored object.
 <<functions>>=
 def store_ladok_session(ls):
   if not os.path.isdir(dirs.user_cache_dir):
@@ -152,17 +153,48 @@ def store_ladok_session(ls):
 
   file_path = dirs.user_cache_dir + "/LadokSession"
 
+  pickled_ls = pickle.dumps(ls)
+  <<encrypt pickled ls>>
+
   with open(file_path, "wb") as file:
-    pickle.dump(ls, file)
+    file.write(encrypted_ls)
   
 def restore_ladok_session():
   file_path = dirs.user_cache_dir + "/LadokSession"
 
   if os.path.isfile(file_path):
     with open(file_path, "rb") as file:
-      return pickle.load(file)
+      encrypted_ls = file.read()
+      <<decrypt encrypted ls>>
+      return pickle.loads(pickled_ls)
 
   return None
+@
+
+We don't want to only encrypt the object, we also want to provide integrity for 
+the object.
+This is to avoid any vulnerabilities with [[pickle]].
+We use the [[cryptography]] module to handle the encryption.
+In particular, we use the [[cryptography.fernet]] protocol which encrypts using 
+AES and signs using HMAC.
+
+We will generate a key and store it in the system keyring.
+We will reuse any previously generated key.
+Then we do the encryption/decryption.
+<<encrypt pickled ls>>=
+key = keyring.get_password("ladok3", "cache_key")
+if not key:
+  key = Fernet.generate_key()
+keyring.set_password("ladok3", "cache_key", key)
+
+fernet_protocol = Fernet(key)
+encrypted_ls = fernet_protocol.encrypt(pickled_ls)
+@
+<<decrypt encrypted ls>>=
+key = keyring.get_password("ladok3", "cache_key")
+
+fernet_protocol = Fernet(key)
+pickled_ls = fernet_protocol.decrypt(encrypted_ls)
 @
 
 

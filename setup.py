@@ -38,6 +38,7 @@ setup(
         "appdirs>=1.4.4",
         "argcomplete>=1.12.0",
         "cachetools>=4.0.0",
+        "cryptography>=2.8",
         "keyring>=28.8.0",
         "requests>=2.24.0",
         "urllib3>=1.25.8"
