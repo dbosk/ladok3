@@ -229,8 +229,9 @@ the user.
 login_parser = subp.add_parser("login",
   help="Manage login credentials",
   description="""
-Manages the user's LADOK login credentials. There are three ways to supply the 
-login credentials, in order of priority:
+Manages the user's LADOK login credentials (only credentials at KTH supported 
+right now). There are three ways to supply the login credentials, in order of 
+priority:
 
 1) Through the system keyring: Just run `ladok login` and you'll be asked to 
    enter the credentials and they will be stored in the keyring.
