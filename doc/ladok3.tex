@@ -48,10 +48,20 @@
 LADOK (abbreviation of \foreignlanguage{swedish}{Lokalt Adb–baserat 
 DOKumentationssystem}, in Swedish) is the national documentation system for 
 higher education in Sweden.
+This is the documented source code of \texttt{ladok3}, a LADOK3 API wrapper for 
+Python.
 
-This is the documented source code of the LADOK3 API wrapper for Python, the 
-package \texttt{ladok3}.
-You can install it by running
+The \texttt{ladok3} library provides a non-GUI application that, similar to 
+access via a web browser, only provides the user with access to the LADOK data 
+and functionality that they would actually have based on their specific user 
+permissions in LADOK.
+It can be seem as a very streamlined web browser just for LADOK's web 
+interface.
+While the library exploits caching to reduce the load on the LADOK server, this 
+represents a subset of the information that would otherwise be obtained via
+LADOK's web GUI export functions.
+
+You can install the \texttt{ladok3} package by running
 \begin{minted}{bash}
 pip3 install ladok3
 \end{minted}
