@@ -83,7 +83,7 @@ We can do this in two ways:
 We'll use [[argparse]] to parse the command-line options.
 <<process command-line options>>=
 argp = argparse.ArgumentParser(
-  description="Command-line interface for LADOK3",
+  description="This is a CLI-ification of LADOK3's web GUI.",
   epilog="Web: https://github.com/dbosk/ladok3"
 )
 <<add global configuration options>>
