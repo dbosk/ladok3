@@ -259,7 +259,7 @@ def get_student_name(self, person_nr_raw):
 @
 
 
-\section{[[get_student_data_JSON]]}
+\section{[[get_student_data_JSON]] and [[get_student_data_by_uid_JSON]]}
 
 <<LadokSession data methods>>=
 # added by GQMJr
@@ -287,6 +287,25 @@ def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
   if r.status_code == requests.codes.ok:
       return r.json()
   return None
+@
+
+We also have the corresponding for LADOK's UID:
+<<LadokSession data methods>>=
+#####################################################################
+#
+# get_student_data_by_uid_JSON
+#
+# uid                - Ladok ID
+#
+# RETURNERAR en dictionary med för- och efternamn and more
+def get_student_data_by_uid_JSON(self, uid):
+		if not self.signed_in: raise Exception('Not signed in.')
+
+		r = self.__session.get(url = self.base_gui_proxy_url +
+			 '/studentinformation/student/'+uid, headers = self.__headers)
+		if r.status_code == 200:
+				return r.json()
+		return None
 @
 
 
