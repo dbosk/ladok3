@@ -36,12 +36,12 @@ setup(
     python_requires = ">=3.8",
     install_requires = [
         "appdirs>=1.4.4",
-        "argcomplete>=1.12.0",
-        "cachetools>=4.0.0",
+        "argcomplete>=1.12.3",
+        "cachetools>=4.2.2",
         "cryptography>=2.8",
-        "keyring>=28.8.0",
-        "requests>=2.24.0",
-        "urllib3>=1.25.8"
+        "keyring>=23.0.1",
+        "requests>=2.25.1",
+        "urllib3>=1.26.5"
     ]
 )
 
