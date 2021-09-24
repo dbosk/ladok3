@@ -262,7 +262,7 @@ will keep the outdated credentials.
 <<functions>>=
 def update_credentials_in_keyring(ls, args):
   user = input("LADOK username: ")
-  passwd = getpass.getpass("LADOK password: ")
+  passwd = getpass.getpass("LADOK password: [input is hidden]")
 
   keyring.set_password("ladok3", "username", user)
   keyring.set_password("ladok3", "password", passwd)
