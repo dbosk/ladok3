@@ -299,12 +299,12 @@ We also have the corresponding for LADOK's UID:
 #
 # RETURNERAR en dictionary med för- och efternamn and more
 def get_student_data_by_uid_JSON(self, uid):
-  r = self.session.get(
-    url = self.base_gui_proxy_url +
-    '/studentinformation/student/'+uid, headers = self.headers)
-  if r.status_code == requests.codes.ok:
-    return r.json()
-  return None
+  r = self.session.get(
+    url = self.base_gui_proxy_url +
+      '/studentinformation/student/'+uid, headers = self.headers)
+  if r.status_code == requests.codes.ok:
+    return r.json()
+  return None
 @
 
 
