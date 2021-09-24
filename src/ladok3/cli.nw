@@ -20,7 +20,10 @@ set up a global [[dirs]] that we can use.
 
 import appdirs
 import argcomplete, argparse
+import base64
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import getpass
 import json
 import keyring
@@ -130,13 +133,13 @@ The authentication step takes much more time that individual LADOK requests.
 
 This leads to the following approach.
 <<create or restore the LadokSession ls>>=
-ls = restore_ladok_session()
+LADOK_USER, LADOK_PASS = load_credentials(args.config_file)
+ls = restore_ladok_session([LADOK_USER, LADOK_PASS])
 if not ls:
-  LADOK_USER, LADOK_PASS = load_credentials(args.config_file)
   ls = ladok3.LadokSessionKTH(LADOK_USER, LADOK_PASS)
 @
 <<save LadokSession ls>>=
-store_ladok_session(ls)
+store_ladok_session(ls, [LADOK_USER, LADOK_PASS])
 @
 
 
@@ -147,7 +150,7 @@ Now we need to implement the [[store_ladok_session]] and
 We will use [[pickle]] for storing and restoring the object.
 But we also want to encrypt the stored object.
 <<functions>>=
-def store_ladok_session(ls):
+def store_ladok_session(ls, credentials):
   if not os.path.isdir(dirs.user_cache_dir):
     os.mkdir(dirs.user_cache_dir)
 
@@ -159,7 +162,7 @@ def store_ladok_session(ls):
   with open(file_path, "wb") as file:
     file.write(encrypted_ls)
   
-def restore_ladok_session():
+def restore_ladok_session(credentials):
   file_path = dirs.user_cache_dir + "/LadokSession"
 
   if os.path.isfile(file_path):
@@ -178,23 +181,31 @@ We use the [[cryptography]] module to handle the encryption.
 In particular, we use the [[cryptography.fernet]] protocol which encrypts using 
 AES and signs using HMAC.
 
-We will generate a key and store it in the system keyring.
-We will reuse any previously generated key.
+We will use the user's LADOK password to generate a cryptographic key.
 Then we do the encryption/decryption.
 <<encrypt pickled ls>>=
-key = keyring.get_password("ladok3", "cache_key")
-if not key:
-  key = Fernet.generate_key()
-keyring.set_password("ladok3", "cache_key", key)
+<<set up kdf and derive key from credentials>>
 
 fernet_protocol = Fernet(key)
 encrypted_ls = fernet_protocol.encrypt(pickled_ls)
 @
 <<decrypt encrypted ls>>=
-key = keyring.get_password("ladok3", "cache_key")
+<<set up kdf and derive key from credentials>>
 
 fernet_protocol = Fernet(key)
 pickled_ls = fernet_protocol.decrypt(encrypted_ls)
+@
+
+To actually do the key derivation, we use the PBKDF2 based on HMAC.
+We use the LADOK username as salt and the password as password.
+<<set up kdf and derive key from credentials>>=
+kdf = PBKDF2HMAC(
+  algorithm=hashes.SHA256(),
+  length=32,
+  salt=credentials[0].encode("utf-8"),
+  iterations=100000
+)
+key = base64.urlsafe_b64encode(kdf.derive(credentials[1].encode("utf-8")))
 @
 
 
