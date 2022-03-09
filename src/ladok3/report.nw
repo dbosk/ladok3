@@ -160,22 +160,39 @@ many_parser.add_argument("-d", "--delimiter",
     "use `-d,` or `-d ,` to get comma-separated values.")
 @
 
-When we report a result, this is similar to how we did it above.
+We also want to handle errors and confirmations differently.
+When reporting in bulk, we don't want unnecessary errors.
+We also want to have a summary of the changes.
+<<add many results group arguments>>=
+many_parser.add_argument("-v", "--verbose",
+  action="count", default=0,
+  help="Increases the verbosity of the output: -v will print results that "
+    "were reported to standard out. Otherwise only errors are printed.")
+@
+
+When we actually report a result, this is similar to how we did it above.
 The difference is that we've read the variables from the CSV data in [[stdin]] 
 instead of from [[args]].
 <<report a result read from stdin>>=
 try:
   student = ladok.get_student(student_id)
   course = student.courses(code=course_code)[0]
-  result = course.results(component=component_code)[0]
-  result.set_grade(grade, date)
-  if args.finalize:
-    result.finalize()
+  component = course.results(component=component_code)[0]
+  if not component.attested and component.grade != grade:
+    component.set_grade(grade, date)
+    component.finalize()
+    if args.verbose:
+      print(f"{course_code} {student}: reported "
+        f"{component.component} = {component.grade}.")
+  elif component.grade != grade:
+    print(f"{course_code} {student}: attested {component.component} "
+      f"result {component.grade} is different from {grade}.")
 except Exception as err:
   try:
-    print(f"{student}: {err}")
+    print(f"{course_code} {component_name} {student}: {err}")
   except ValueError as verr:
-    print(f"{verr}: {args.student_id}: {err}")
+    print(f"{verr}: "
+      f"{course_code} {component_name} {student_id}: {err}")
 @
 
 
