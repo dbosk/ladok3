@@ -14,20 +14,16 @@ all:
 	true
 
 .PHONY: install
-install: build
+install:
 	pip3 install -e .
 
-LADOK3+=	src/ladok3/__init__.py
-LADOK3+=	src/ladok3/cli.py
-LADOK3+=	src/ladok3/data.py
-LADOK3+=	src/ladok3/ladok.bash
-
-${LADOK3}:
-	${MAKE} -C $(dir $@) $(notdir $@)
+.PHONY: compile
+compile:
+	${MAKE} -C src/ladok3 all
 
 .PHONY: build
-build: ${LADOK3}
-	python3 -m build
+build: compile
+	python3 setup.py sdist bdist_wheel
 
 .PHONY: publish publish-ladok3 publish-docker
 publish: publish-ladok3 publish-docker doc/ladok3.pdf
@@ -40,8 +36,7 @@ doc/ladok3.pdf:
 publish-ladok3: ${dist}
 	python3 -m twine upload -r pypi ${dist}
 
-${dist}: ${LADOK3}
-	python3 -m build
+${dist}: build
 
 publish-docker:
 	sleep 60
