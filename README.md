@@ -10,9 +10,12 @@ To install, run:
 ```bash
 pip install ladok3
 sudo cp $(find / -name ladok.bash) /etc/bash_completion.d
+ladok login
 ```
 If you run the second line above, you'll get tab completion for the `ladok` 
 command when you use the `bash` shell.
+
+The third command above is to log in, you only do this once.
 
 An alternative to installing the package is to run the [Docker image][docker].
 ```bash
@@ -24,6 +27,29 @@ Or simply adapt your own image.
 
 There are two ways to use the package: as a Python package or through the 
 command-line tool `ladok`.
+
+### On the command line
+
+Let's assume that we have a student with personnummer 123456-1234.
+Let's also assume that this student has taken a course with course code AB1234 
+and finished the module LAB1 on date 2021-03-15.
+Then we can report this result like this:
+Or, the same, but through the command line:
+```bash
+ladok report 123456-1234 AB1234 LAB1 -d 2021-03-15 -f
+```
+
+If we use Canvas for all results, we can even report all results for a 
+course.
+```bash
+pip install canvaslms
+canvaslms login
+canvaslms results -c AB1234 -A LAB1 | ladok report -v
+```
+The `canvaslms results` command will export the results in CSV format, this 
+will be piped to `ladok report` that can read it and report it in bulk.
+
+### As a Python package
 
 To use the package, it's just to import the package as usual.
 ```python
@@ -42,10 +68,8 @@ component_result = course_participation.results(component="LAB1")[0]
 component_result.set_grade("P", "2021-03-15")
 component_result.finalize()
 ```
-Or, the same, but through the command line:
-```bash
-ladok report 123456-1234 AB1234 LAB1 -d 2021-03-15 -f
-```
+
+## More documentation
 
 There are more detailed usage examples in the details documentation that can be 
 round with the [releases][releases] and in the `examples` directory.
