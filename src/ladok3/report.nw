@@ -176,8 +176,17 @@ instead of from [[args]].
 <<report a result read from stdin>>=
 try:
   student = ladok.get_student(student_id)
-  course = student.courses(code=course_code)[0]
-  component = course.results(component=component_code)[0]
+
+  try:
+    course = student.courses(code=course_code)[0]
+  except IndexError:
+    raise Exception(f"{course_code}: no such course.")
+
+  try:
+    component = course.results(component=component_code)[0]
+  except IndexError:
+    raise Exception(f"{course_code} has no component {component_code}.")
+
   if not component.attested and component.grade != grade:
     component.set_grade(grade, date)
     component.finalize()
@@ -189,10 +198,12 @@ try:
       f"result {component.grade} is different from {grade}.")
 except Exception as err:
   try:
-    print(f"{course_code} {component_code} {student}: {err}")
+    print(f"{course_code} {component_code}={grade} {student}: {err}",
+      file=sys.stderr)
   except ValueError as verr:
     print(f"{verr}: "
-      f"{course_code} {component_code} {student_id}: {err}")
+      f"{course_code} {component_code}={grade} {student_id}: {err}",
+      file=sys.stderr)
 @
 
 
