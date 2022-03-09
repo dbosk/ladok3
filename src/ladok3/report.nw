@@ -189,10 +189,10 @@ try:
       f"result {component.grade} is different from {grade}.")
 except Exception as err:
   try:
-    print(f"{course_code} {component_name} {student}: {err}")
+    print(f"{course_code} {component_code} {student}: {err}")
   except ValueError as verr:
     print(f"{verr}: "
-      f"{course_code} {component_name} {student_id}: {err}")
+      f"{course_code} {component_code} {student_id}: {err}")
 @
 
 
