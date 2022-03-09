@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name = "ladok3",
-    version = "1.16",
+    version = "1.17",
     author = "Daniel Bosk, Alexander Baltatzis, Gerald Q. Maguire Jr",
     author_email = "dbosk@kth.se",
     description = "Python wrapper for the LADOK3 REST API",
