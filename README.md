@@ -34,7 +34,6 @@ Let's assume that we have a student with personnummer 123456-1234.
 Let's also assume that this student has taken a course with course code AB1234 
 and finished the module LAB1 on date 2021-03-15.
 Then we can report this result like this:
-Or, the same, but through the command line:
 ```bash
 ladok report 123456-1234 AB1234 LAB1 -d 2021-03-15 -f
 ```
