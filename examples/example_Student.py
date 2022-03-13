@@ -16,7 +16,7 @@ print()
 for course in me.courses():
     print(f"{course.code} {course.name}")
 
-course = me.courses(code="DD2395")[0]
+course = me.courses(code="DD2395")[-1]
 
 print(f"{course.code} results:")
 for result in course.results():
@@ -30,7 +30,13 @@ for result in course.results():
 print()
 
 student = ladok.get_student("1234561234")
-prgi = student.courses(code="DD1315")[0]
+prgis = student.courses(code="DD1315")
+print(f"{student} registered {len(prgis)} times")
+
+for reg in prgis:
+    print(reg)
+
+prgi = student.courses(code="DD1315")[-1]
 
 print(f"{student.personnummer} {student.first_name} {student.last_name}")
 
