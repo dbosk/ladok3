@@ -192,17 +192,18 @@ try:
     component.finalize()
     if args.verbose:
       print(f"{course_code} {student}: reported "
-        f"{component.component} = {component.grade}.")
+        f"{component.component} = {component.grade} ({date}).")
   elif component.grade != grade:
     print(f"{course_code} {student}: attested {component.component} "
-      f"result {component.grade} is different from {grade}.")
+      f"result {component.grade} ({component.date}) "
+      f"is different from {grade} ({date}).")
 except Exception as err:
   try:
-    print(f"{course_code} {component_code}={grade} {student}: {err}",
+    print(f"{course_code} {component_code}={grade} ({date}) {student}: {err}",
       file=sys.stderr)
   except ValueError as verr:
     print(f"{verr}: "
-      f"{course_code} {component_code}={grade} {student_id}: {err}",
+      f"{course_code} {component_code}={grade} ({date}) {student_id}: {err}",
       file=sys.stderr)
 @
 
