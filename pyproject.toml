@@ -6,7 +6,10 @@ authors = ["Daniel Bosk <dbosk@kth.se>",
   "Alexander Baltatzis", "Gerald Q. Maguire Jr"]
 license = "MIT"
 include = ["src/**/*.py"]
-exclude = ["*.csv"]
+exclude = ["*/**/*.csv", "doc/", "examples/", "*/**/ltxobj/*", "*.pdf"]
+
+[tool.poetry.scripts]
+ladok = "ladok3.cli:main"
 
 [tool.poetry.dependencies]
 python = "^3.10"
