@@ -1,23 +1,25 @@
-[build-system]
-requires = [
-  "setuptools>=42",
-  "wheel"
-]
-build-backend = "setuptools.build_meta"
-
 [tool.poetry]
 name = "ladok3"
-version = "1.2"
-description = "Python wrapper for the LADOK3 REST API"
-authors = ["Daniel Bosk, Alexander Baltatzis, Gerald Q. Maguire Jr"]
+version = "1.20"
+description = "Python wrapper around the LADOK3 REST API."
+authors = ["Daniel Bosk <dbosk@kth.se>",
+  "Alexander Baltatzis", "Gerald Q. Maguire Jr"]
 license = "MIT"
+include = ["src/**/*.py"]
+exclude = ["*.csv"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
-cachetools = "^4.2.1"
-requests = "^2.25.1"
+python = "^3.10"
 appdirs = "^1.4.4"
-argcomplete = "^1.12.2"
+argcomplete = "^2.0.0"
+cachetools = "^5.2.0"
+cryptography = "^37.0.3"
+keyring = "^23.6.0"
+requests = "^2.28.0"
+urllib3 = "^1.26.9"
 
 [tool.poetry.dev-dependencies]
 
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
