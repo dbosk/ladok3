@@ -5,36 +5,44 @@ SUBDIR+=	examples
 SUBDIR+=	doc
 SUBDIR+=	docker
 
+version=$(shell sed -n 's/^ *version *= *\"\([^\"]\+\)\",/\1/p' setup.py)
+dist=$(addprefix dist/ladok3-${version}, -py3-none-any.whl .tar.gz)
+
+
 .PHONY: all
 all:
 	true
 
 .PHONY: install
-install: build
+install:
 	pip3 install -e .
 
-LADOK3+=	src/ladok3/__init__.py
-LADOK3+=	src/ladok3/cli.py
-LADOK3+=	src/ladok3/data.py
-LADOK3+=	src/ladok3/ladok.bash
-
-${LADOK3}:
-	${MAKE} -C $(dir $@) $(notdir $@)
+.PHONY: compile
+compile:
+	${MAKE} -C src/ladok3 all
 
 requirements.txt:
 	poetry export -f requirements.txt --output $@
 
 .PHONY: build
-build: ${LADOK3} requirements.txt
-	python3 -m build
+build: compile
+	python3 setup.py sdist bdist_wheel
 
 .PHONY: publish publish-ladok3 publish-docker
-publish: publish-ladok3 publish-docker
+publish: publish-ladok3 publish-docker doc/ladok3.pdf
+	git push
+	gh release create -t v${version} v${version} doc/ladok3.pdf
 
-publish-ladok3: build
-	python3 -m twine upload -r pypi dist/*
+doc/ladok3.pdf:
+	${MAKE} -C $(dir $@) $(notdir $@)
 
-publish-docker: publish-ladok3
+publish-ladok3: ${dist}
+	python3 -m twine upload -r pypi ${dist}
+
+${dist}: build
+
+publish-docker:
+	sleep 60
 	${MAKE} -C docker publish
 
 

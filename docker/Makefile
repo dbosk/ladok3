@@ -9,7 +9,8 @@ publish: docker-image
 
 .PHONY: docker-image
 docker-image:
-	docker build -t ladok3 .
+	docker pull python:3
+	docker build --no-cache -t ladok3 .
 	for v in ${VERSION}; do docker tag ladok3 dbosk/ladok3:$$v; done
 
 .PHONY: clean
@@ -18,5 +19,4 @@ clean:
 
 .PHONY: distclean
 distclean:
-	-for v in ${VERSION}; do docker image rm ladok3:$$v; done
-	-docker image rm ladok3
+	-docker image rm -f ladok3 dbosk/ladok3

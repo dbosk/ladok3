@@ -1,3 +1,6 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# -*- mode: python; python-indent-offset: 4 -*-
 import ladok3
 import os
 

@@ -1,0 +1,221 @@
+We want to report results from the command line.
+We need the following data for each result:
+\begin{itemize}
+\item course identifier,
+\item course component,
+\item student identifier,
+\item grade, and
+\item date\footnote{Optional, we set today's date if not present.}.
+\end{itemize}
+
+We provide two ways to do this:
+The first is to provide positional arguments on the command line.
+The second is to not provide any positinoal argument, and in this case we read 
+CSV data from standard input.
+
+
+\section{The [[report]] subcommand}\label{ReportCommand}
+
+This is a subcommand is run as part of the [[ladok3.cli]] module.
+We provide a function [[add_command_options]] that adds the subcommand options 
+to a given parser.
+We need access to LADOK through the [[ladok3]] module.
+<<report.py>>=
+import csv
+import datetime
+import ladok3
+import sys
+
+<<functions>>
+
+def add_command_options(parser):
+  report_parser = parser.add_parser("report",
+    help="Reports course results to LADOK",
+    description="Reports course results to LADOK"
+  )
+  report_parser.set_defaults(func=command)
+  <<add report command arguments to report parser>>
+
+def command(ladok, args):
+  <<report results depending on args>>
+@
+
+As mentioned above, we provide two ways of doing this.
+<<add report command arguments to report parser>>=
+one_parser = report_parser.add_argument_group(
+  "one result as positional args, only date is optional")
+<<add one result group arguments>>
+many_parser = report_parser.add_argument_group(
+  "many results read from standard input as CSV, columns: "
+  "course, component, student, grade, date.")
+<<add many results group arguments>>
+@
+
+
+\section{Report the results}
+
+We provide two functions, one for each way of reporting the results.
+<<functions>>=
+def report_one_result(ladok, args):
+  <<report results given in args>>
+
+def report_many_results(ladok, args):
+  <<report results given in stdin>>
+@
+
+In both cases, we want to specify whether or not the results should be 
+finalized.
+We add an option whether we want to finalize the grade for attestation by the 
+examiner.
+We add this argument outside the two groups, since it's valid for both.
+<<add report command arguments to report parser>>=
+report_parser.add_argument("-f", "--finalize",
+  help="Finalize the grade (mark as ready/klarmarkera) for examiner to attest",
+  action="store_true",
+  default=False
+)
+@
+
+
+\section{Report a result given on command line}
+
+If we've chosen to give one result on the command line, then we'll need the 
+following arguments.
+
+We start with the course, component code, the student's ID and grade.
+<<add one result group arguments>>=
+one_parser.add_argument("course_code", nargs="?",
+  help="The course code (e.g. DD1315) for which the grade is for"
+)
+
+one_parser.add_argument("component_code", nargs="?",
+  help="The component code (e.g. LAB1) for which the grade is for"
+)
+
+one_parser.add_argument("student_id", nargs="?",
+  help="Student identifier (personnummer or LADOK ID)"
+)
+
+one_parser.add_argument("grade", nargs="?",
+  help="The grade (e.g. A or P)"
+)
+@ We must make them optional like this to make it work with out second 
+alternative, so we must check ourselves that we got the arguments.
+<<check that we got all positional arguments>>=
+if not (args.course_code and args.component_code and
+  args.student_id and args.grade):
+  print(f"{sys.argv[0]} report: "
+    "not all positional args given: course_code, component, student, grade",
+    file=sys.stderr)
+  sys.exit(1)
+@
+
+Next, we have the date.
+To ensure it's a valid date we'll make [[argparse]] convert it to [[datetime]] 
+format.
+If it's not provided, we let [[argparse]] set it to today's date.
+<<add one result group arguments>>=
+one_parser.add_argument("date", nargs="?",
+  help="Date on ISO format (e.g. 2021-03-18), "
+    f"defaults to today's date ({datetime.date.today()})",
+  type=datetime.date.fromisoformat,
+  default=datetime.date.today()
+)
+@
+
+Now that we have the arguments, we can just execute the following code using 
+them.
+<<report results given in args>>=
+<<check that we got all positional arguments>>
+try:
+  student = ladok.get_student(args.student_id)
+  course = student.courses(code=args.course_code)[0]
+  result = course.results(component=args.component_code)[0]
+  result.set_grade(args.grade, args.date)
+  if args.finalize:
+    result.finalize()
+except Exception as err:
+  try:
+    print(f"{student}: {err}")
+  except ValueError as verr:
+    print(f"{verr}: {args.student_id}: {err}")
+@ This means that we need the following command-line arguments.
+The option [[args.finalize]] is already set above, so we don't need to add that 
+one here.
+
+
+\section{Report many results given in standard input}
+
+We want to read CSV data from standard input.
+<<report results given in stdin>>=
+data_reader = csv.reader(sys.stdin, delimiter=args.delimiter)
+for course_code, component_code, student_id, grade, date in data_reader:
+  <<report a result read from stdin>>
+@ We need to add an argument for the delimiter.
+<<add many results group arguments>>=
+many_parser.add_argument("-d", "--delimiter",
+  default="\t",
+  help="The delimiter for the CSV input; "
+    "default is a tab character to be compatible with POSIX commands, "
+    "use `-d,` or `-d ,` to get comma-separated values.")
+@
+
+We also want to handle errors and confirmations differently.
+When reporting in bulk, we don't want unnecessary errors.
+We also want to have a summary of the changes.
+<<add many results group arguments>>=
+many_parser.add_argument("-v", "--verbose",
+  action="count", default=0,
+  help="Increases the verbosity of the output: -v will print results that "
+    "were reported to standard out. Otherwise only errors are printed.")
+@
+
+When we actually report a result, this is similar to how we did it above.
+The difference is that we've read the variables from the CSV data in [[stdin]] 
+instead of from [[args]].
+<<report a result read from stdin>>=
+try:
+  student = ladok.get_student(student_id)
+
+  try:
+    course = student.courses(code=course_code)[0]
+  except IndexError:
+    raise Exception(f"{course_code}: no such course.")
+
+  try:
+    component = course.results(component=component_code)[0]
+  except IndexError:
+    raise Exception(f"{course_code} has no component {component_code}.")
+
+  if not component.attested and component.grade != grade:
+    component.set_grade(grade, date)
+    component.finalize()
+    if args.verbose:
+      print(f"{course_code} {student}: reported "
+        f"{component.component} = {component.grade} ({date}).")
+  elif component.grade != grade:
+    print(f"{course_code} {student}: attested {component.component} "
+      f"result {component.grade} ({component.date}) "
+      f"is different from {grade} ({date}).")
+except Exception as err:
+  try:
+    print(f"{course_code} {component_code}={grade} ({date}) {student}: {err}",
+      file=sys.stderr)
+  except ValueError as verr:
+    print(f"{verr}: "
+      f"{course_code} {component_code}={grade} ({date}) {student_id}: {err}",
+      file=sys.stderr)
+@
+
+
+\section{Determine which function to run}
+
+We know that if a course code is given as positional argument, then we know 
+that we should report one result from the command line.
+<<report results depending on args>>=
+if args.course_code:
+  report_one_result(ladok, args)
+else:
+  report_many_results(ladok, args)
+@
+

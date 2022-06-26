@@ -57,7 +57,7 @@ session for querying LADOK.
 We must thus handle authentication to LADOK.
 The authentication for using LADOK is performed using a university CAS system.
 The [[login]] method will set up a [[session]] object which is logged in.
-The [[login]] method will in turn use the [[cas_saml_login]] method at the 
+The [[login]] method will in turn use the [[saml_login]] method at the 
 suitable place in the code to actually log in to LADOK by authenticating to the 
 appropriate university.
 We can provide the interactions with LADOK, but not with the CAS system.
@@ -65,7 +65,7 @@ So that one is left to implement by a university-specific child class.
 We provide [[LadokSessionKTH]] as an example.
 
 We let the [[session]] attribute be a property, this way we can ensure that 
-there exists an active session whenever it is used.
+there exists an active session whenever it's used.
 This also means that we don't log in until we actually need to use the 
 [[session]] attribute.
 We also automatically reauthenticate whenever the session has timed out.
@@ -87,7 +87,7 @@ class LadokSession:
       self.__login_time = None
       raise err
 
-  def cas_saml_login(self, url):
+  def saml_login(self, url):
     """Perform authentication to university CAS"""
     raise NotImplementedError()
 
@@ -129,9 +129,11 @@ class LadokSessionKTH(LadokSession):
     self.__username = username
     self.__password = password
 
-  def cas_saml_login(self, url):
+  <<KTH login methods>>
+
+  def saml_login(self, url):
     """Do the CAS login"""
-    <<KTH CAS login procedure>>
+    <<KTH login procedure>>
 @
 
 Note that it's important to set [[login_time]] as soon as we start logging in 
@@ -179,8 +181,8 @@ browser\footnote{%
 <<log in to LADOK>>=
 self.session = requests.session()
 <<get shibboleth url>>
-response = self.cas_saml_login(url)
-<<post CAS SAML response to LADOK>>
+response = self.saml_login(url)
+<<check SAML login response>>
 @
 
 We let [[self.session]] be our (HTTP) session to LADOK.
@@ -193,90 +195,144 @@ shibstate = re.search('return=(.*?)(&|$)', response.url).group(1)
 url = urllib.parse.unquote(shibstate)
 @
 
+\subsubsection{Logging into KTH}
+
 Now, we can use that URL to authenticate to the university using the 
-[[cas_saml_login]] method.
-In the case of the KTH CAS system, we do the following.
-<<KTH CAS login procedure>>=
-response = self.session.get(
-  url=url+'&entityID=https://saml.sys.kth.se/idp/shibboleth')
-        
-post_data = {
-  'shib_idp_ls_exception.shib_idp_session_ss': '',
-  'shib_idp_ls_success.shib_idp_session_ss': 'true',
-  'shib_idp_ls_value.shib_idp_session_ss': '',
-  'shib_idp_ls_exception.shib_idp_persistent_ss': '',
-  'shib_idp_ls_success.shib_idp_persistent_ss': 'true',
-  'shib_idp_ls_value.shib_idp_persistent_ss': '',
-  'shib_idp_ls_supported': 'true',
-  '_eventId_proceed': ''
-}
-
-response = self.session.post(
-  url=
-    'https://saml-5.sys.kth.se/idp/profile/SAML2/Redirect/SSO?execution=e1s1',
-  data=post_data)
-
-action = re.search('<form id="fm1" action="(.*?)" method="post">',
-  response.text).group(1)
-lt = re.search('<input type="hidden" name="lt" value="(.*?)" />',
-  response.text).group(1)
-execution = re.search('<input type="hidden" name="execution" value="(.*?)" />',
-  response.text).group(1)
-
-post_data = {
-  'username': self.__username,
-  'password': self.__password,
-  'lt': lt,
-  'execution': execution,
-  '_eventId': 'submit',
-  'subimt': 'Logga in'
-}
-
-response = self.session.post(
-  url='https://login.kth.se' + action,
-  data=post_data)
-
-action = re.search('<form action="(.*?)" method="post"', response.text)
-@ The new page has
-\begin{minted}{html}
-<form action="/idp/profile/SAML2/Redirect/SSO?execution=e1s3"
-  method="post" style="padding:10px" >
-\end{minted}
-So we don't want to match the closing of the tag, which we did before, since 
-that [[style]] attribute will break things.
-<<KTH CAS login procedure>>=
-if action is None:
-  raise Exception('Invalid username or password OR possibly the SAML \
-    configuration has changed, manually login an accept the changed \
-    information.')
-action = html.unescape(action.group(1))
-
-relay_state = re.search(
-  '<input type="hidden" name="RelayState" value="([^"]+)"\/>',
-  response.text)
-try:
-  relay_state = html.unescape(relay_state.group(1))
-except AttributeError:
-  raise Exception("Try to log in using a web browser and accept sharing data.")
-
-saml_response = re.search(
-  '<input type="hidden" name="SAMLResponse" value="(.*?)"/>',
-  response.text)
-saml_response = html.unescape(saml_response.group(1))
-
-post_data = {
-    'RelayState': relay_state,
-    'SAMLResponse': saml_response
-}
-
-response = self.session.post(url = action, data = post_data)
-
+[[saml_login]] method.
+We must simulate what we do in the browser.
+In the case of the KTH UG/LDAP system, we do the following.
+<<KTH login procedure>>=
+response = self.ladok_run_shib_login(url)
+response = self.ug_post_user_pass(response)
+response = self.perform_redirects_back_to_ladok(response)
 return response
 @
 
+The first thing we want to do is to ask LADOK to run the Shibboleth login with 
+the KTH SAML URL.
+<<KTH login methods>>=
+def ladok_run_shib_login(self, url):
+  response = self.session.get(
+    url=url+'&entityID=https://saml.sys.kth.se/idp/shibboleth')
+          
+  action = re.search(
+    '<form ?[^>]* action="(.*?)"',
+    response.text).group(1)
+
+  csrf_token = re.search(
+    '<input ?[^>]* name="csrf_token" ?[^>]* value="(.*?)"',
+    response.text).group(1)
+
+  post_data = {
+    'csrf_token': csrf_token,
+    'shib_idp_ls_exception.shib_idp_session_ss': '',
+    'shib_idp_ls_success.shib_idp_session_ss': 'true',
+    'shib_idp_ls_value.shib_idp_session_ss': '',
+    'shib_idp_ls_exception.shib_idp_persistent_ss': '',
+    'shib_idp_ls_success.shib_idp_persistent_ss': 'true',
+    'shib_idp_ls_value.shib_idp_persistent_ss': '',
+    'shib_idp_ls_supported': 'true',
+    '_eventId_proceed': ''
+  }
+
+  response = self.session.post(
+    url="https://saml-5.sys.kth.se" + action,
+    data=post_data)
+
+  return response
+@ Note that in the last post request, it is important to use the 
+\enquote{saml-5} name and not the alias \enquote{saml} (both resolve to the 
+same address).
+
+After a series of redirects, we need to post our username and password to KTH 
+UG login system.
+Note that we must add the suffix \enquote{@ug.kth.se} to the username.
+<<KTH login methods>>=
+def ug_post_user_pass(self, shib_response):
+  action = re.search('<form ?[^>]* id="loginForm" ?[^>]* action="(.*?)"',
+    shib_response.text).group(1)
+
+  post_data = {
+    'username': self.__username if "@" in self.__username \
+                                else self.__username + "@ug.kth.se",
+    'password': self.__password,
+    'Kmsi': True,
+    'AuthMethod': "FormsAuthentication"
+  }
+
+  response = self.session.post(
+    url='https://login.ug.kth.se' + action,
+    data=post_data)
+
+  return response
+@
+
+Next, we must pass through a series of redirects.
+These are automated with JavaScript in the browser, we must simulate clicking 
+the submit buttons when JavaScript is disabled.
+We do this by extracting the URL to post to and the values to include in the 
+post.
+<<KTH login methods>>=
+def perform_redirects_back_to_ladok(self, ug_response):
+  action = re.search('<form ?[^>]* action="(.*?)"',
+    ug_response.text)
+  if action is None:
+    raise Exception('Invalid username or password OR possibly the SAML \
+      configuration has changed, manually login an accept the changed \
+      information.')
+  action = html.unescape(action.group(1))
+
+  relay_state = re.search(
+    '<input ?[^>]* name="RelayState" ?[^>]* value="(.*?)"',
+    ug_response.text)
+  try:
+    relay_state = html.unescape(relay_state.group(1))
+  except AttributeError:
+    raise Exception(
+      "Try to log in using a web browser and accept sharing data.")
+
+  saml_response = re.search(
+    '<input ?[^>]* name="SAMLResponse" ?[^>]* value="(.*?)"',
+    ug_response.text)
+  saml_response = html.unescape(saml_response.group(1))
+
+  post_data = {
+      'RelayState': relay_state,
+      'SAMLResponse': saml_response
+  }
+
+  response = self.session.post(url=action, data=post_data)
+
+  ladok_action = re.search(
+    '<form ?[^>]* action="(.*?)"',
+    response.text)
+  ladok_action = html.unescape(ladok_action.group(1))
+
+  relay_state = re.search(
+    '<input ?[^>]* name="RelayState" ?[^>]* value="([^"]+)"',
+    response.text)
+  relay_state = html.unescape(relay_state.group(1))
+
+  saml_response = re.search(
+    '<input ?[^>]* name="SAMLResponse" ?[^>]* value="(.*?)"',
+    response.text)
+  saml_response = html.unescape(saml_response.group(1))
+
+  post_data = {
+      'RelayState': relay_state,
+      'SAMLResponse': saml_response
+  }
+
+  response = self.session.post(url=ladok_action, data=post_data)
+
+  return response
+@
+
+\subsubsection{Check that login worked}
+
 When we have [[relay_state]] and [[saml_response]] from the CAS system, we can 
 post them back to LADOK.
-<<post CAS SAML response to LADOK>>=
+<<check SAML login response>>=
 if 'Din användare finns inte i Ladok' in response.text:
   raise Exception('Signed in successfully, but not as a teacher.')
 @
@@ -308,7 +364,7 @@ in LADOK.
 We will first look at the base classes and then provide methods that return 
 instances of various subclasses.
 
-\subsection{LADOK data base class: [[LadokData]]}
+\subsection{LADOK data base class: [[LadokData]]}\label{LadokData}
 
 Some objects will only have read-only attributes, like grade scales, whereas 
 others, like students, will have modifiable attributes, such as results, which 
@@ -412,7 +468,8 @@ for attribute in kwargs:
       property(operator.attrgetter(priv_attr_name)))
 @
 
-\subsection{LADOK remote data base class: [[LadokRemoteData]]}
+\subsection{LADOK remote data base class: [[LadokRemoteData]]}%
+\label{LadokRemoteData}
 
 The objects that can be modified can also be updated.
 They can be updated locally, which must be pushed to LADOK; they can be changed 
@@ -513,7 +570,7 @@ def filter_on_any_key(items, /, **kwargs):
 \section{Extracting translations}
 
 In many cases, LADOK provides several translations.
-The do that in the form of this JSON structure:
+They do that in the form of this JSON structure:
 \begin{minted}{JSON}
 {
   "Benamning": [
@@ -669,7 +726,7 @@ class Grade(LadokData):
     if isinstance(other, Grade):
       return self.__dict__ == other.__dict__
     elif isinstance(other, str):
-      self.code == other
+      return self.code == other
     else:
       raise NotImplementedError(f"can't test equality with {type(other)}")
 @
@@ -1006,7 +1063,7 @@ def search_course_rounds(self, /, **kwargs):
   if "round_code" in kwargs:
     url += f"tillfalleskod={kwargs['round_code']}&"
 
-  url += "page=1&limit=100&skipCount=false&sprakkod=sv"
+  url += "page=1&limit=400&skipCount=false&sprakkod=sv"
 
   response = self.session.get(
     url=url,
@@ -1463,16 +1520,45 @@ possibly filter the results.
 def results(self, /, **kwargs):
   """Returns all students' results on the course"""
   try:
-    return filter_on_keys(self.__results, **kwargs)
+    self.__results
   except:
     self.__fetch_results()
+
   return filter_on_keys(self.__results, **kwargs)
 @
 
 To fetch the results from LADOK, we must do the following query.
 <<CourseRound data methods>>=
 def __fetch_results(self):
-  pass
+  raise NotImplementedError(
+    f"{type(self).__name__}.__fetch_results not implemented")
+@
+
+
+\section{Participants for a course round}
+
+We want to get a list of participants for a course round, \ie a list of 
+[[Student]] objects.
+<<CourseRound data methods>>=
+def participants(self, /, **kwargs):
+  """Returns a Student object for each participant in the course."""
+  try:
+    self.__participants
+  except:
+    self.__fetch_participants()
+
+  return filter_on_keys(self.__participants, **kwargs)
+@
+
+When we fetch the participants, we don't create new [[Student]] objects.
+We use the [[get_student]] method of the LADOK session object to fetch objects 
+from the cache if they already exist.
+<<CourseRound data methods>>=
+def __fetch_participants(self):
+  self.__participants = []
+  for student in self.ladok.participants_JSON(self.round_id):
+    self.__participants.append(
+      self.ladok.get_student(student["Student"]["Uid"]))
 @
 
 
@@ -1480,7 +1566,7 @@ def __fetch_results(self):
 
 \section{Course registrations and a student's results}
 
-Every student is registered on a course.
+Students register for a course.
 The [[CourseRegistration]] class represents this data from LADOK.
 This is the object that must be used to get results for a student.
 <<classes>>=
@@ -1493,6 +1579,7 @@ class CourseRegistration(CourseInstance):
 
     # ett Ladok-ID för kursomgången
     self.__round_id = kwargs.pop("UtbildningstillfalleUID")
+    self.__round_code = kwargs.pop("Utbildningstillfalleskod")
 
     dates = kwargs.pop("Studieperiod")
     self.__start = datetime.date.fromisoformat(dates["Startdatum"])
@@ -1504,12 +1591,23 @@ class CourseRegistration(CourseInstance):
     return self.__round_id
 
   @property
+  def round_code(self):
+    """Returns the human-readable round code (tillfälleskod)"""
+    return self.__round_code
+
+  @property
   def start(self):
     return self.__start
 
   @property
   def end(self):
     return self.__end
+
+  def __str__(self):
+    return f"{self.code} {self.round_code} ({self.start}--{self.end})"
+
+  def __repr__(self):
+    return f"{self.code}:{self.round_code}:{self.start}--{self.end}"
 
   def results(self, /, **kwargs):
     """Returns the student's results on the course, filtered on keywords"""
@@ -1535,12 +1633,10 @@ We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
 From the response we get from LADOK, we construct [[CourseResult]] objects that 
 deal with the details.
 <<pull existing CourseResult objects from LADOK>>=
-response = self.ladok.session.get(
-  url=self.ladok.base_gui_proxy_url +
-    '/resultat/studieresultat/student/' + self.__student.ladok_id +
-      '/utbildningstillfalle/' + self.round_id,
-  headers=self.ladok.headers).json()
-    
+response = self.ladok.student_results_JSON(
+  self.__student.ladok_id, self.round_id
+)
+
 self.__results_id = response["Uid"]
 self.__results = []
 for result in response["ResultatPaUtbildningar"]:
@@ -1585,19 +1681,23 @@ class CourseResult(LadokRemoteData):
     super().__init__(**kwargs)
 
     self.__student = kwargs.pop("student")
+    self.__study_results_id = kwargs.pop("study_results_id")
 
-    if "component" in kwargs and "study_results_id" in kwargs:
+    if "component" in kwargs:
       self.__component = kwargs.pop("component")
-      self.__study_results_id = kwargs.pop("study_results_id")
+      self.__attested = False
       self.__populate_attributes()
     elif "components" in kwargs and \
         ("Arbetsunderlag" in kwargs or "SenastAttesteradeResultat" in kwargs):
       components = kwargs.pop("components")
+
       if "Arbetsunderlag" in kwargs:
+        self.__attested = False
         data = kwargs.pop("Arbetsunderlag")
-        self.__last_modified = data.pop("SenasteResultatandring")
       elif "SenastAttesteradeResultat" in kwargs:
+        self.__attested = True
         data = kwargs.pop("SenastAttesteradeResultat")
+
       self.__populate_attributes(**data, components=components)
     else:
       raise TypeError("not enough keys given to construct object")
@@ -1633,6 +1733,13 @@ class CourseResult(LadokRemoteData):
     self.__modified = True
     self.push()
 
+  def finalize(self, notify=False):
+    """Finalizes the set grade"""
+    if self.modified:
+      self.push()
+
+    <<finalize the grade for CourseResult>>
+
   @property
   def modified(self):
     """Returns True if there are unpushed changes"""
@@ -1646,24 +1753,22 @@ class CourseResult(LadokRemoteData):
   @property
   def attested(self):
     """Returns True if the grade has been attested in LADOK"""
-    try:
-      self.__last_modified
-      return False
-    except:
-      pass
-    return True
+    return self.__attested
 
   def push(self):
     if self.__uid:
       <<push the existing CourseResult grade data to LADOK>>
     else:
       <<push the new CourseResult grade data to LADOK>>
+    self.__modified = False
 @
 
 If we get the data from LADOK, then we can fill in all the attributes.
 <<populate CourseResult attributes from data>>=
 self.__uid = data.pop("Uid")
 self.__instance_id = data.pop("UtbildningsinstansUID")
+self.__results_id = data.pop("ResultatUID")
+self.__study_results_id = data.pop("StudieresultatUID")
 
 grade_scale_id = data.pop("BetygsskalaID")
 grade = data.pop("Betygsgrad")
@@ -1677,6 +1782,8 @@ if "components" in data:
   component_list = filter_on_keys(components, instance_id=self.__instance_id)
   self.__component = component_list[0] if component_list \
                                       else None
+
+self.__last_modified = data.pop("SenasteResultatandring")
 self.__modified = False
 @
 
@@ -1726,29 +1833,18 @@ self.__date = date
 
 To push an updated result to LADOK, we do the following.
 <<push the existing CourseResult grade data to LADOK>>=
-headers = self.ladok.headers.copy()
-headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
-headers['X-XSRF-TOKEN'] = self.ladok.xsrf_token
-headers['Referer'] = self.ladok.base_gui_url
+try:
+  response = self.ladok.update_result_JSON(
+    self.grade.id, self.grade_scale.id, self.date.isoformat(),
+    self.__uid, self.__last_modified
+  )
+except Exception as err:
+  raise Exception(
+    f"couldn't update {self.component.code} to {self.grade} ({self.date})"
+    f" to LADOK: {err}"
+  )
 
-put_data = {
-  'Resultat': [{
-    'ResultatUID': self.__uid,
-    'Betygsgrad': self.grade.id,
-    'Noteringar': [],
-    'BetygsskalaID': self.grade_scale.id,
-    'Examinationsdatum': self.date.isoformat(),
-    'SenasteResultatandring': self.__last_modified
-  }]
-}
-response = self.ladok.session.put(
-  url=self.ladok.base_gui_proxy_url + '/resultat/studieresultat/uppdatera',
-  json=put_data,
-  headers=headers)
-
-if 'Resultat' not in response.json():
-  raise Exception(f"couldn't update {self.code} to {self.grade} ({self.date})"
-    " to LADOK: {response.json()['Meddelande']}")
+self.__populate_attributes(**response[0])
 @
 
 \subsection{Adding new results}
@@ -1758,32 +1854,33 @@ Since we don't update an already existing item, we must add a new result to
 LADOK.
 Particularly, we must add something to the student's study results.
 <<push the new CourseResult grade data to LADOK>>=
-headers = self.ladok.headers.copy()
-headers['Content-Type'] = 'application/vnd.ladok-resultat+json'
-headers['X-XSRF-TOKEN'] = self.ladok.get_xsrf_token()
-headers['Referer'] = self.ladok.base_gui_url
-
-post_data = {
-  'Resultat': [{
-    'StudieresultatUID': self.__study_results_id,
-    'UtbildningsinstansUID': self.__instance_id,
-    'Betygsgrad': self.grade.id,
-    'Noteringar': [],
-    'BetygsskalaID': self.grade_scale.id,
-    'Examinationsdatum': self.date.isoformat()
-  }]
-}
-
-response = self.ladok.session.post(
-  url=self.ladok.base_gui_proxy_url + '/resultat/studieresultat/skapa',
-  json=post_data,
-  headers=headers)
-
-if not 'Resultat' in response.json():
+try:
+  response = self.ladok.create_result_JSON(
+    self.grade.id, self.grade_scale.id, self.date.isoformat(),
+    self.__study_results_id, self.__instance_id
+  )
+except Exception as err:
   raise Exception("Couldn't register "
-    f"{self.component} {self.grade} {self.date}: " +
-      response.json()["Meddelande"])
+    f"{self.component} {self.grade} {self.date}: {err}")
 
-self.__populate_attributes(**response.json()["Resultat"][0])
+self.__populate_attributes(**response[0])
 @
 
+
+\subsection{Finalizing a result}
+
+When we finalize the result, we must know who reported the result.
+<<finalize the grade for CourseResult>>=
+reporter_id = self.ladok.user_info_JSON()["AnvandareUID"]
+
+if notify:
+  response = self.ladok.finalize_result_JSON(
+    self.__results_id, self.__last_modified, reporter_id, reporter_id
+  )
+else:
+  response = self.ladok.finalize_result_JSON(
+    self.__results_id, self.__last_modified, reporter_id
+  )
+
+self.__populate_attributes(**response)
+@
