@@ -1,9 +1,12 @@
 [tool.poetry]
 name = "ladok3"
 version = "1.20"
-description = "Python wrapper around the LADOK3 REST API."
-authors = ["Daniel Bosk <dbosk@kth.se>",
-  "Alexander Baltatzis", "Gerald Q. Maguire Jr"]
+description = "Python wrapper and CLI for the LADOK3 REST API."
+authors = [
+  "Daniel Bosk <dbosk@kth.se>",
+  "Alexander Baltatzis",
+  "Gerald Q. Maguire Jr"
+]
 license = "MIT"
 include = ["src/**/*.py"]
 exclude = ["*/**/*.csv", "doc/", "examples/", "*/**/ltxobj/*", "*.pdf"]
@@ -12,7 +15,7 @@ exclude = ["*/**/*.csv", "doc/", "examples/", "*/**/ltxobj/*", "*.pdf"]
 ladok = "ladok3.cli:main"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.9"
 appdirs = "^1.4.4"
 argcomplete = "^2.0.0"
 cachetools = "^5.2.0"
