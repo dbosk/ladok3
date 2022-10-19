@@ -13,8 +13,10 @@
 # ./ladok3_course_instance_to_spreadsheet.py II2202 51127
 # ./ladok3_course_instance_to_spreadsheet.py II2202 51491
 #
-# II2202 P1 is Canvas course_id 20979
-#    ./ladok3_course_instance_to_spreadsheet.py 20979
+# As of Fall 2022
+# II2202 P1P2 is Canvas course_id 34870
+#    ./ladok3_course_instance_to_spreadsheet.py 34870
+# from the sis_course_id the program can fin the course_round information.
 #
 # will produce a file: users_programs-12162.xlsx
 # This file will contain the columns:
@@ -32,9 +34,10 @@
 #
 # Add the "-T" flag to run in the Ladok test environment.
 #
-## The code in ladok3.py extends the ladok3.py code from Alexander Baltatzis <alba@kth.se> - https://gits-15.sys.kth.se/kthskript/ladok3​ from 2020-07-20.
 #
-# last modified: 2020-07-23
+# Adapted to work with the ladok3 python package and also adapted to the change in the shift from integration_id to sis_course_id
+# 
+# last modified: 2022-0819
 #
 
 import ladok3,  pprint
@@ -456,6 +459,9 @@ def main():
 
     ladok_session=initialize(options)
 
+    course_code=None
+    instance_code=None
+    
     if (len(remainder) == 2):
         course_code=remainder[0]
         instance_code=remainder[1]
@@ -467,14 +473,16 @@ def main():
 
         # get the "sis_course_id"
         course_information=course_info(course_id)
-        course_code=course_information.get('sis_course_id', None)
-        if not course_code:
-            print("Unable to find course_code information for Canva course={}".format(course_id))
-        course_code=course_code[0:6]
 
-        course_integration_id=course_information.get('integration_id', None)
+        course_code=course_information.get('original_name', None)
+        if course_code:
+            course_code=course_code[:6]
+
+        course_integration_id=course_information.get('sis_course_id', None)
         if not course_integration_id:
-            print("Unable to find course_integration information for Canva course={}".format(course_id))
+            print("Unable to find course_integration information for Canvas course={}".format(course_id))
+            clean_exit(ladok_session)
+
         instance_info=ladok_session.instance_info_uid(course_integration_id)
         if instance_info:
             instance_code=instance_info['TillfallesKod']
@@ -495,21 +503,33 @@ def main():
             'en': i['Benamning']['en'],
             'sv': i['Benamning']['sv'],
         }
+    if Verbose_Flag:
+        pprint.pprint(types_of_education, indent=4)
+
 
     user_and_program_list=[]
-    ii=ladok_session.instance_info(course_code, instance_code, 'en')
+    #ii=ladok_session.instance_info(course_code, instance_code, 'en')
     # if the enstance code was not found or there is no Uid in the result, there is an error
-    if not ii or not ii.get('Uid', False):
-        print("It seems the instance code is not a Ladok instance ('tillfälleskod'), ii:")
-        pp.pprint(ii)
+    if  not instance_info.get('Uid', False):
+        print("It seems the instance code is not a Ladok instance ('tillfälleskod'), instance_info:")
+        pp.pprint(instance_info)
         clean_exit(ladok_session)
+    if Verbose_Flag:
+        print("instance_info['Uid']={}".format(instance_info['Uid']))
 
-    pl=ladok_session.participants_JSON(ii['Uid'])
-    if not pl or not pl.get('Resultat', False):
+    if Verbose_Flag:
+        print("course_code={}".format(course_code))
+
+    pl=ladok_session.participants_JSON(instance_info['Uid'], participants_types=["not_started",  "ongoing", "registered", "finished", "cancelled"])
+    if Verbose_Flag:
+        print("pl:")
+        pp.pprint(pl)
+    if not pl or len(pl) == 0:
         print("It seems there are no participants in this Ladok instance ('tillfälleskod')")
         clean_exit(ladok_session)
 
-    for s in pl['Resultat']:
+    
+    for s in pl:
         d=dict()
 
         ladok_id=s['Student']['Uid']

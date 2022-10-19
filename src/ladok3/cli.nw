@@ -193,7 +193,11 @@ encrypted_ls = fernet_protocol.encrypt(pickled_ls)
 <<set up kdf and derive key from credentials>>
 
 fernet_protocol = Fernet(key)
-pickled_ls = fernet_protocol.decrypt(encrypted_ls)
+try:
+  pickled_ls = fernet_protocol.decrypt(encrypted_ls)
+except Exception as err:
+  warn(f"cache was corrupted, cannot decrypt: {err}")
+  pickled_ls = None
 @
 
 To actually do the key derivation, we use the PBKDF2 based on HMAC.
