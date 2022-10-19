@@ -9,7 +9,7 @@ authors = [
 ]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/dbosk/ladok3",
+repository = "https://github.com/dbosk/ladok3"
 keywords = ["ladok3", "ladok"]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -28,8 +28,8 @@ exclude = ["*/**/*.csv", "doc/", "examples/", "*/**/ltxobj/*", "*.pdf"]
 ladok = "ladok3.cli:main"
 
 [tool.poetry.urls]
-"Bug Tracker": "https://github.com/dbosk/ladok3/issues",
-"Releases": "https://github.com/dbosk/ladok3/releases"
+"Bug Tracker" = "https://github.com/dbosk/ladok3/issues"
+"Releases" = "https://github.com/dbosk/ladok3/releases"
 
 [tool.poetry.dependencies]
 python = "^3.9"
