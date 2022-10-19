@@ -21,8 +21,24 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Utilities"
 ]
-include = ["src/**/*.py", "src/ladok3/ladok.bash"]
-exclude = ["*/**/*.csv", "doc/", "examples/", "*/**/ltxobj/*", "*.pdf"]
+include = [
+  {path="src/**/*.py", format="wheel"},
+  {path="src/ladok3/ladok.bash", format="wheel"},
+  {path="doc/ladok3.pdf", format="wheel"},
+  {path="src/**/*.nw", format="sdist"},
+  {path="src/**/Makefile", format="sdist"},
+  {path="doc/*.tex", format="sdist"},
+  {path="doc/Makefile", format="sdist"},
+  {path="makefiles/*.mk", format="sdist"}
+]
+exclude = [
+  {path="src/**/*.py", format="sdist"},
+  {path="src/**/*.nw", format="wheel"},
+  {path="doc/", format="wheel"},
+  "*/**/*.csv",
+  "*/**/ltxobj/*",
+  "*/**/*.pdf"
+]
 
 [tool.poetry.scripts]
 ladok = "ladok3.cli:main"
