@@ -8,11 +8,28 @@ authors = [
   "Gerald Q. Maguire Jr"
 ]
 license = "MIT"
-include = ["src/**/*.py"]
+readme = "README.md"
+repository = "https://github.com/dbosk/ladok3",
+keywords = ["ladok3", "ladok"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Topic :: Utilities"
+]
+include = ["src/**/*.py", "src/ladok3/ladok.bash"]
 exclude = ["*/**/*.csv", "doc/", "examples/", "*/**/ltxobj/*", "*.pdf"]
 
 [tool.poetry.scripts]
 ladok = "ladok3.cli:main"
+
+[tool.poetry.urls]
+"Bug Tracker": "https://github.com/dbosk/ladok3/issues",
+"Releases": "https://github.com/dbosk/ladok3/releases"
 
 [tool.poetry.dependencies]
 python = "^3.9"
