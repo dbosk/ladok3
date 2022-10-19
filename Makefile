@@ -5,7 +5,7 @@ SUBDIR+=	examples
 SUBDIR+=	doc
 SUBDIR+=	docker
 
-version=$(shell sed -n 's/^ *version *= *\"\([^\"]\+\)\",/\1/p' pyproject.toml)
+version=$(shell sed -n 's/^ *version *= *"\([^"]\+\)"/\1/p' pyproject.toml)
 dist=$(addprefix dist/ladok3-${version}, -py3-none-any.whl .tar.gz)
 
 
