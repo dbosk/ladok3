@@ -66,12 +66,12 @@ We cover the first (the [[session]] attribute) in this section and the second
 We want to provide the attribute [[session]] which is an active and logged-in 
 session for querying LADOK.
 We must thus handle authentication to LADOK.
-The authentication for using LADOK is performed using a university CAS system.
+The authentication for using LADOK is performed using a university SSO system.
 The [[login]] method will set up a [[session]] object which is logged in.
 The [[login]] method will in turn use the [[saml_login]] method at the 
 suitable place in the code to actually log in to LADOK by authenticating to the 
 appropriate university.
-We can provide the interactions with LADOK, but not with the CAS system.
+We can provide the interactions with LADOK, but not with the SSO system.
 So that one is left to implement by a university-specific child class.
 We provide [[LadokSessionKTH]] as an example.
 
@@ -99,7 +99,7 @@ class LadokSession:
       raise err
 
   def saml_login(self, url):
-    """Perform authentication to university CAS"""
+    """Perform authentication to university SSO"""
     raise NotImplementedError()
 
   def logged_in(self):
