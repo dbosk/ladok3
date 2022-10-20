@@ -28,15 +28,17 @@ requirements.txt:
 build: compile
 	poetry build
 
-.PHONY: publish publish-ladok3 publish-docker
-publish: publish-ladok3 publish-docker doc/ladok3.pdf
+.PHONY: publish publish-github publish-pypi publish-docker
+publish: publish-github publish-pypi publish-docker
+
+publish-github: doc/ladok3.pdf
 	git push
 	gh release create -t v${version} v${version} doc/ladok3.pdf
 
 doc/ladok3.pdf:
 	${MAKE} -C $(dir $@) $(notdir $@)
 
-publish-ladok3: build
+publish-pypi: build
 	poetry publish
 
 publish-docker:
