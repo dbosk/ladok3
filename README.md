@@ -54,7 +54,7 @@ To use the package, it's just to import the package as usual.
 ```python
 import ladok3
 
-ls = ladok3.LadokSessionKTH("user", "password")
+ls = ladok3.kth.LadokSession("user", "password")
 
 student = ls.get_student("123456-1234")
 

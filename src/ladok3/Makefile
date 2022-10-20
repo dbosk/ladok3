@@ -1,4 +1,4 @@
-LIB=	ladok3.nw api.nw undoc.nw
+LIB=	ladok3.nw api.nw undoc.nw kth.nw
 CLI=	cli.nw data.nw report.nw
 
 .PHONY: all

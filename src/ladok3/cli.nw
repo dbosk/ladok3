@@ -136,7 +136,7 @@ This leads to the following approach.
 LADOK_USER, LADOK_PASS = load_credentials(args.config_file)
 ls = restore_ladok_session([LADOK_USER, LADOK_PASS])
 if not ls:
-  ls = ladok3.LadokSessionKTH(LADOK_USER, LADOK_PASS)
+  ls = ladok3.kth.LadokSession(LADOK_USER, LADOK_PASS)
 @
 <<save LadokSession ls>>=
 store_ladok_session(ls, [LADOK_USER, LADOK_PASS])
