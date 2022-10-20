@@ -124,7 +124,7 @@ be passed to the subcommand:
 \begin{enumerate}
 \item The first one is to read the user's credentials (from the keyring, 
 environment or configuration) and create the [[ls]] object by instantiating the 
-[[LadokSession]] class (technically the [[LadokSessionKTH]] class).
+[[LadokSession]] class (technically the [[ladok3.kth.LadokSession]] class).
 \item Read a pickled [[LadokSession]] object from file.
 \end{enumerate}
 The second option allows us to save time by not having to reestablish an 

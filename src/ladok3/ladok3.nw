@@ -44,8 +44,7 @@ It uses the [[requests]] module.
 We can use the class as follows.
 \inputminted{python}{../examples/example_LadokSession.py}
 
-This chapter covers how the [[LadokSession]] and [[LadokSessionKTH]] classes 
-work.
+This chapter covers how the [[LadokSession]] class work.
 The remaining chapters cover what the [[ladok]] object can be used for.
 \Cref{StudentClasses} covers how we can work with student data.
 \Cref{CourseClasses} covers how we can work with course data.
@@ -73,7 +72,7 @@ suitable place in the code to actually log in to LADOK by authenticating to the
 appropriate university.
 We can provide the interactions with LADOK, but not with the SSO system.
 So that one is left to implement by a university-specific child class.
-We provide [[LadokSessionKTH]] as an example.
+We provide [[ladok3.kth.LadokSession]] as an example.
 
 We let the [[session]] attribute be a property, this way we can ensure that 
 there exists an active session whenever it's used.
