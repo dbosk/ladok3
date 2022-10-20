@@ -714,7 +714,7 @@ assume that it is a LADOK ID in the code above.
 <<functions>>=
 def format_personnummer(person_nr_raw):
   """Returns None or a LADOK-formated person nr"""
-  pnrregex = re.compile("^(\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)$")
+  pnrregex = re.compile(r"^(\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)$")
   pnr = pnrregex.match(person_nr_raw)
   if pnr:
     now = datetime.datetime.now()

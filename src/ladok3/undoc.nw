@@ -3544,7 +3544,7 @@ def get_xsrf_token(self):
 
 # returns None or a LADOK-formated date
 def __validate_date(self, date_raw):
-  datregex = re.compile("(\d\d)?(\d\d)-?(\d\d)-?(\d\d)")
+  datregex = re.compile(r"(\d\d)?(\d\d)-?(\d\d)-?(\d\d)")
   dat = datregex.match(date_raw)
   if dat:
     if dat.group(1) == None: # add 20, ladok3 won't survive till 2100
