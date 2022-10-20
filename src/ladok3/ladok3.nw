@@ -22,6 +22,17 @@ import urllib.parse
 <<functions>>
 @
 
+We also provide tests for all functionality in [[<<test ladok3.py>>]].
+These illustrate how to the [[ladok3]] module and provide testing using 
+[[pytest]].
+<<test ladok3.py>>=
+import json
+import ladok3
+import os
+
+<<test functions>>
+@
+
 
 \chapter{Accessing LADOK}\label{AccessingLADOK}
 

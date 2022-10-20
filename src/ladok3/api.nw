@@ -1,6 +1,7 @@
 \chapter{Overview of helper functions and methods}
 
 We will now document some possible API calls to LADOK.
+We also document the tests of these functions to illustrate their use.
 
 
 \section{HTTP queries to LADOK}
@@ -97,7 +98,7 @@ def pseudonymize(json_obj):
 \section{Test code for the API}
 
 We will use the following to test the following API methods.
-\begin{pyblock}[apitest][numbers=left]
+<<test api.py>>=
 import json
 import ladok3
 import os
@@ -105,8 +106,9 @@ import os
 ladok = ladok3.LadokSessionKTH(
         os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
         test_environment=True) # for experiments
-\end{pyblock}
 
+<<test functions>>
+@
 
 
 \chapter{Grade-related API calls}
@@ -125,12 +127,10 @@ def grade_scales_JSON(self):
 @
 
 This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-print(json.dumps(ladok.grade_scales_JSON()[0], indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
-
+<<test functions>>=
+def test_grade_scales_JSON():
+  assert json.dumps(ladok.grade_scales_JSON()[0], indent=2, ensure_ascii=False)
+@
 
 
 \chapter{Student-related API calls}
