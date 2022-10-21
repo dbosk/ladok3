@@ -95,9 +95,26 @@ def pseudonymize(json_obj):
 @
 
 
-\section{Test code for the API}
+\section{Example code and test code for the API}
 
-We will use the following to test the following API methods.
+We will provide both example code and test code.
+The example code is so that we can show example outputs.
+The test code is the test cases we want to be able to run with [[pytest]] 
+later.
+
+The example code will be typeset with syntax highlighting.
+It will all have the following block of code included.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+import json
+import ladok3.kth
+import os
+
+ladok = ladok3.kth.LadokSession(
+        os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+        test_environment=True) # for experiments
+\end{pyblock}
+
+We will use the following to test the API methods.
 <<test api.py>>=
 import json
 import ladok3
@@ -108,7 +125,8 @@ ladok = ladok3.kth.LadokSession(
         test_environment=True) # for experiments
 
 <<test functions>>
-@
+@ We will then add [[test_X()]] functions in the [[<<test functions>>]] code 
+block.
 
 
 \chapter{Grade-related API calls}
@@ -126,11 +144,20 @@ def grade_scales_JSON(self):
   return None
 @
 
-This method is used as follows.
+We add the following test.
+If we can convert the return value do JSON, it's probably correct.
+(No this isn't the best of tests.)
 <<test functions>>=
 def test_grade_scales_JSON():
   assert json.dumps(ladok.grade_scales_JSON()[0], indent=2, ensure_ascii=False)
 @
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+print(json.dumps(ladok.grade_scales_JSON()[0], indent=2, ensure_ascii=False))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
 
 
 \chapter{Student-related API calls}
@@ -150,6 +177,14 @@ def registrations_JSON(self, student_id):
   if response.status_code == 200:
     return response.json()["Tillfallesdeltaganden"]
   return None
+@
+
+We provide the following test.
+<<test functions>>=
+def test_registrations_JSON():
+  me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
+  results = ladok.registrations_JSON(me.ladok_id)
+  assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
 This method is used as follows.
@@ -185,6 +220,18 @@ def registrations_on_course_JSON(self,
   if response.status_code == 200:
     return response.json()["Tillfallesdeltaganden"]
   return None
+@
+
+We add the following test.
+<<test functions>>=
+def test_registrations_on_course_JSON():
+  me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
+  dasak = me.courses(code="DD2395")[0]
+
+  results = ladok.registrations_on_course_JSON(dasak.education_id,
+    me.ladok_id)
+
+  assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
 This method is used as follows.
