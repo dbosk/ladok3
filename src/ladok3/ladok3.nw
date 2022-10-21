@@ -27,7 +27,7 @@ These illustrate how to the [[ladok3]] module and provide testing using
 [[pytest]].
 <<test ladok3.py>>=
 import json
-import ladok3
+import ladok3.kth
 import os
 
 <<test functions>>
@@ -523,7 +523,7 @@ it on [[LadokData]].
 [[kwargs]] will have the following format:
 \begin{pycode}
 import json
-import ladok3
+import ladok3.kth
 import os
 
 ladok = ladok3.kth.LadokSession(

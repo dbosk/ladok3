@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import getpass
 import json
 import keyring
+import ladok3.kth
 import os
 import pickle
 import re

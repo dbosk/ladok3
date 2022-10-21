@@ -4,6 +4,8 @@ In this chapter we detail how we log into LADOK using KTH.
 This means that we want to provide a child class of [[ladok3.LadokSession]] 
 which has the [[saml_login]] method implemented.
 <<kth.py>>=
+import ladok3
+
 class LadokSession(ladok3.LadokSession):
   def __init__(self, username, password, test_environment=False):
     """Initialize KTH version of LadokSession"""
@@ -21,7 +23,7 @@ class LadokSession(ladok3.LadokSession):
 We also test this login functionality.
 <<test kth.py>>=
 import json
-import ladok3
+import ladok3.kth
 import os
 
 ladok = ladok3.kth.LadokSession(
