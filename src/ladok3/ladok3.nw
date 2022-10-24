@@ -804,9 +804,9 @@ to recursively trigger the fetch ad absurdum.)
 Depending on which attribute is set, we pull the data differently.
 <<pull student attributes from LADOK>>=
 if self.__ladok_id:
-  <<pull student record based on LADOK ID>>
+  record = self.__ladok.get_student_data_by_uid_JSON(self.__ladok_id)
 elif self.__personnummer:
-  <<pull student record based on personnummer>>
+  record = self.__ladok.get_student_data_JSON(self.__personnummer)
 else:
   raise AttributeError("neither personnummer, nor LADOK ID set")
 
@@ -815,57 +815,6 @@ self.__personnummer = record['Personnummer'] # twelve digits only
 self.__first_name = record['Fornamn']
 self.__last_name = record['Efternamn']
 self.__alive = not record['Avliden']
-@
-
-The record has the following attributes,
-from [[schemas/schemas.ladok.se-studentinformation.xsd]]:
-\begin{minted}{xml}
-<xs:complexType name="Student">
-  <xs:complexContent>
-    <xs:extension base="base:BaseEntitet">
-      <xs:sequence>
-        <xs:element name="Avliden" type="xs:boolean"/>
-        <xs:element minOccurs="0" name="Efternamn" type="xs:string"/>
-        <xs:element minOccurs="0" name="ExterntUID" type="xs:string"/>
-        <xs:element name="FelVidEtableringExternt" type="xs:boolean"/>
-        <xs:element minOccurs="0" name="Fodelsedata" type="xs:string"/>
-        <xs:element minOccurs="0" name="Fornamn" type="xs:string"/>
-        <xs:element minOccurs="0" name="KonID" type="xs:int"/>
-        <xs:element minOccurs="0" name="Personnummer" type="xs:string"/>
-        <xs:element minOccurs="0" name="Skyddsstatus" type="xs:string"/>
-        <xs:element minOccurs="0" ref="si:UnikaIdentifierare"/>
-      </xs:sequence>
-    </xs:extension>
-  </xs:complexContent>
-</xs:complexType>
-\end{minted}
-
-To pull the data based on personnummer we must actually form a search query.
-(This code is a slight adaptation of the code by Baltatzis.)
-<<pull student record based on personnummer>>=
-response = self.ladok.session.get(
-  url=self.ladok.base_gui_proxy_url +
-    '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' +
-      self.personnummer + '&skipCount=false&sprakkod=sv',
-        headers=self.ladok.headers).json()['Resultat']
-
-if len(response) != 1:
-  raise ValueError("can't find student based on personnummer")
-
-record = response[0]
-@
-
-To pull the data based on LADOK ID is a more direct query.
-(This code is a slight adaptation of the code by Maguire.)
-<<pull student record based on LADOK ID>>=
-response = self.ladok.session.get(
-  url=self.ladok.base_gui_proxy_url +
-    '/studentinformation/student/' + self.ladok_id,
-  headers=self.ladok.headers)
-if response.status_code == 200:
-  record = response.json()
-else:
-  raise AttributeError("can't fetch student attributes by LADOK ID")
 @
 
 
