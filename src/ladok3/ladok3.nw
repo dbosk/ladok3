@@ -965,7 +965,7 @@ def courses(self, /, **kwargs):
 
 Then we can call the last method when we want to pull all attributes too (using 
 the [[pull]] method).
-<<pull all student attributes>>=
+<<pull all attributes from LADOK>>=
 self.__get_study_attributes()
 @
 
