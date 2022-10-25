@@ -27,6 +27,7 @@ These illustrate how to the [[ladok3]] module and provide testing using
 [[pytest]].
 <<test ladok3.py>>=
 import json
+import ladok3
 import ladok3.kth
 import os
 
@@ -465,6 +466,9 @@ def filter_on_keys(items, /, **kwargs):
 We test this function with the following tests.
 <<test functions>>=
 def test_filter_on_keys():
+  class Object:
+    pass
+
   student1 = Object()
   student1.first_name = "Student"
   student1.last_name = "Studentsdotter"
@@ -473,10 +477,10 @@ def test_filter_on_keys():
   student2.last_name = "Studentsson"
 
   students = [student1, student2]
-  assert filter_on_keys(students, first_name="Student") == students
-  assert filter_on_keys(students,
+  assert ladok3.filter_on_keys(students, first_name="Student") == students
+  assert ladok3.filter_on_keys(students,
     first_name="Student", last_name="Studentsdotter") == [student1]
-  assert filter_on_keys(students,
+  assert ladok3.filter_on_keys(students,
     last_name="Students(dotter|son)") == students
 @
 
@@ -521,6 +525,9 @@ def filter_on_any_key(items, /, **kwargs):
 We test this function with the following tests.
 <<test functions>>=
 def test_filter_on_any_key():
+  class Object:
+    pass
+
   student1 = Object()
   student1.first_name = "Student"
   student1.last_name = "Studentsdotter"
@@ -529,7 +536,7 @@ def test_filter_on_any_key():
   student2.last_name = "Studentsson"
 
   students = [student1, student2]
-  assert filter_on_any_key(students,
+  assert ladok3.filter_on_any_key(students,
     first_name="Student", last_name="Studentsdotter") == students
 @
 
@@ -557,11 +564,11 @@ def compare_values(val1, val2):
 We test this function with the following tests.
 <<test functions>>=
 def test_compare_values():
-  assert compare_values("Studentsdotter", "^Student")
-  assert compare_values("Studentsdotter", "dotter")
-  assert not compare_values("Studentsdotter", "son")
-  assert compare_values(1, 1)
-  assert not compare_values(1, 2)
+  assert ladok3.compare_values("Studentsdotter", "^Student")
+  assert ladok3.compare_values("Studentsdotter", "dotter")
+  assert not ladok3.compare_values("Studentsdotter", "son")
+  assert ladok3.compare_values(1, 1)
+  assert not ladok3.compare_values(1, 2)
 @
 
 
