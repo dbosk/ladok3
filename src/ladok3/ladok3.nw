@@ -419,17 +419,65 @@ We have several helper functions that are useful throughout.
 
 \section{Filter on keys}
 
-Many data methods will filter based on keys.
-We will provide the following function which does exactly that.
+Many data methods will filter objects based on attributes.
+We provide a function that takes a list of objects and a dictionary.
+Each key in the dictionary corresponds to an attribute for the objects.
+The value corresponding to the key, is checked for matching.
+
+We will provide the following function, [[filter_on_keys]], which does exactly 
+that.
 This implementation runs through the (remaining) items once per keyword, 
-meaning it's conjunctive.
+meaning it's conjunctive --- all key--values must match the attribute values of 
+the objects.
+
+We use the function [[compare_values]] to compare the values, we'll get back to 
+that function below.
 <<functions>>=
 def filter_on_keys(items, /, **kwargs):
+  """
+  Input:
+  - items is a list of objects.
+  - kwargs is a dictionary where keys match the attributes of the objects in 
+    items.
+
+  Output:
+  - Only objects where *all* key--value pairs match for the corresponding 
+    attribues.
+  - If values are strings, the value from kwargs is interpreted as a regular 
+    expression.
+
+  Example:
+  student.first_name = "Student"
+  student.last_name = "Studentdotter"
+
+  filter_on_keys([student], firt_name="Student")
+    gives [student]
+  filter_on_keys([student], firt_name="Student", last_name="Studentsson")
+    gives []
+  """
   for key in kwargs:
     items = filter(
-      lambda x: operator.attrgetter(key)(x) == kwargs[key],
+      lambda x: compare_values(operator.attrgetter(key)(x), kwargs[key]),
       items)
   return list(items)
+@
+
+We test this function with the following tests.
+<<test functions>>=
+def test_filter_on_keys():
+  student1 = Object()
+  student1.first_name = "Student"
+  student1.last_name = "Studentsdotter"
+  student2 = Object()
+  student2.first_name = "Student"
+  student2.last_name = "Studentsson"
+
+  students = [student1, student2]
+  assert filter_on_keys(students, first_name="Student") == students
+  assert filter_on_keys(students,
+    first_name="Student", last_name="Studentsdotter") == [student1]
+  assert filter_on_keys(students,
+    last_name="Students(dotter|son)") == students
 @
 
 To achieve disjunctive behaviour, we must run [[filter_on_keys]] once per 
@@ -439,14 +487,77 @@ The following function solves that problem by not checking an item against more
 keys once it has matched one key.
 <<functions>>=
 def filter_on_any_key(items, /, **kwargs):
+  """
+  Input:
+  - items is a list of objects.
+  - kwargs is a dictionary where keys match the attributes of the objects in 
+    items.
+
+  Output:
+  - Only objects where *any* key--value pairs match for the corresponding 
+    attribues.
+  - If values are strings, the value from kwargs is interpreted as a regular 
+    expression.
+
+  Example:
+  student.first_name = "Student"
+  student.last_name = "Studentsdotter"
+
+  filter_on_keys([student], firt_name="Student")
+    gives [student]
+  filter_on_keys([student], firt_name="Student", last_name="Studentsson")
+    gives [student]
+  """
   matching_items = []
   for item in items:
     for key in kwargs:
-      if operator.attrgetter(key)(item) == kwargs[key]:
+      if compare_values(operator.attrgetter(key)(item), kwargs[key]):
         matching_items.append(item)
         break
 
   return matching_items
+@
+
+We test this function with the following tests.
+<<test functions>>=
+def test_filter_on_any_key():
+  student1 = Object()
+  student1.first_name = "Student"
+  student1.last_name = "Studentsdotter"
+  student2 = Object()
+  student2.first_name = "Student"
+  student2.last_name = "Studentsson"
+
+  students = [student1, student2]
+  assert filter_on_any_key(students,
+    first_name="Student", last_name="Studentsdotter") == students
+@
+
+The function [[compare_values]] is how we compare the values.
+The reason we don't simply replace it with the [[==]] operator is that for 
+strings, we actually want to use regular expressions for matching.
+<<functions>>=
+def compare_values(val1, val2):
+  """
+  Compares val1 and val2:
+  - if val1 and val2 both are strings, then val2 is interpreted as a regular 
+    expression.
+  - otherwise we use ==
+  """
+  if type(val1) != str or type(val2) != str:
+    return val1 == val2
+
+  return re.search(val2, val1)
+@
+
+We test this function with the following tests.
+<<test functions>>=
+def test_compare_values():
+  assert compare_values("Studentsdotter", "^Student")
+  assert compare_values("Studentsdotter", "dotter")
+  assert not compare_values("Studentsdotter", "son")
+  assert compare_values(1, 1)
+  assert not compare_values(1, 2)
 @
 
 
@@ -829,8 +940,10 @@ def __get_study_attributes(self):
   <<create a list of the student's course objects>>
 
 def courses(self, /, **kwargs):
-  """Returns a list of courses that the student is registered on.
-  Filtered based on keywords."""
+  """
+  Returns a list of courses that the student is registered on.
+  Filtered based on keywords, see ladok3.filter_on_keys for details.
+  """
   try:
     courses = self.__courses
   except:
