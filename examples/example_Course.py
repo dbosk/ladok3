@@ -1,7 +1,10 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# -*- mode: python; python-indent-offset: 4 -*-
 import ladok3
 import os
 
-ladok = ladok3.LadokSessionKTH(
+ladok = ladok3.kth.LadokSession(
         os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
         test_environment=True) # for experiments
 

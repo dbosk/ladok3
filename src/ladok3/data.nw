@@ -1,0 +1,413 @@
+We want to compute statistics based on LADOK data.
+We want to answer the following questions:
+\begin{enumerate}
+\item\label[question]{QGradeDistInCourse} What are the grade distribution of a 
+course round?
+\item\label[question]{QGradeDistDiffYears} How do grade distributions differ 
+between years (\ie rounds) for the same course?
+\item\label[question]{QGradeDistDiffCourses} How do grade distributions differ 
+between (similar) courses?
+\item How is the throughput distribution of a course?
+\item How do throughput distributions vary between years?
+\end{enumerate}
+
+We provide the module [[data]] ([[<<data.py>>]]) to extract the necessary data 
+from LADOK (\cref{DataCommand}).
+This is a subcommand for the [[ladok]] command-line interface.
+It can be used like this:
+\begin{minted}{bash}
+ladok data DD1315 > DD1315.csv
+\end{minted}
+This program will produce CSV-formated data to answer the questions above.
+The data is formated like this:
+\begin{itemize}
+\item course,
+\item round,
+\item component,
+\item student (pseudonym),
+\item grade,
+\item normalized time.
+\end{itemize}
+Or more concretely, we can use it like this:
+\begin{pyblock}[statstest][numbers=left]
+import numpy as np
+import pandas as pd
+
+prgi = pd.read_csv("DD1315.csv")
+
+rounds_years = {
+  51386: "2020",
+  50869: "2019",
+  50662: "2018",
+  50650: "2017",
+  50523: "2016"
+}
+prgi_LAB3 = prgi[
+  prgi.Component.eq("LAB3") & prgi.Round.isin(rounds_years.keys())
+].replace(rounds_years)
+
+stats = pd.crosstab(prgi_LAB3.Grade, prgi_LAB3.Round)
+
+for column in stats:
+  stats[column] /= stats[column].sum()
+
+print(stats.round(3).to_latex(
+  label="GradeDistribution",
+  caption="Grade distribution for the DD1315 course."
+))
+\end{pyblock}
+This yields \cref{GradeDistribution}.
+
+\stdoutpythontex
+
+If we convert the grades to numbers, then we can also compute the average grade 
+with standard deviation \etc.
+\begin{pyblock}[statstest][numbers=left,firstnumber=last]
+grade_map = {
+  "A": 5, "B": 4, "C": 3, "D": 2, "E": 1, "-": 0
+}
+grades_num = prgi_LAB3[ ["Round", "Grade"] ].replace(grade_map)
+
+print(grades_num.groupby("Round")["Grade"].describe().round(3).to_latex(
+  label="GradeStats",
+  caption="Statistics for grades of the DD1315 course, grade map: " +
+    ", ".join([f"{g} $\mapsto$ {s}" for g, s in grade_map.items()]) + "."
+))
+\end{pyblock}
+This yields \cref{GradeStats}.
+
+\stdoutpythontex
+
+Finally, we'd like to merge the old rounds to compare with the latest.
+\begin{pyblock}[statstest][numbers=left,firstnumber=last]
+rounds_avg = {
+  "2019": "2019--2016",
+  "2018": "2019--2016",
+  "2017": "2019--2016",
+  "2016": "2019--2016"
+}
+grades_avg = grades_num.replace(rounds_avg)
+
+print(grades_avg.groupby("Round")["Grade"].describe().round(3).to_latex(
+  label="GradeStatsAvg",
+  caption="Statistics for grades of the DD1315 course, grade map: " +
+    ", ".join([f"{g} $\mapsto$ {s}" for g, s in grade_map.items()]) + "."
+))
+\end{pyblock}
+This yields \cref{GradeStatsAvg}.
+
+\stdoutpythontex
+
+
+\section{The [[data]] subcommand}\label{DataCommand}
+
+This is a subcommand run as part of the [[ladok3.cli]] module.
+We provide a function [[add_command_options]] that adds the subcommand options 
+to a given parser.
+We need access to LADOK through the [[ladok3]] module.
+We will also write data to disk in CSV form, so we need the [[csv]] module.
+<<data.py>>=
+import csv
+import datetime
+import ladok3
+import os
+import sys
+
+<<functions>>
+
+def add_command_options(parser):
+  <<add data parser to parser>>
+  <<add data command arguments to data parser>>
+
+def command(ladok, args):
+  <<produce data about course specified in args>>
+@
+
+\subsection{Setting up the data command options}
+
+We add a subparser.
+We set it up to use the function [[command]].
+<<add data parser to parser>>=
+data_parser = parser.add_parser("data",
+  help="Returns course results data in CSV form",
+  description="""
+Returns the results in CSV form for all first-time registered students.
+""".strip())
+data_parser.set_defaults(func=command)
+@
+
+
+\section{Producing data}
+
+We fetch the data from LADOK and print it in CSV format to standard out 
+([[sys.stdout]]).
+This way the user can deal with how to store the data.
+<<produce data about course specified in args>>=
+data_writer = csv.writer(sys.stdout, delimiter=args.delimiter)
+course_rounds = filter_rounds(
+  ladok.search_course_rounds(code=args.course_code),
+  args.rounds)
+
+data_writer.writerow([
+  "Course", "Round", "Component", "Student", "Grade", "Time"
+])
+for course_round in course_rounds:
+  data = extract_data_for_round(ladok, course_round, args)
+
+  for student, component, grade, time in data:
+    data_writer.writerow(
+      [course_round.code, course_round.round_code, component,
+        student, grade, time]
+    )
+@ We must take a course code and a delimiter as arguments.
+<<add data command arguments to data parser>>=
+data_parser.add_argument("course_code",
+  help="The course code of the course for which to export data")
+
+data_parser.add_argument("-d", "--delimiter",
+  default="\t",
+  help="The delimiter for the CSV output; "
+    "default is a tab character to be compatible with POSIX commands, "
+    "use `-d,` or `-d ,` to get comma-separated values.")
+@
+
+We filter the rounds.
+<<functions>>=
+def filter_rounds(all_rounds, desired_rounds):
+  """Returns only the round objects with round code in desired_rounds."""
+  if not desired_rounds:
+    return all_rounds
+  return filter(
+    lambda x: x.round_code in desired_rounds,
+    all_rounds
+  )
+@ We need a list of desired rounds.
+<<add data command arguments to data parser>>=
+data_parser.add_argument("-r", "--rounds", nargs="+",
+  help="The round codes for the rounds to include, "
+    "otherwise all rounds will be included.")
+@
+
+
+\section{Extracting data for a round}
+
+Now we want to extract data for a given course round.
+This is done by the function~[[extract_data_for_round]].
+We need access to LADOK through the [[ladok]] object of type [[LadokSession]].
+We also need the course round through the [[course_round]] object of type 
+[[CourseRound]].
+<<functions>>=
+def extract_data_for_round(ladok, course_round, args):
+  <<compute start and length of the course>>
+  <<get the results for the course round>>
+
+  students = filter_students(course_round.participants(), args.students)
+
+  for student in students:
+    student_results = filter_student_results(student, results)
+
+    <<determine if student should be included>>
+
+    components = filter_components(course_round.components(), args.components)
+
+    for component in components:
+      if len(student_results) < 1:
+        result_data = None
+      else:
+        result_data = filter_component_result(
+          component, student_results[0]["ResultatPaUtbildningar"])
+
+      if not result_data:
+        grade = "-"
+        normalized_date = None
+      else:
+        <<extract grade and normalized date from result data>>
+
+      yield student, component, grade, normalized_date
+@
+
+\subsection{Get round data}
+
+We need the start of the course and the length to be able to normalize the 
+dates for the grades.
+<<compute start and length of the course>>=
+course_start = course_round.start
+course_length = course_round.end - course_start
+@
+
+We must get the results for the course round from LADOK.
+For this we must use an instance ID of a component.
+However, LADOK returns the results for all components, not just the one 
+requested for.
+<<get the results for the course round>>=
+component = course_round.components()[0]
+results = ladok.search_reported_results_JSON(
+  course_round.round_id, component.instance_id)
+@
+
+Now, we don't iterate over these results.
+We iterate over the students and the components of a course round.
+LADOK doesn't report \enquote{none results}.
+But we want to have a result showing that a student hasn't done anything, that 
+should affect the statistics.
+Then we must search for a student's result in the batch of results we received 
+from LADOK.
+<<functions>>=
+def filter_student_results(student, results):
+  return list(filter(
+    lambda x: x["Student"]["Uid"] == student.ladok_id,
+    results))
+@
+
+Similarly, we want to find the result for a particular component.
+<<functions>>=
+def filter_component_result(component, results):
+  for component_result in results:
+    <<get the component result data>>
+    <<check component code in result data>>
+    return result_data
+
+  return None
+@
+
+Depending on whether the data is attested or not, we can get the actual grade 
+and date from two different substructures:
+\enquote{Arbetsunderlag} are results in LADOK that have been entered, but not 
+attested;
+\enquote{SenastAttesteradeResultat} are results that have been attested.
+They both have the same structure.
+<<get the component result data>>=
+if "Arbetsunderlag" in component_result:
+  result_data = component_result["Arbetsunderlag"]
+elif "SenastAttesteradeResultat" in component_result:
+  result_data = component_result["SenastAttesteradeResultat"]
+else:
+  continue
+@
+
+The results only refer to the component's instance ID, so we must match the 
+component on that ID.
+The [[course_round]] object allows us to do exactly that with the 
+[[components]] method.
+We note that we can ignore the grade on the whole course, since that one is 
+determined by the other components.
+<<check component code in result data>>=
+if component.instance_id != result_data["UtbildningsinstansUID"]:
+  continue
+@
+
+Finally, if there is a grade, we can extract the grade and compute the 
+normalized date.
+However, if there are no results, we set [[None]].
+We also only consider grades finished during the course.
+\Ie if the student has finished after the course ended, we set it as not 
+finished.
+Otherwise, we cannot compare with earlier courses, since then students have had 
+the chance to finish, so we want to see how many didn't finish on time.
+<<extract grade and normalized date from result data>>=
+if "Betygsgradsobjekt" in result_data:
+  grade = result_data["Betygsgradsobjekt"]["Kod"]
+  date = datetime.date.fromisoformat(
+    result_data["Examinationsdatum"])
+  normalized_date = (date - course_start) / course_length
+  if args.time_limit and normalized_date > args.time_limit:
+    grade = "-"
+    normalized_date = None
+else:
+  grade = "-"
+  normalized_date = None
+@ We must add the command line argument for the limit for the normalized date.
+<<add data command arguments to data parser>>=
+data_parser.add_argument("-t", "--time-limit", type=float,
+  help="The time (normalized) for cutting off results, "
+    "use `-t 1.0` to cut off at course end.")
+@
+
+\subsection{Filtering data}
+
+We might not want all data, but specify on the command-line which data to keep.
+We want to filter on students and components.
+<<functions>>=
+def filter_students(all_students, desired_students):
+  """Returns only the students with personnummer in desired_students."""
+  if not desired_students:
+    return all_students
+  return filter(
+    lambda x: x.personnummer in desired_students,
+    all_students
+  )
+
+def filter_components(all_components, desired_components):
+  """Returns only the components with a code in the desired_components."""
+  if not desired_components:
+    return all_components
+  return filter(
+    lambda x: x.code in desired_components,
+    all_components
+  )
+@
+
+Now, we must also add the suitable command-line options.
+<<add data command arguments to data parser>>=
+data_parser.add_argument("-s", "--students", nargs="+",
+  help="List of personnummer for students to include, "
+    "otherwise all students will be included.")
+
+data_parser.add_argument("-c", "--components", nargs="+",
+  help="List of component codes for components to include, "
+    "otherwise all components will be included.")
+@
+
+
+\section{Which students to exclude}\label{WhoToInclude}
+
+However, we don't want to include all students.
+We check if a student should be included or not.
+<<determine if student should be included>>=
+if not should_include(ladok, student, course_round, student_results):
+  continue
+@
+
+We want to filter out some values from the data.
+We only want to keep students who are registered on the course the first time 
+and who doesn't have any credit transfer on the course.
+<<functions>>=
+def should_include(ladok, student, course_round, result):
+  """Returns True if student should be included, False if to be excluded"""
+  if is_reregistered(ladok, student.ladok_id, course_round):
+    return False
+
+  if has_credit_transfer(result):
+    return False
+
+  return True
+@
+
+A student should be counted on the first round they were registered on.
+We check if a student is reregistered by checking if the course round is the 
+first round the student was registered on.
+<<functions>>=
+def is_reregistered(ladok, student_id, course):
+  """Check if the student is reregistered on the course round course."""
+  registrations = ladok.registrations_on_course_JSON(
+    course.education_id, student_id)
+  registrations.sort(
+    key=lambda x: x["Utbildningsinformation"]["Studieperiod"]["Startdatum"])
+  first_reg = registrations[0]
+  return first_reg["Utbildningsinformation"]["Utbildningstillfalleskod"] != \
+    course.round_code
+@
+
+If the student has a credit transfer for any part of the course, we should 
+exclude the student.
+<<functions>>=
+def has_credit_transfer(results):
+  """Returns True if there exists a credit tranfer among the results."""
+  for result in results:
+    for component_result in result["ResultatPaUtbildningar"]:
+      if component_result["HarTillgodoraknande"]:
+        return True
+
+  return False
+@
+

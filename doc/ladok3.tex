@@ -1,0 +1,145 @@
+\documentclass[a4paper,oneside]{book}
+\newenvironment{abstract}{}{}
+\usepackage{abstract}
+\usepackage{noweb}
+% Needed to relax penalty for breaking code chunks across pages, otherwise 
+% there might be a lot of space following a code chunk.
+\def\nwendcode{\endtrivlist \endgroup}
+\let\nwdocspar=\smallbreak
+
+\usepackage[hyphens]{url}
+\usepackage{hyperref}
+\usepackage{authblk}
+
+\input{preamble.tex}
+
+\title{%
+  A LADOK3 Python API
+}
+\author{%
+  Alexander Baltatzis,
+  Daniel Bosk,
+  Gerald Q.\ \enquote{Chip} Maguire Jr.
+}
+\affil{%
+  KTH EECS\\
+  \texttt{\{alba,dbosk,maguire\}@kth.se}
+}
+
+\begin{document}
+\frontmatter
+\maketitle
+
+\vspace*{\fill}
+\VerbatimInput{../LICENSE}
+\clearpage
+
+\begin{abstract}
+  \input{abstract.tex}
+\end{abstract}
+\clearpage
+
+\tableofcontents
+\clearpage
+
+\mainmatter
+\chapter{Introduction}
+
+LADOK (abbreviation of \foreignlanguage{swedish}{Lokalt Adb–baserat 
+DOKumentationssystem}, in Swedish) is the national documentation system for 
+higher education in Sweden.
+This is the documented source code of \texttt{ladok3}, a LADOK3 API wrapper for 
+Python.
+
+The \texttt{ladok3} library provides a non-GUI application that, similar to 
+access via a web browser, only provides the user with access to the LADOK data 
+and functionality that they would actually have based on their specific user 
+permissions in LADOK.
+It can be seem as a very streamlined web browser just for LADOK's web 
+interface.
+While the library exploits caching to reduce the load on the LADOK server, this 
+represents a subset of the information that would otherwise be obtained via
+LADOK's web GUI export functions.
+
+You can install the \texttt{ladok3} package by running
+\begin{minted}{bash}
+pip3 install ladok3
+\end{minted}
+in the terminal.
+You can find a quick reference by running
+\begin{minted}[firstnumber=last]{bash}
+pydoc ladok3
+\end{minted}
+
+We provide the main class \texttt{LadokSession} (\cref{LadokSession}).
+The \texttt{LadokSession} class acts like \enquote{factories} and will return 
+objects representing various LADOK data.
+These data objects' classes inherit the \texttt{LadokData} (\cref{LadokData}) 
+and \texttt{LadokRemoteData} (\cref{LadokRemoteData}) classes.
+Data of the type \texttt{LadokData} is not expected to change, unlike 
+\texttt{LadokRemoteData}, which is.
+Objects of type \texttt{LadokRemoteData} know how to update themselves, \ie fetch 
+and refresh their data from LADOK.
+When relevant they can also write data to LADOK, \ie update entries such as 
+results.
+
+One design criteria is to improve performance.
+We do this by caching all factory methods of any \texttt{LadokSession}.
+The \texttt{LadokSession} itself is also designed to be cacheable: if the session to 
+LADOK expires, it will automatically reauthenticate to establish a new session.
+
+
+
+\part{The library}
+
+\input{../src/ladok3/ladok3.tex}
+
+
+\part{Logging in at different universities}
+
+\input{../src/ladok3/kth.tex}
+
+
+\part{API calls}
+
+\input{../src/ladok3/api.tex}
+\input{../src/ladok3/undoc.tex}
+
+
+
+\part{A command-line interface}
+
+\chapter{The base interface}
+
+\input{../src/ladok3/cli.tex}
+
+\chapter{The \texttt{data} command}
+
+\input{../src/ladok3/data.tex}
+
+\chapter{The \texttt{report} command}
+
+\input{../src/ladok3/report.tex}
+
+
+
+\part{Other example applications}
+
+\chapter{Transfer results from KTH Canvas to LADOK}
+
+Here we provide an example program~\texttt{canvas2ladok.py} which exports 
+results from KTH Canvas to LADOK for the introductory programming course~prgi 
+(DD1315).
+You can find an up-to-date version of this chapter at
+\begin{center}
+  \url{https://github.com/dbosk/intropy/tree/master/adm/reporting}.
+\end{center}
+
+\input{../examples/canvas2ladok.tex}
+
+
+\backmatter
+\printbibliography
+
+
+\end{document}

@@ -1,0 +1,399 @@
+This is the documentation of the command-line interface module ([[cli]]) of the 
+[[ladok3]] package, [[<<cli.py>>]].
+
+The command-line interface is divided into subcommands, similar to Git.
+Currently, we provide the following commands:
+\begin{description}
+\item[data]
+The command outputs all results for all rounds of a course in CSV format.
+\end{description}
+
+
+\section{Overview of the source code and dependencies}
+
+We use [[argparse]] with [[argcomplete]] to handle the command-line interface.
+We use [[appdirs]] to handle configuration directories on various systems, we 
+set up a global [[dirs]] that we can use.
+<<cli.py>>=
+#!/bin/env python3
+"""A command-line interface for LADOK 3"""
+
+import appdirs
+import argcomplete, argparse
+import base64
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import getpass
+import json
+import keyring
+import ladok3.kth
+import os
+import pickle
+import re
+import sys
+import traceback
+
+<<modules>>
+
+dirs = appdirs.AppDirs("ladok", "dbosk@kth.se")
+
+<<functions>>
+<<command-line interface>>
+@
+
+
+\section{A command-line interface}%
+\label{command-line-interface}
+
+The idea is that we have the basic command that can take some options and 
+ultimately some subcommand.
+The subcommands do the heavy lifting.
+We use a standard Pythonic if-main construction.
+<<command-line interface>>=
+def main():
+  """Run the command-line interface for the ladok command"""
+  <<process command-line options>>
+
+if __name__ == "__main__":
+  try:
+    main()
+    sys.exit(0)
+  except Exception as e:
+    err(-1, e)
+@
+
+We want uniform error handling.
+We will use the function [[err]] for errors and [[warn]] for warnings, both 
+inspired by err(3) and warn(3) in the BSD world.
+<<functions>>=
+def err(rc, msg):
+  print(f"{sys.argv[0]}: error: {msg}", file=sys.stderr)
+  sys.exit(rc)
+
+def warn(msg):
+  print(f"{sys.argv[0]}: {msg}", file=sys.stderr)
+@
+
+
+\subsection{Process command-line options}%
+\label{process-command-line-options}
+
+The main part done here is to set up a [[LadokSession]] object~[[ls]].
+We can do this in two ways:
+\begin{enumerate*}
+\item create a new object using the user's credentials to log in; or
+\item restore the [[ls]] object from a previous run.
+\end{enumerate*}
+
+We'll use [[argparse]] to parse the command-line options.
+<<process command-line options>>=
+argp = argparse.ArgumentParser(
+  description="This is a CLI-ification of LADOK3's web GUI.",
+  epilog="Web: https://github.com/dbosk/ladok3"
+)
+<<add global configuration options>>
+subp = argp.add_subparsers(
+  title="commands",
+  dest="command",
+  required=True
+)
+<<add subparsers to subp>>
+argcomplete.autocomplete(argp)
+args = argp.parse_args()
+<<create or restore the LadokSession ls>>
+<<execute subcommand>>
+<<save LadokSession ls>>
+@
+
+For each subcommand, we will add a subparser ([[subp.add_parser]]) that will 
+set the [[func]] attribute.
+Then we can execute the correct function and let that function check the 
+remaining arguments.
+We must also pass on a LADOK session object~[[ls]].
+<<execute subcommand>>=
+if "func" in args:
+  args.func(ls, args)
+@
+
+
+\section{Create the LadokSession~[[ls]]}
+
+We have several options for creating the LadokSession object~[[ls]] that must 
+be passed to the subcommand:
+\begin{enumerate}
+\item The first one is to read the user's credentials (from the keyring, 
+environment or configuration) and create the [[ls]] object by instantiating the 
+[[LadokSession]] class (technically the [[ladok3.kth.LadokSession]] class).
+\item Read a pickled [[LadokSession]] object from file.
+\end{enumerate}
+The second option allows us to save time by not having to reestablish an 
+authenticated session to LADOK.
+The authentication step takes much more time that individual LADOK requests.
+
+This leads to the following approach.
+<<create or restore the LadokSession ls>>=
+LADOK_USER, LADOK_PASS = load_credentials(args.config_file)
+ls = restore_ladok_session([LADOK_USER, LADOK_PASS])
+if not ls:
+  ls = ladok3.kth.LadokSession(LADOK_USER, LADOK_PASS)
+@
+<<save LadokSession ls>>=
+store_ladok_session(ls, [LADOK_USER, LADOK_PASS])
+@
+
+
+\subsection{Saving and restoring the [[LadokSession]] object}
+
+Now we need to implement the [[store_ladok_session]] and 
+[[restore_ladok_session]] functions.
+We will use [[pickle]] for storing and restoring the object.
+But we also want to encrypt the stored object.
+<<functions>>=
+def store_ladok_session(ls, credentials):
+  if not os.path.isdir(dirs.user_cache_dir):
+    os.mkdir(dirs.user_cache_dir)
+
+  file_path = dirs.user_cache_dir + "/LadokSession"
+
+  pickled_ls = pickle.dumps(ls)
+  <<encrypt pickled ls>>
+
+  with open(file_path, "wb") as file:
+    file.write(encrypted_ls)
+  
+def restore_ladok_session(credentials):
+  file_path = dirs.user_cache_dir + "/LadokSession"
+
+  if os.path.isfile(file_path):
+    with open(file_path, "rb") as file:
+      encrypted_ls = file.read()
+      <<decrypt encrypted ls>>
+      return pickle.loads(pickled_ls)
+
+  return None
+@
+
+We don't want to only encrypt the object, we also want to provide integrity for 
+the object.
+This is to avoid any vulnerabilities with [[pickle]].
+We use the [[cryptography]] module to handle the encryption.
+In particular, we use the [[cryptography.fernet]] protocol which encrypts using 
+AES and signs using HMAC.
+
+We will use the user's LADOK password to generate a cryptographic key.
+Then we do the encryption/decryption.
+<<encrypt pickled ls>>=
+<<set up kdf and derive key from credentials>>
+
+fernet_protocol = Fernet(key)
+encrypted_ls = fernet_protocol.encrypt(pickled_ls)
+@
+<<decrypt encrypted ls>>=
+<<set up kdf and derive key from credentials>>
+
+fernet_protocol = Fernet(key)
+try:
+  pickled_ls = fernet_protocol.decrypt(encrypted_ls)
+except Exception as err:
+  warn(f"cache was corrupted, cannot decrypt: {err}")
+  pickled_ls = None
+@
+
+To actually do the key derivation, we use the PBKDF2 based on HMAC.
+We use the LADOK username as salt and the password as password.
+<<set up kdf and derive key from credentials>>=
+kdf = PBKDF2HMAC(
+  algorithm=hashes.SHA256(),
+  length=32,
+  salt=credentials[0].encode("utf-8"),
+  iterations=100000
+)
+key = base64.urlsafe_b64encode(kdf.derive(credentials[1].encode("utf-8")))
+@
+
+
+\section{Configuration}
+
+We provide a global configuration file.
+We want to allow the user to specify different locations for the configuration.
+
+\paragraph{Location of configuration files}
+
+We want the user to be able to specify the location of the configuration 
+file.
+<<add global configuration options>>=
+argp.add_argument("-f", "--config-file",
+  default=f"{dirs.user_config_dir}/config.json",
+  help="Path to configuration file "
+    f"(default: {dirs.user_config_dir}/config.json) "
+    "or set LADOK_USER and LADOK_PASS environment variables.")
+@ Since we provide the default value here, we can always rely on it to be 
+available, so we can use [[args.config_file]] directly when we want to access 
+the configuration file.
+
+
+\section{Managing credentials}
+
+We want a subcommand to handle the user's credentials for accessing LADOK.
+In particular, we need the user to be able to change the credentials in the 
+system keyring, \eg in case the user wrote the wrong password.
+The rest we don't need to do much about, merely point out the possibilities to 
+the user.
+<<add subparsers to subp>>=
+login_parser = subp.add_parser("login",
+  help="Manage login credentials",
+  description="""
+Manages the user's LADOK login credentials (only credentials at KTH supported 
+right now). There are three ways to supply the login credentials, in order of 
+priority:
+
+1) Through the system keyring: Just run `ladok login` and you'll be asked to 
+   enter the credentials and they will be stored in the keyring.
+
+2) Through the environment: Just set the environment variables LADOK_USER and 
+   LADOK_PASS.
+
+3) Through the configuration file: Just write
+
+      {
+        "username": "the actual username",
+        "password": "the actual password"
+      }
+
+   to the file """ + dirs.user_config_dir + """/config.json (default, or use 
+   the -f option).
+"""
+)
+login_parser.set_defaults(func=update_credentials_in_keyring)
+@
+
+\subsection{Updating the credentials in the keyring}
+
+As stated, if the subcommand is run, we should update the credentials in the 
+keyring.
+If we run this subcommand, also want to clear the cache; otherwise, the cache 
+will keep the outdated credentials.
+<<functions>>=
+def update_credentials_in_keyring(ls, args):
+  user = input("LADOK username: ")
+  passwd = getpass.getpass("LADOK password: [input is hidden]")
+
+  keyring.set_password("ladok3", "username", user)
+  keyring.set_password("ladok3", "password", passwd)
+
+  clear_cache(ls, args)
+@
+
+\subsection{Loading user credentials}
+
+The [[load_credentials]] function will try to get the user's LADOK credentials.
+There are three locations:
+\begin{enumerate}
+\item the system keyring,
+\item the environment variables [[LADOK_USER]] and [[LADOK_PASS]],
+\item the configuration file.
+\end{enumerate}
+They are given the priority they are listed in above.
+It tries to fetch the credentials in the given order; if it succeeds, it 
+returns those credentials, otherwise it tries the next.
+If all fail, the function will return [[None]] for both.
+(This is due to how we handle the [[login]] command.)
+<<functions>>=
+def load_credentials(filename="config.json"):
+  """Load credentials from environment or file named filename"""
+  try:
+    user = keyring.get_password("ladok3", "username")
+    passwd = keyring.get_password("ladok3", "password")
+    if user and passwd:
+      return user, passwd
+  except:
+    pass
+
+  try:
+    user = os.environ["LADOK_USER"]
+    passwd = os.environ["LADOK_PASS"]
+    return user, passwd
+  except:
+    pass
+
+  try:
+    with open(filename) as conf_file:
+      config = json.load(conf_file)
+    return config["username"], config["password"]
+  except:
+    pass
+
+  return None, None
+@
+
+
+\section{Managing the cache}
+
+We need a command to control the cache.
+For this purpose we provide the [[cache]] subcommand.
+This command will in turn have subcommands.
+<<add subparsers to subp>>=
+cache_parser = subp.add_parser("cache",
+  help="Manage cache",
+  description="Manages the cache of LADOK data"
+)
+cache_subp = cache_parser.add_subparsers(
+  title="subcommands",
+  dest="subcommand",
+  required=True
+)
+<<add subcommands to cache command>>
+@
+
+
+\subsection{Clear the cache}
+
+Since the cache stores sensitive data (student data) and the login credentials, 
+we want to be able to clear the cache.
+<<add subcommands to cache command>>=
+cache_clear = cache_subp.add_parser("clear",
+  help="Clear the cache",
+  description="Clears everything from the cache"
+)
+cache_clear.set_defaults(func=clear_cache)
+@
+
+The [[clear_cache]] function will clear the cache.
+We simply remove the existing cache file and then exit.
+If we don't exit using [[sys.exit]], the main program will write the cache back 
+again on its exit.
+<<functions>>=
+def clear_cache(ls, args):
+  try:
+    os.remove(dirs.user_cache_dir + "/LadokSession")
+  except FileNotFoundError as err:
+    pass
+
+  sys.exit(0)
+@
+
+
+\section{Other subcommands}
+
+To add a subcommand we must add a subparser to the [[subp]] parser object from 
+above, we do this in [[<<add subparsers to subp>>]].
+Every subcommand exists in a separate module and that module provides the 
+function [[add_command_options]] that takes [[subp]] as an argument.
+
+We add the [[data]] subcommand.
+<<modules>>=
+import ladok3.data
+@
+<<add subparsers to subp>>=
+ladok3.data.add_command_options(subp)
+@
+
+We add the [[report]] command.
+<<modules>>=
+import ladok3.report
+@
+<<add subparsers to subp>>=
+ladok3.report.add_command_options(subp)
+@
+

@@ -1,0 +1,206 @@
+\chapter{Logging in at KTH}\label{KTHlogin}
+
+In this chapter we detail how we log into LADOK using KTH.
+This means that we want to provide a child class of [[ladok3.LadokSession]] 
+which has the [[saml_login]] method implemented.
+<<kth.py>>=
+import html
+import ladok3
+import re
+
+class LadokSession(ladok3.LadokSession):
+  def __init__(self, username, password, test_environment=False):
+    """Initialize KTH version of LadokSession"""
+    super().__init__(test_environment=test_environment)
+    self.__username = username
+    self.__password = password
+
+  <<KTH login methods>>
+
+  def saml_login(self, url):
+    """Do the SSO login"""
+    <<KTH login procedure>>
+@
+
+We also test this login functionality.
+<<test kth.py>>=
+import json
+import ladok3.kth
+import os
+
+ladok = ladok3.kth.LadokSession(
+        os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+        test_environment=True) # for experiments
+
+def test_LadokSession():
+  assert ladok.session is not None
+@
+
+To figure out how to log in at KTH, we investigate how the browser does it.
+We use the web debugger to find the web requests that we also must make.
+See \cref{KTHloginRequests}.
+
+\begin{figure}
+  \includegraphics[width=\columnwidth]{fig/ladok_KTHlogin.png}
+  \caption{Firefox Developer Tools showing the requests when loggin in to LADOK 
+  through KTH.}
+  \label{KTHloginRequests}
+\end{figure}
+
+The only downside to our approach is that we don't handle the case when KTH 
+asks if it is fine to pass our data to LADOK.
+This happens the first time we log in to a place using KTH's SSO.
+See \cref{KTHloginRequestsFirst}.
+
+\begin{figure}
+  \includegraphics[width=\columnwidth]{fig/ladok_KTHconfirmlogin.png}
+  \caption{Firefox Developer Tools showing the requests when loggin in to LADOK 
+  through KTH for the first time.
+  Pay attention to the page rendered on the right side, different from 
+  \cref{KTHloginRequests}.}
+  \label{KTHloginRequestsFirst}
+\end{figure}
+
+
+\section{Logging in}
+
+LADOK gets a URL to the KTH login system.
+This is the [[url]] parameter to the [[saml_login]] method.
+Now, we can use that URL to authenticate to the university.
+We must simulate what we do in the browser.
+In the case of the KTH UG/LDAP system, we do the following.
+<<KTH login procedure>>=
+response = self.ladok_run_shib_login(url)
+response = self.ug_post_user_pass(response)
+response = self.perform_redirects_back_to_ladok(response)
+return response
+@
+
+\section{Running the request through Shibboleth}
+
+The first thing we want to do is to ask LADOK to run the Shibboleth login with 
+the KTH SAML URL.
+<<KTH login methods>>=
+def ladok_run_shib_login(self, url):
+  response = self.session.get(
+    url=url+'&entityID=https://saml.sys.kth.se/idp/shibboleth')
+          
+  action = re.search(
+    '<form ?[^>]* action="(.*?)"',
+    response.text).group(1)
+
+  csrf_token = re.search(
+    '<input ?[^>]* name="csrf_token" ?[^>]* value="(.*?)"',
+    response.text).group(1)
+
+  post_data = {
+    'csrf_token': csrf_token,
+    'shib_idp_ls_exception.shib_idp_session_ss': '',
+    'shib_idp_ls_success.shib_idp_session_ss': 'true',
+    'shib_idp_ls_value.shib_idp_session_ss': '',
+    'shib_idp_ls_exception.shib_idp_persistent_ss': '',
+    'shib_idp_ls_success.shib_idp_persistent_ss': 'true',
+    'shib_idp_ls_value.shib_idp_persistent_ss': '',
+    'shib_idp_ls_supported': 'true',
+    '_eventId_proceed': ''
+  }
+
+  response = self.session.post(
+    url="https://saml-5.sys.kth.se" + action,
+    data=post_data)
+
+  return response
+@ Note that in the last post request, it is important to use the 
+\enquote{saml-5} name and not the alias \enquote{saml} (both resolve to the 
+same address).
+
+
+\section{Posting username and password}
+
+After a series of redirects, we need to post our username and password to KTH 
+UG login system.
+Note that we must add the suffix \enquote{@ug.kth.se} to the username.
+<<KTH login methods>>=
+def ug_post_user_pass(self, shib_response):
+  action = re.search('<form ?[^>]* id="loginForm" ?[^>]* action="(.*?)"',
+    shib_response.text).group(1)
+
+  post_data = {
+    'username': self.__username if "@" in self.__username \
+                                else self.__username + "@ug.kth.se",
+    'password': self.__password,
+    'Kmsi': True,
+    'AuthMethod': "FormsAuthentication"
+  }
+
+  response = self.session.post(
+    url='https://login.ug.kth.se' + action,
+    data=post_data)
+
+  return response
+@
+
+
+\section{Redirecting back to LADOK}
+
+Next, we must pass through a series of redirects.
+These are automated with JavaScript in the browser, we must simulate clicking 
+the submit buttons when JavaScript is disabled.
+We do this by extracting the URL to post to and the values to include in the 
+post.
+<<KTH login methods>>=
+def perform_redirects_back_to_ladok(self, ug_response):
+  action = re.search('<form ?[^>]* action="(.*?)"',
+    ug_response.text)
+  if action is None:
+    raise Exception('Invalid username or password OR possibly the SAML \
+      configuration has changed, manually login an accept the changed \
+      information.')
+  action = html.unescape(action.group(1))
+
+  relay_state = re.search(
+    '<input ?[^>]* name="RelayState" ?[^>]* value="(.*?)"',
+    ug_response.text)
+  try:
+    relay_state = html.unescape(relay_state.group(1))
+  except AttributeError:
+    raise Exception(
+      "Try to log in using a web browser and accept sharing data.")
+
+  saml_response = re.search(
+    '<input ?[^>]* name="SAMLResponse" ?[^>]* value="(.*?)"',
+    ug_response.text)
+  saml_response = html.unescape(saml_response.group(1))
+
+  post_data = {
+      'RelayState': relay_state,
+      'SAMLResponse': saml_response
+  }
+
+  response = self.session.post(url=action, data=post_data)
+
+  ladok_action = re.search(
+    '<form ?[^>]* action="(.*?)"',
+    response.text)
+  ladok_action = html.unescape(ladok_action.group(1))
+
+  relay_state = re.search(
+    '<input ?[^>]* name="RelayState" ?[^>]* value="([^"]+)"',
+    response.text)
+  relay_state = html.unescape(relay_state.group(1))
+
+  saml_response = re.search(
+    '<input ?[^>]* name="SAMLResponse" ?[^>]* value="(.*?)"',
+    response.text)
+  saml_response = html.unescape(saml_response.group(1))
+
+  post_data = {
+      'RelayState': relay_state,
+      'SAMLResponse': saml_response
+  }
+
+  response = self.session.post(url=ladok_action, data=post_data)
+
+  return response
+@
+

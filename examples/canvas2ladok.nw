@@ -13,7 +13,9 @@ The course components in LADOK (and assignment groups in Canvas) for the prgi
 \item LAB1,
 \item LAB2,
 \item LAB3,
-\item MAT1.
+\item MAT1\footnote{%
+  URL: \url{https://www.kth.se/student/kurser/kurs/DD1315}
+}.
 \end{itemize}
 The LAB3 component corresponds to a project.
 In Canvas, it has P/F assignments (\eg presentation) and one A--F assignment
@@ -23,25 +25,78 @@ each must have a P too.
 
 For now we will ignore setting the grade on the full course.
 
-\paragraph{Accessing the systems}
+When running the program we must have the following environment variables set:
+\begin{itemize}
+\item [[LADOK_LOGIN]] and [[LADOK_PASSWD]] which hold the credentials for LADOK 
+(or KTH CAS).
+\item [[CANVAS_SERVER]] and [[CANVAS_TOKEN]] to point to the Canvas server to 
+use and a token to authenticate.
+\end{itemize}
+
+We provide a Docker image for running this program.
+
+\subsection{Building files}
+
+We provide the following files:
+\begin{itemize}
+\item [[<<canvas2ladok.mk>>]].
+\item [[<<Dockerfile>>]],
+\item [[<<canvas2ladok.py>>]],
+\end{itemize}
+
+We provide an include file for GNU make to build all the targets.
+<<canvas2ladok.mk>>=
+.PHONY: all
+all: canvas2ladok.py prgi2ladok
+
+.PHONY: prgi2ladok
+prgi2ladok: canvas2ladok.py Dockerfile
+	docker build -t prgi2ladok .
+
+Dockerfile: canvas2ladok.nw
+	${NOTANGLE}
+
+.PHONY: clean
+clean:
+	${RM} canvas2ladok.pdf canvas2ladok.py
+	${RM} Dockerfile canvas2ladok.mk
+
+.PHONY: distclean
+distclean:
+	-docker image rm prgi2ladok
+@
+
+The Docker image will just contain the [[canvas2ladok.py]] file and run it by 
+default.
+<<Dockerfile>>=
+FROM dbosk/ladok3
+
+RUN pip install --no-cache-dir canvasapi
+COPY canvas2ladok.py ./
+
+CMD ["python", "./canvas2ladok.py"]
+@
+
+
+\section{[[canvas2ladok.py]]: configuration and dependencies}
 
 We use the standard structure for the script.
 We start with the imports and set up our [[ladok]] and [[canvas]] objects, 
 these are used to access the two systems.
-<<prgi.py>>=
-# -*- coding: utf-8 -*-
+<<canvas2ladok.py>>=
 import cachetools
 from canvasapi import Canvas
 import collections
 import datetime
 import ladok3
 import os
+import re
 
-KTH_LOGIN = os.environ["KTH_LOGIN"]
-KTH_PASSWD = os.environ["KTH_PASSWD"]
+LOGIN = os.environ["LADOK_USER"]
+PASSWD = os.environ["LADOK_PASS"]
 
-ladok = ladok3.LadokSessionKTH(
-        KTH_LOGIN, KTH_PASSWD,
+ladok = ladok3.kth.LadokSession(
+        LOGIN, PASSWD,
         test_environment=False) # for experiments
 
 API_URL = os.environ["CANVAS_SERVER"]
@@ -50,7 +105,8 @@ API_KEY = os.environ["CANVAS_TOKEN"]
 canvas = Canvas(API_URL, API_KEY)
 
 course_code_ladok = "DD1315"
-course_code_canvas = "DD1315HT201"
+# We match all course round HT20 and onwards
+course_code_canvas = "DD1315[HV]T[2-9][0-9]"
 components = [
   "LAB1",
   "LAB2",
@@ -72,12 +128,16 @@ if __name__ == "__main__":
 \section{Getting the results out of Canvas}
 
 We must first select the course.
+We do this my matching against a regular expression.
 <<functions>>=
 @cachetools.cached(cache={})
-def get_course(code):
+def get_courses(code):
+  pattern = re.compile(code)
+
   for course in canvas.get_courses():
-    if course.course_code == code:
-      return course
+    if pattern.match(course.course_code):
+      yield course
+
   return None
 @
 
@@ -104,13 +164,11 @@ LADOK needs in \cref{into-ladok}.
 Then we can report those results to LADOK.
 In summary, we do the following:
 <<main body>>=
-course = get_course(course_code_canvas)
-course_components = get_components(course)
-for component in course_components:
-  print(f"{component.name} <- Canvas")
-  component_results = students_results(course, component)
-  print(f"{component.name} -> LADOK")
-  report_results(course_code_ladok, component.name, component_results)
+for course in get_courses(course_code_canvas):
+  for component in get_components(course):
+    print(f"{course.course_code} {component.name}")
+    component_results = students_results(course, component)
+    report_results(course_code_ladok, component.name, component_results)
 @
 
 
@@ -124,8 +182,13 @@ def report_results(course_code, component_name, results):
     try:
       student = ladok.get_student(result.person_nr)
       course = student.courses(code=course_code)[0]
-      result = course.results(component=component_name)[0]
-      result.set_grade(result.grade, result.date)
+      component = course.results(component=component_name)[0]
+      if not component.attested:
+        component.set_grade(result.grade, result.date)
+        component.finalize()
+      elif component.grade != result.grade:
+        print(f"{student}: attested {component.component} "
+          f"result {component.grade} is different from {result.grade}.")
     except Exception as err:
       try:
         print(f"{student}: {err}")
@@ -150,21 +213,30 @@ It will use the student's LADOK ID as the key.
 <<classes>>=
 Grade = collections.namedtuple("Grade", ["grade", "date"])
 @
+
+To create the gradebook, we will first fetch all the users and then fetch all 
+the submissions.
+Then we will map them together.
+This way we only need two requests to Canvas, instead of one per user.
 <<functions>>=
 def make_gradebook(course, component):
   gradebook = {}
 
-  for user in course.get_users():
-    grades = {}
-    for assignment in assignments_in_component(course, component):
+  users_by_id = {}
+  for user in course.get_users(enrollment_type=["student"]):
+    users_by_id[user.id] = user
+    gradebook[user.integration_id] = {}
+
+  for assignment in assignments_in_component(course, component):
+    for submission in assignment.get_submissions():
       try:
-        submission = assignment.get_submission(user.id)
-      except:
-        grades[assignment.name] = None
+        user = users_by_id[submission.user_id].integration_id
+      except KeyError:
+        # This only happens for the Test Student
         continue
 
       if not submission.graded_at:
-        grades[assignment.name] = None
+        gradebook[user][assignment.name] = None
         continue
 
       date = submission.submitted_at or submission.graded_at
@@ -174,9 +246,8 @@ def make_gradebook(course, component):
       if date > graded_date:
         date = graded_date
 
-      grades[assignment.name] = Grade(grade=submission.grade, date=date)
-
-    gradebook[user.integration_id] = grades
+      gradebook[user][assignment.name] = \
+        Grade(grade=submission.grade, date=date)
 
   return gradebook
 @ Note that for some users, we won't get any submission.
@@ -232,11 +303,7 @@ for ladok_id, grades in gradebook.items():
   try:
     grade, grade_scale = summarize(grades)
   except TypeError as err:
-    try:
-      student = ladok.get_student(ladok_id)
-      print(f"not done: {student.first_name} {student.last_name}: {err}")
-    except ValueError as verr:
-      print(f"not done: {verr}: {ladok_id}: {err}")
+    # Only happens for students who are not done
     continue
 
   to_report.append(Result(

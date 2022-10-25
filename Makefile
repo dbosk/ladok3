@@ -2,25 +2,53 @@ SUBDIR_GOALS=	all clean distclean
 
 SUBDIR+= 	src/ladok3
 SUBDIR+=	examples
+SUBDIR+=	doc
+SUBDIR+=	docker
+
+version=$(shell sed -n 's/^ *version *= *"\([^"]\+\)"/\1/p' pyproject.toml)
+dist=$(addprefix dist/ladok3-${version}, -py3-none-any.whl .tar.gz)
+
 
 .PHONY: all
 all:
 	true
 
 .PHONY: install
-install: all
+install:
 	pip3 install -e .
 
-.PHONY: build
-build: all
-	python3 -m build
+.PHONY: compile
+compile:
+	${MAKE} -C src/ladok3 all
 
-.PHONY: publish
-publish: build
-	python3 -m twine upload -r testpypi dist/*
+requirements.txt:
+	poetry export -f requirements.txt --output $@
+
+.PHONY: build
+build: compile
+	poetry build
+
+.PHONY: publish publish-github publish-pypi publish-docker
+publish: publish-github publish-pypi publish-docker
+
+publish-github: doc/ladok3.pdf
+	git push
+	gh release create -t v${version} v${version} doc/ladok3.pdf
+
+doc/ladok3.pdf:
+	${MAKE} -C $(dir $@) $(notdir $@)
+
+publish-pypi: build
+	poetry publish
+
+publish-docker:
+	sleep 60
+	${MAKE} -C docker publish
+
 
 .PHONY: clean
 clean:
+	true
 
 .PHONY: distclean
 distclean:

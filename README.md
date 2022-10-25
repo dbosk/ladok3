@@ -4,10 +4,57 @@ This package provides a wrapper for the LADOK3 API used by
 [start.ladok.se][ladok]. This makes it easy to automate reporting grades, 
 compute statistics etc.
 
+## Installation
+
+To install, run:
+```bash
+pip install ladok3
+sudo cp $(find / -name ladok.bash) /etc/bash_completion.d
+ladok login
+```
+If you run the second line above, you'll get tab completion for the `ladok` 
+command when you use the `bash` shell.
+
+The third command above is to log in, you only do this once.
+
+An alternative to installing the package is to run the [Docker image][docker].
+```bash
+docker run -it dbosk/ladok3 /bin/bash
+```
+Or simply adapt your own image.
+
+## Usage
+
+There are two ways to use the package: as a Python package or through the 
+command-line tool `ladok`.
+
+### On the command line
+
+Let's assume that we have a student with personnummer 123456-1234.
+Let's also assume that this student has taken a course with course code AB1234 
+and finished the module LAB1 on date 2021-03-15.
+Then we can report this result like this:
+```bash
+ladok report 123456-1234 AB1234 LAB1 -d 2021-03-15 -f
+```
+
+If we use Canvas for all results, we can even report all results for a 
+course.
+```bash
+pip install canvaslms
+canvaslms login
+canvaslms results -c AB1234 -A LAB1 | ladok report -v
+```
+The `canvaslms results` command will export the results in CSV format, this 
+will be piped to `ladok report` that can read it and report it in bulk.
+
+### As a Python package
+
+To use the package, it's just to import the package as usual.
 ```python
 import ladok3
 
-ls = ladok3.LadokSessionKTH("user", "password")
+ls = ladok3.kth.LadokSession("user", "password")
 
 student = ls.get_student("123456-1234")
 
@@ -18,16 +65,20 @@ for result in course_participation.results():
 
 component_result = course_participation.results(component="LAB1")[0]
 component_result.set_grade("P", "2021-03-15")
+component_result.finalize()
 ```
+
+## More documentation
 
 There are more detailed usage examples in the details documentation that can be 
 round with the [releases][releases] and in the `examples` directory.
 
 [ladok]: https://start.ladok.se
+[docker]: https://hub.docker.com/repository/docker/dbosk/ladok3
 [releases]: https://github.com/dbosk/ladok3/releases
 
 
-## More examples
+# The examples
 
 There are some examples that can be found in the `examples` directory:
 
@@ -40,7 +91,7 @@ There are some examples that can be found in the `examples` directory:
 
 We also have a few more examples described in the sections below.
 
-### `canvas_ladok3_spreadsheet.py`
+## `canvas_ladok3_spreadsheet.py`
 
 Purpose: Use the data in a Canvas course room together with the data from Ladok3 to create a spreadsheet of students in the course
 and include their Canvas user_id, name, Ladok3 Uid, program_code, program name, etc.
@@ -62,7 +113,7 @@ canvas_ladok3_spreadsheet.py -t 'II2202 HT20-1'
 ```
 
 
-### `ladok3_course_instance_to_spreadsheet.py`
+## `ladok3_course_instance_to_spreadsheet.py`
 
 Purpose: Use the data in Ladok3 together with the data from Canvas to create a spreadsheet of students in a course
 instance and include their Canvas user_id (or "not in Canvas" if they do not have a Canvas user_id), name, Ladok3 Uid, program_code, program name, etc.
@@ -104,7 +155,7 @@ or
 ```
 
 
-### `canvas_students_missing_integration_ids.py`
+## `canvas_students_missing_integration_ids.py`
 
 Purpose: Use the data in a Canvas course room to create a spreadsheet of students in the course who are missing an integration ID.
 
@@ -115,7 +166,7 @@ canvas_students_missing_integration_ids.py canvas_course_id
 Output: outputs a file ('users_without_integration_ids-COURSE_ID.xlsx) containing a spreadsheet of the users information
 
 
-### `cl_user_info.py`
+## `cl_user_info.py`
 
 Purpose: Use the data in a Canvas course room together with the data from Ladok3 to find information about a user.
 
