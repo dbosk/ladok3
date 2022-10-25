@@ -67,10 +67,12 @@ student_parser.add_argument("-c", "--course",
 
 Now that we have the student identifier, we can simply use that to fetch the 
 student from LADOK.
+Note that we access the [[student.alive]] attribute just to force pulling the 
+personal data from LADOK to trigger any error in the try-statement.
 <<print info depending on args>>=
 try:
   student = ladok.get_student(args.id)
-  student.pull()
+  student.alive
 except Exception as err:
   ladok3.cli.err(-1, f"can't fetch student data for {args.id}: {err}")
 
