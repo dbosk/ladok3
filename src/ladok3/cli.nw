@@ -69,7 +69,6 @@ inspired by err(3) and warn(3) in the BSD world.
 <<functions>>=
 def err(rc, msg):
   print(f"{sys.argv[0]}: error: {msg}", file=sys.stderr)
-  traceback.print_exc(file=sys.stderr)
   sys.exit(rc)
 
 def warn(msg):
