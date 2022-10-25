@@ -88,7 +88,7 @@ def initialize(options):
 
     if not password:
         password=getpass.getpass(prompt='Password (for Ladok access): ')
-    ls=ladok3.LadokSessionKTH(username, password, options.testenvironment)
+    ls=ladok3.kth.LadokSession(username, password, options.testenvironment)
     return ls
 
 

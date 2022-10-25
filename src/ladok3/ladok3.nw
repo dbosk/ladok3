@@ -22,6 +22,18 @@ import urllib.parse
 <<functions>>
 @
 
+We also provide tests for all functionality in [[<<test ladok3.py>>]].
+These illustrate how to the [[ladok3]] module and provide testing using 
+[[pytest]].
+<<test ladok3.py>>=
+import json
+import ladok3
+import ladok3.kth
+import os
+
+<<test functions>>
+@
+
 
 \chapter{Accessing LADOK}\label{AccessingLADOK}
 
@@ -33,8 +45,7 @@ It uses the [[requests]] module.
 We can use the class as follows.
 \inputminted{python}{../examples/example_LadokSession.py}
 
-This chapter covers how the [[LadokSession]] and [[LadokSessionKTH]] classes 
-work.
+This chapter covers how the [[LadokSession]] class work.
 The remaining chapters cover what the [[ladok]] object can be used for.
 \Cref{StudentClasses} covers how we can work with student data.
 \Cref{CourseClasses} covers how we can work with course data.
@@ -55,14 +66,14 @@ We cover the first (the [[session]] attribute) in this section and the second
 We want to provide the attribute [[session]] which is an active and logged-in 
 session for querying LADOK.
 We must thus handle authentication to LADOK.
-The authentication for using LADOK is performed using a university CAS system.
+The authentication for using LADOK is performed using a university SSO system.
 The [[login]] method will set up a [[session]] object which is logged in.
 The [[login]] method will in turn use the [[saml_login]] method at the 
 suitable place in the code to actually log in to LADOK by authenticating to the 
 appropriate university.
-We can provide the interactions with LADOK, but not with the CAS system.
+We can provide the interactions with LADOK, but not with the SSO system.
 So that one is left to implement by a university-specific child class.
-We provide [[LadokSessionKTH]] as an example.
+We provide [[ladok3.kth.LadokSession]] as an example.
 
 We let the [[session]] attribute be a property, this way we can ensure that 
 there exists an active session whenever it's used.
@@ -88,7 +99,7 @@ class LadokSession:
       raise err
 
   def saml_login(self, url):
-    """Perform authentication to university CAS"""
+    """Perform authentication to university SSO"""
     raise NotImplementedError()
 
   def logged_in(self):
@@ -121,24 +132,25 @@ class LadokSession:
     self.__session = new_value
 
   <<LadokSession data methods>>
-
-class LadokSessionKTH(LadokSession):
-  def __init__(self, username, password, test_environment=False):
-    """Initialize KTH version of LadokSession"""
-    super().__init__(test_environment=test_environment)
-    self.__username = username
-    self.__password = password
-
-  <<KTH login methods>>
-
-  def saml_login(self, url):
-    """Do the CAS login"""
-    <<KTH login procedure>>
 @
 
 Note that it's important to set [[login_time]] as soon as we start logging in 
 (first thing in the [[login]] method), because the login function will actually 
 use the [[session]] property.
+
+The [[saml_login]] method must be implemented by a child class.
+See for example \cref{KTHlogin}, which covers how to log in at KTH.
+
+Now let's test this class.
+We will use the KTH version to log in.
+<<test functions>>=
+ladok = ladok3.kth.LadokSession(
+        os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+        test_environment=True) # for experiments
+
+def test_LadokSession():
+  assert ladok.session is not None
+@
 
 \subsection{Data about the session}
 
@@ -195,142 +207,14 @@ shibstate = re.search('return=(.*?)(&|$)', response.url).group(1)
 url = urllib.parse.unquote(shibstate)
 @
 
-\subsubsection{Logging into KTH}
-
-Now, we can use that URL to authenticate to the university using the 
-[[saml_login]] method.
-We must simulate what we do in the browser.
-In the case of the KTH UG/LDAP system, we do the following.
-<<KTH login procedure>>=
-response = self.ladok_run_shib_login(url)
-response = self.ug_post_user_pass(response)
-response = self.perform_redirects_back_to_ladok(response)
-return response
-@
-
-The first thing we want to do is to ask LADOK to run the Shibboleth login with 
-the KTH SAML URL.
-<<KTH login methods>>=
-def ladok_run_shib_login(self, url):
-  response = self.session.get(
-    url=url+'&entityID=https://saml.sys.kth.se/idp/shibboleth')
-          
-  action = re.search(
-    '<form ?[^>]* action="(.*?)"',
-    response.text).group(1)
-
-  csrf_token = re.search(
-    '<input ?[^>]* name="csrf_token" ?[^>]* value="(.*?)"',
-    response.text).group(1)
-
-  post_data = {
-    'csrf_token': csrf_token,
-    'shib_idp_ls_exception.shib_idp_session_ss': '',
-    'shib_idp_ls_success.shib_idp_session_ss': 'true',
-    'shib_idp_ls_value.shib_idp_session_ss': '',
-    'shib_idp_ls_exception.shib_idp_persistent_ss': '',
-    'shib_idp_ls_success.shib_idp_persistent_ss': 'true',
-    'shib_idp_ls_value.shib_idp_persistent_ss': '',
-    'shib_idp_ls_supported': 'true',
-    '_eventId_proceed': ''
-  }
-
-  response = self.session.post(
-    url="https://saml-5.sys.kth.se" + action,
-    data=post_data)
-
-  return response
-@ Note that in the last post request, it is important to use the 
-\enquote{saml-5} name and not the alias \enquote{saml} (both resolve to the 
-same address).
-
-After a series of redirects, we need to post our username and password to KTH 
-UG login system.
-Note that we must add the suffix \enquote{@ug.kth.se} to the username.
-<<KTH login methods>>=
-def ug_post_user_pass(self, shib_response):
-  action = re.search('<form ?[^>]* id="loginForm" ?[^>]* action="(.*?)"',
-    shib_response.text).group(1)
-
-  post_data = {
-    'username': self.__username if "@" in self.__username \
-                                else self.__username + "@ug.kth.se",
-    'password': self.__password,
-    'Kmsi': True,
-    'AuthMethod': "FormsAuthentication"
-  }
-
-  response = self.session.post(
-    url='https://login.ug.kth.se' + action,
-    data=post_data)
-
-  return response
-@
-
-Next, we must pass through a series of redirects.
-These are automated with JavaScript in the browser, we must simulate clicking 
-the submit buttons when JavaScript is disabled.
-We do this by extracting the URL to post to and the values to include in the 
-post.
-<<KTH login methods>>=
-def perform_redirects_back_to_ladok(self, ug_response):
-  action = re.search('<form ?[^>]* action="(.*?)"',
-    ug_response.text)
-  if action is None:
-    raise Exception('Invalid username or password OR possibly the SAML \
-      configuration has changed, manually login an accept the changed \
-      information.')
-  action = html.unescape(action.group(1))
-
-  relay_state = re.search(
-    '<input ?[^>]* name="RelayState" ?[^>]* value="(.*?)"',
-    ug_response.text)
-  try:
-    relay_state = html.unescape(relay_state.group(1))
-  except AttributeError:
-    raise Exception(
-      "Try to log in using a web browser and accept sharing data.")
-
-  saml_response = re.search(
-    '<input ?[^>]* name="SAMLResponse" ?[^>]* value="(.*?)"',
-    ug_response.text)
-  saml_response = html.unescape(saml_response.group(1))
-
-  post_data = {
-      'RelayState': relay_state,
-      'SAMLResponse': saml_response
-  }
-
-  response = self.session.post(url=action, data=post_data)
-
-  ladok_action = re.search(
-    '<form ?[^>]* action="(.*?)"',
-    response.text)
-  ladok_action = html.unescape(ladok_action.group(1))
-
-  relay_state = re.search(
-    '<input ?[^>]* name="RelayState" ?[^>]* value="([^"]+)"',
-    response.text)
-  relay_state = html.unescape(relay_state.group(1))
-
-  saml_response = re.search(
-    '<input ?[^>]* name="SAMLResponse" ?[^>]* value="(.*?)"',
-    response.text)
-  saml_response = html.unescape(saml_response.group(1))
-
-  post_data = {
-      'RelayState': relay_state,
-      'SAMLResponse': saml_response
-  }
-
-  response = self.session.post(url=ladok_action, data=post_data)
-
-  return response
-@
+Note that this URL is independent of the university chosen, which means we can 
+simply authenticate to the university's system by passing the URL to the 
+[[saml_login]] method for the university that we're interested in.
+See \cref{KTHlogin} for an example.
 
 \subsubsection{Check that login worked}
 
-When we have [[relay_state]] and [[saml_response]] from the CAS system, we can 
+When we have [[relay_state]] and [[saml_response]] from the SSO system, we can 
 post them back to LADOK.
 <<check SAML login response>>=
 if 'Din användare finns inte i Ladok' in response.text:
@@ -536,17 +420,68 @@ We have several helper functions that are useful throughout.
 
 \section{Filter on keys}
 
-Many data methods will filter based on keys.
-We will provide the following function which does exactly that.
+Many data methods will filter objects based on attributes.
+We provide a function that takes a list of objects and a dictionary.
+Each key in the dictionary corresponds to an attribute for the objects.
+The value corresponding to the key, is checked for matching.
+
+We will provide the following function, [[filter_on_keys]], which does exactly 
+that.
 This implementation runs through the (remaining) items once per keyword, 
-meaning it's conjunctive.
+meaning it's conjunctive --- all key--values must match the attribute values of 
+the objects.
+
+We use the function [[compare_values]] to compare the values, we'll get back to 
+that function below.
 <<functions>>=
 def filter_on_keys(items, /, **kwargs):
+  """
+  Input:
+  - items is a list of objects.
+  - kwargs is a dictionary where keys match the attributes of the objects in 
+    items.
+
+  Output:
+  - Only objects where *all* key--value pairs match for the corresponding 
+    attribues.
+  - If values are strings, the value from kwargs is interpreted as a regular 
+    expression.
+
+  Example:
+  student.first_name = "Student"
+  student.last_name = "Studentdotter"
+
+  filter_on_keys([student], firt_name="Student")
+    gives [student]
+  filter_on_keys([student], firt_name="Student", last_name="Studentsson")
+    gives []
+  """
   for key in kwargs:
     items = filter(
-      lambda x: operator.attrgetter(key)(x) == kwargs[key],
+      lambda x: compare_values(operator.attrgetter(key)(x), kwargs[key]),
       items)
   return list(items)
+@
+
+We test this function with the following tests.
+<<test functions>>=
+def test_filter_on_keys():
+  class Object:
+    pass
+
+  student1 = Object()
+  student1.first_name = "Student"
+  student1.last_name = "Studentsdotter"
+  student2 = Object()
+  student2.first_name = "Student"
+  student2.last_name = "Studentsson"
+
+  students = [student1, student2]
+  assert ladok3.filter_on_keys(students, first_name="Student") == students
+  assert ladok3.filter_on_keys(students,
+    first_name="Student", last_name="Studentsdotter") == [student1]
+  assert ladok3.filter_on_keys(students,
+    last_name="Students(dotter|son)") == students
 @
 
 To achieve disjunctive behaviour, we must run [[filter_on_keys]] once per 
@@ -556,14 +491,80 @@ The following function solves that problem by not checking an item against more
 keys once it has matched one key.
 <<functions>>=
 def filter_on_any_key(items, /, **kwargs):
+  """
+  Input:
+  - items is a list of objects.
+  - kwargs is a dictionary where keys match the attributes of the objects in 
+    items.
+
+  Output:
+  - Only objects where *any* key--value pairs match for the corresponding 
+    attribues.
+  - If values are strings, the value from kwargs is interpreted as a regular 
+    expression.
+
+  Example:
+  student.first_name = "Student"
+  student.last_name = "Studentsdotter"
+
+  filter_on_keys([student], firt_name="Student")
+    gives [student]
+  filter_on_keys([student], firt_name="Student", last_name="Studentsson")
+    gives [student]
+  """
   matching_items = []
   for item in items:
     for key in kwargs:
-      if operator.attrgetter(key)(item) == kwargs[key]:
+      if compare_values(operator.attrgetter(key)(item), kwargs[key]):
         matching_items.append(item)
         break
 
   return matching_items
+@
+
+We test this function with the following tests.
+<<test functions>>=
+def test_filter_on_any_key():
+  class Object:
+    pass
+
+  student1 = Object()
+  student1.first_name = "Student"
+  student1.last_name = "Studentsdotter"
+  student2 = Object()
+  student2.first_name = "Student"
+  student2.last_name = "Studentsson"
+
+  students = [student1, student2]
+  assert ladok3.filter_on_any_key(students,
+    first_name="Student", last_name="Studentsdotter") == students
+@
+
+The function [[compare_values]] is how we compare the values.
+The reason we don't simply replace it with the [[==]] operator is that for 
+strings, we actually want to use regular expressions for matching.
+<<functions>>=
+def compare_values(val1, val2):
+  """
+  Compares val1 and val2:
+  - if val1 and val2 both are strings, then val2 is interpreted as a regular 
+    expression.
+  - otherwise we use ==
+  """
+  if type(val1) != str or type(val2) != str:
+    return val1 == val2
+
+  return re.search(val2, val1)
+@
+
+We test this function with the following tests.
+<<test functions>>=
+def test_compare_values():
+  assert ladok3.compare_values("Studentsdotter", "^Student")
+  assert ladok3.compare_values("Studentsdotter", "dotter")
+  assert not ladok3.compare_values("Studentsdotter", "son")
+  assert ladok3.compare_values(1, 1)
+  assert not ladok3.compare_values(1, 2)
 @
 
 
@@ -640,10 +641,10 @@ it on [[LadokData]].
 [[kwargs]] will have the following format:
 \begin{pycode}
 import json
-import ladok3
+import ladok3.kth
 import os
 
-ladok = ladok3.LadokSessionKTH(
+ladok = ladok3.kth.LadokSession(
           os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
           test_environment=True)
 
@@ -830,7 +831,7 @@ assume that it is a LADOK ID in the code above.
 <<functions>>=
 def format_personnummer(person_nr_raw):
   """Returns None or a LADOK-formated person nr"""
-  pnrregex = re.compile("^(\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)$")
+  pnrregex = re.compile(r"^(\d\d)?(\d\d)(\d\d\d\d)[+\-]?(\w\w\w\w)$")
   pnr = pnrregex.match(person_nr_raw)
   if pnr:
     now = datetime.datetime.now()
@@ -921,9 +922,9 @@ to recursively trigger the fetch ad absurdum.)
 Depending on which attribute is set, we pull the data differently.
 <<pull student attributes from LADOK>>=
 if self.__ladok_id:
-  <<pull student record based on LADOK ID>>
+  record = self.__ladok.get_student_data_by_uid_JSON(self.__ladok_id)
 elif self.__personnummer:
-  <<pull student record based on personnummer>>
+  record = self.__ladok.get_student_data_JSON(self.__personnummer)
 else:
   raise AttributeError("neither personnummer, nor LADOK ID set")
 
@@ -932,57 +933,6 @@ self.__personnummer = record['Personnummer'] # twelve digits only
 self.__first_name = record['Fornamn']
 self.__last_name = record['Efternamn']
 self.__alive = not record['Avliden']
-@
-
-The record has the following attributes,
-from [[schemas/schemas.ladok.se-studentinformation.xsd]]:
-\begin{minted}{xml}
-<xs:complexType name="Student">
-  <xs:complexContent>
-    <xs:extension base="base:BaseEntitet">
-      <xs:sequence>
-        <xs:element name="Avliden" type="xs:boolean"/>
-        <xs:element minOccurs="0" name="Efternamn" type="xs:string"/>
-        <xs:element minOccurs="0" name="ExterntUID" type="xs:string"/>
-        <xs:element name="FelVidEtableringExternt" type="xs:boolean"/>
-        <xs:element minOccurs="0" name="Fodelsedata" type="xs:string"/>
-        <xs:element minOccurs="0" name="Fornamn" type="xs:string"/>
-        <xs:element minOccurs="0" name="KonID" type="xs:int"/>
-        <xs:element minOccurs="0" name="Personnummer" type="xs:string"/>
-        <xs:element minOccurs="0" name="Skyddsstatus" type="xs:string"/>
-        <xs:element minOccurs="0" ref="si:UnikaIdentifierare"/>
-      </xs:sequence>
-    </xs:extension>
-  </xs:complexContent>
-</xs:complexType>
-\end{minted}
-
-To pull the data based on personnummer we must actually form a search query.
-(This code is a slight adaptation of the code by Baltatzis.)
-<<pull student record based on personnummer>>=
-response = self.ladok.session.get(
-  url=self.ladok.base_gui_proxy_url +
-    '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer=' +
-      self.personnummer + '&skipCount=false&sprakkod=sv',
-        headers=self.ladok.headers).json()['Resultat']
-
-if len(response) != 1:
-  raise ValueError("can't find student based on personnummer")
-
-record = response[0]
-@
-
-To pull the data based on LADOK ID is a more direct query.
-(This code is a slight adaptation of the code by Maguire.)
-<<pull student record based on LADOK ID>>=
-response = self.ladok.session.get(
-  url=self.ladok.base_gui_proxy_url +
-    '/studentinformation/student/' + self.ladok_id,
-  headers=self.ladok.headers)
-if response.status_code == 200:
-  record = response.json()
-else:
-  raise AttributeError("can't fetch student attributes by LADOK ID")
 @
 
 
@@ -997,8 +947,10 @@ def __get_study_attributes(self):
   <<create a list of the student's course objects>>
 
 def courses(self, /, **kwargs):
-  """Returns a list of courses that the student is registered on.
-  Filtered based on keywords."""
+  """
+  Returns a list of courses that the student is registered on.
+  Filtered based on keywords, see ladok3.filter_on_keys for details.
+  """
   try:
     courses = self.__courses
   except:

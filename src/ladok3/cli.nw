@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import getpass
 import json
 import keyring
+import ladok3.kth
 import os
 import pickle
 import re
@@ -68,7 +69,6 @@ inspired by err(3) and warn(3) in the BSD world.
 <<functions>>=
 def err(rc, msg):
   print(f"{sys.argv[0]}: error: {msg}", file=sys.stderr)
-  traceback.print_exc(file=sys.stderr)
   sys.exit(rc)
 
 def warn(msg):
@@ -124,7 +124,7 @@ be passed to the subcommand:
 \begin{enumerate}
 \item The first one is to read the user's credentials (from the keyring, 
 environment or configuration) and create the [[ls]] object by instantiating the 
-[[LadokSession]] class (technically the [[LadokSessionKTH]] class).
+[[LadokSession]] class (technically the [[ladok3.kth.LadokSession]] class).
 \item Read a pickled [[LadokSession]] object from file.
 \end{enumerate}
 The second option allows us to save time by not having to reestablish an 
@@ -136,7 +136,7 @@ This leads to the following approach.
 LADOK_USER, LADOK_PASS = load_credentials(args.config_file)
 ls = restore_ladok_session([LADOK_USER, LADOK_PASS])
 if not ls:
-  ls = ladok3.LadokSessionKTH(LADOK_USER, LADOK_PASS)
+  ls = ladok3.kth.LadokSession(LADOK_USER, LADOK_PASS)
 @
 <<save LadokSession ls>>=
 store_ladok_session(ls, [LADOK_USER, LADOK_PASS])
