@@ -16,6 +16,7 @@ ladok3.pdf: ../src/ladok3/undoc.tex
 ladok3.pdf: ../src/ladok3/cli.tex
 ladok3.pdf: ../src/ladok3/data.tex
 ladok3.pdf: ../src/ladok3/report.tex
+ladok3.pdf: ../src/ladok3/student.tex
 
 ladok3.pdf: preamble.tex abstract.tex ../LICENSE
 ladok3.pdf: ../examples/example_LadokSession.py

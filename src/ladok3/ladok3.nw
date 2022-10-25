@@ -767,7 +767,7 @@ If it's not attested, we can change it.
 \inputminted[firstline=32,lastline=51]{python}{../examples/example_Student.py}
 
 
-\section{Getting students from LADOK}
+\section{Getting students from LADOK}\label{GetStudent}
 
 Perhaps the main data that we want to access is that of a student.
 We provide two ways to identify the student.
