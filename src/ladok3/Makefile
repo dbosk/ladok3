@@ -1,5 +1,5 @@
 LIB=	ladok3.nw api.nw undoc.nw
-CLI=	cli.nw data.nw report.nw
+CLI=	cli.nw data.nw report.nw student.nw
 
 .PHONY: all
 all: ${LIB:.nw=.tex} __init__.py

@@ -1,26 +1,107 @@
-We want to be able to do the following with student data:
-\begin{itemize}
-\item view a student's reported results on a particular course.
-\end{itemize}
+We want to show data for a student.
+For this, we need a student identifier.
+We want to use it like this:
+\begin{minted}{bash}
+ladok student 700101-1234
+\end{minted}
+We also want to optionally print courses.
+\begin{minted}{bash}
+ladok student 700101-1234 -c "DD131[0-9]"
+\end{minted}
 
 
-\section{The [[student]] command}
+\section{The [[student]] subcommand}\label{StudentCommand}
 
-As was pointed out in \cref{process-command-line-options}, we add the 
-[[student]] subcommand to [[<<add subparsers>>]] and using the [[subp]] object.
-<<add subparsers>>=
-student_parser = subp.add_parser("student",
-  help="Lists data about a student",
-  description="Lists data about a student")
-student_parser.set_defaults(func=student_command)
-add_student_id_options(student_parser)
+This is a subcommand is run as part of the [[ladok3.cli]] module.
+We provide a function [[add_command_options]] that adds the subcommand options 
+to a given parser.
+We need access to LADOK through the [[ladok3]] module.
+<<student.py>>=
+import csv
+import ladok3.cli
+
+<<functions>>
+
+def add_command_options(parser):
+  student_parser = parser.add_parser("student",
+    help="Shows a student's information in LADOK",
+    description="""
+    Show a student's information in LADOK.
+    Shows information like name, personnummer, contact information.
+    """
+  )
+  student_parser.set_defaults(func=command)
+  <<add student command arguments to student parser>>
+
+def command(ladok, args):
+  <<print info depending on args>>
 @
 
-The [[student_command]] function must take the LADOK session object~[[ls]] and 
-the options object~[[args]] as an argument 
-(\cref{process-command-line-options}).
+
+\section{The student command options}
+
+\subsection{The student identifier}
+
+As mentioned above, we want to take one positional argument, the student 
+identifier.
+Since our API (\cref{GetStudent}) can handle both personnummer and LADOK ID 
+transparently, we don't have to care about that either.
+<<add student command arguments to student parser>>=
+student_parser.add_argument("id",
+  help="The student's ID, either personnummer or LADOK ID"
+)
+@
+
+\subsection{An optional course identifier}
+
+We also want an option for the course code.
+<<add student command arguments to student parser>>=
+student_parser.add_argument("-c", "--course",
+  nargs="?", const=".*",
+  help="A regular expression for which course codes to list, " \
+    "use no value for listing all courses."
+)
+@
+
+\section{Print the student data}
+
+Now that we have the student identifier, we can simply use that to fetch the 
+student from LADOK.
+<<print info depending on args>>=
+try:
+  student = ladok.get_student(args.id)
+  student.pull()
+except Exception as err:
+  ladok3.cli.err(-1, f"can't fetch student data for {args.id}: {err}")
+
+print_student_data(student)
+
+if args.course:
+  print_course_data(student, args.course)
+@
+
+\subsection{Printing personal student data}
+
+To print the student's personal data, we simply print the most interesting 
+attributes.
 <<functions>>=
-def student_command(ls, args):
-  <<process student options>>
+def print_student_data(student):
+  """Prints the student data, all attributes, to stdout."""
+  print(f"First name:   {student.first_name}")
+  print(f"Last name:    {student.last_name}")
+  print(f"Personnummer: {student.personnummer}")
+  print(f"LADOK ID:     {student.ladok_id}")
+  print(f"Alice:        {student.alive}")
 @
 
+\subsection{Printing student's course data}
+
+To print the student's course data, we simply filter the courses on the option 
+that the user supplies.
+<<functions>>=
+def print_course_data(student, course):
+  """Prints the courses"""
+  print("Courses:")
+  for course in student.courses(courde_code=course):
+    print(f"- {course}")
+@

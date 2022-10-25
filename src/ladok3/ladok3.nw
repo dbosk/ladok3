@@ -586,8 +586,7 @@ They do that in the form of this JSON structure:
     },
     {
       "Sprakkod": "en",
-      "Text": "Programming 
-          Assignments",
+      "Text": "Programming Assignments",
       "link": []
     }
   ]
@@ -778,7 +777,7 @@ If it's not attested, we can change it.
 \inputminted[firstline=32,lastline=51]{python}{../examples/example_Student.py}
 
 
-\section{Getting students from LADOK}
+\section{Getting students from LADOK}\label{GetStudent}
 
 Perhaps the main data that we want to access is that of a student.
 We provide two ways to identify the student.
@@ -926,9 +925,9 @@ to recursively trigger the fetch ad absurdum.)
 Depending on which attribute is set, we pull the data differently.
 <<pull student attributes from LADOK>>=
 if self.__ladok_id:
-  record = self.__ladok.get_student_data_by_uid_JSON(self.__ladok_id)
+  record = self.ladok.get_student_data_by_uid_JSON(self.__ladok_id)
 elif self.__personnummer:
-  record = self.__ladok.get_student_data_JSON(self.__personnummer)
+  record = self.ladok.get_student_data_JSON(self.__personnummer)
 else:
   raise AttributeError("neither personnummer, nor LADOK ID set")
 

@@ -397,3 +397,11 @@ import ladok3.report
 ladok3.report.add_command_options(subp)
 @
 
+We add the [[student]] command.
+<<modules>>=
+import ladok3.student
+@
+<<add subparsers to subp>>=
+ladok3.student.add_command_options(subp)
+@
+
