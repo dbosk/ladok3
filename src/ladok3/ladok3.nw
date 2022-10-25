@@ -915,9 +915,9 @@ to recursively trigger the fetch ad absurdum.)
 Depending on which attribute is set, we pull the data differently.
 <<pull student attributes from LADOK>>=
 if self.__ladok_id:
-  record = self.__ladok.get_student_data_by_uid_JSON(self.__ladok_id)
+  record = self.ladok.get_student_data_by_uid_JSON(self.__ladok_id)
 elif self.__personnummer:
-  record = self.__ladok.get_student_data_JSON(self.__personnummer)
+  record = self.ladok.get_student_data_JSON(self.__personnummer)
 else:
   raise AttributeError("neither personnummer, nor LADOK ID set")
 
