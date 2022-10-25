@@ -543,6 +543,10 @@ def test_filter_on_any_key():
 The function [[compare_values]] is how we compare the values.
 The reason we don't simply replace it with the [[==]] operator is that for 
 strings, we actually want to use regular expressions for matching.
+The downside of this is that we might accidentally get substring matches when 
+we expect exact matches.
+\Eg \verb'F' will match both \verb'F' and \verb'Fx' unless we specify 
+\verb'^F$'.
 <<functions>>=
 def compare_values(val1, val2):
   """
@@ -551,10 +555,10 @@ def compare_values(val1, val2):
     expression.
   - otherwise we use ==
   """
-  if type(val1) != str or type(val2) != str:
-    return val1 == val2
+  if isinstance(val1, str) and isinstance(val2, str):
+    return re.search(val2, val1)
 
-  return re.search(val2, val1)
+  return val1 == val2
 @
 
 We test this function with the following tests.
