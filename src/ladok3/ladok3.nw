@@ -575,8 +575,7 @@ They do that in the form of this JSON structure:
     },
     {
       "Sprakkod": "en",
-      "Text": "Programming 
-          Assignments",
+      "Text": "Programming Assignments",
       "link": []
     }
   ]
