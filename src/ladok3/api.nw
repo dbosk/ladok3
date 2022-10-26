@@ -124,6 +124,8 @@ ladok = ladok3.kth.LadokSession(
         os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
         test_environment=True) # for experiments
 
+uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
+
 <<test functions>>
 @ We will then add [[test_X()]] functions in the [[<<test functions>>]] code 
 block.
