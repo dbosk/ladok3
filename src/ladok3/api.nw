@@ -164,6 +164,8 @@ The output looks like this.
 
 \chapter{Student-related API calls}
 
+Here we have collected API-calls related to students.
+
 \section{[[get_student_data_JSON]] and [[get_student_data_by_uid_JSON]]}
 
 This method fetches the basic information about a student based on 
@@ -234,8 +236,61 @@ def get_student_data_by_uid_JSON(self, uid):
 To test this function, we do the following.
 <<test functions>>=
 def test_get_student_data_by_uid_JSON():
-  assert ladok.get_student_data_by_uid_JSON("de709f81-a867-11e7-8dbf-78e86dc2470c")
+  assert ladok.get_student_data_by_uid_JSON(uid)
 @
+
+
+\section{[[get_student_contact_data_JSON]]}
+
+We want to get the contact info for a student from LADOK.
+This data includes email, postal address and phone number.
+It also includes when they were last updated.
+<<LadokSession data methods>>=
+def get_student_contact_data_JSON(self, student_id):
+  """Returns contact data for student with student_id, returns JSON"""
+  response = self.get_query(
+    f"/studentinformation/internal/student/{student_id}/kontaktuppgifter",
+    "application/vnd.ladok-studentinformation+json")
+
+  if response.status_code == requests.codes.ok:
+    return response.json()
+  return None
+@
+
+We test this function.
+<<test functions>>=
+def test_get_student_contact_data_JSON():
+  me = ladok.get_student(uid)
+  assert ladok.get_student_contact_data_JSON(me.ladok_id)
+@
+
+
+\section{[[get_student_suspensions_JSON]]}
+
+We want to check if any student is suspended from studies.
+We can get a list of all suspension periods from LADOK.
+<<LadokSession data methods>>=
+def get_student_suspensions_JSON(self, student_id):
+  """
+  Returns suspensions from studies for student with student_id,
+  returns JSON
+  """
+  response = self.get_query(
+    f"/studentinformation/internal/avstangning/student/{student_id}",
+    "application/vnd.ladok-studentinformation+json")
+
+  if response.status_code == requests.codes.ok:
+    return response.json()
+  return None
+@
+
+We test this function.
+<<test functions>>=
+def test_get_student_suspensions_JSON():
+  me = ladok.get_student(uid)
+  assert ladok.get_student_suspensions_JSON(me.ladok_id)
+@
+
 
 
 \section{[[registrations_JSON]]}
