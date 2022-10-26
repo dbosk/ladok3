@@ -124,7 +124,12 @@ ladok = ladok3.kth.LadokSession(
         os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
         test_environment=True) # for experiments
 
-uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
+student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
+dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
+dasak_education_id = "39cf7fb4-73d8-11e8-afa7-8e408e694e54"
+dasak_round_id = "79b4b213-73da-11e8-b4e0-063f9afb40e3"
+LAB1_uid = "39ca27fe-73d8-11e8-afa7-8e408e694e54"
+LAB1_instance_id = "39ca2861-73d8-11e8-b4e0-063f9afb40e3"
 
 <<test functions>>
 @ We will then add [[test_X()]] functions in the [[<<test functions>>]] code 
@@ -236,7 +241,7 @@ def get_student_data_by_uid_JSON(self, uid):
 To test this function, we do the following.
 <<test functions>>=
 def test_get_student_data_by_uid_JSON():
-  assert ladok.get_student_data_by_uid_JSON(uid)
+  assert ladok.get_student_data_by_uid_JSON(student_uid)
 @
 
 
@@ -260,8 +265,7 @@ def get_student_contact_data_JSON(self, student_id):
 We test this function.
 <<test functions>>=
 def test_get_student_contact_data_JSON():
-  me = ladok.get_student(uid)
-  assert ladok.get_student_contact_data_JSON(me.ladok_id)
+  assert ladok.get_student_contact_data_JSON(student_uid)
 @
 
 
@@ -287,8 +291,7 @@ def get_student_suspensions_JSON(self, student_id):
 We test this function.
 <<test functions>>=
 def test_get_student_suspensions_JSON():
-  me = ladok.get_student(uid)
-  assert ladok.get_student_suspensions_JSON(me.ladok_id)
+  assert ladok.get_student_suspensions_JSON(student_uid)
 @
 
 
@@ -313,8 +316,7 @@ def registrations_JSON(self, student_id):
 We provide the following test.
 <<test functions>>=
 def test_registrations_JSON():
-  me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
-  results = ladok.registrations_JSON(me.ladok_id)
+  results = ladok.registrations_JSON(student_uid)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
@@ -356,12 +358,7 @@ def registrations_on_course_JSON(self,
 We add the following test.
 <<test functions>>=
 def test_registrations_on_course_JSON():
-  me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
-  dasak = me.courses(code="DD2395")[0]
-
-  results = ladok.registrations_on_course_JSON(dasak.education_id,
-    me.ladok_id)
-
+  results = ladok.registrations_on_course_JSON(dasak_education_id, student_uid)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
@@ -400,8 +397,7 @@ def course_rounds_JSON(self, course_instance_id):
 We add the following test.
 <<test functions>>=
 def test_course_rounds_JSON():
-  dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-  results = ladok.course_rounds_JSON(dasak10.instance_id)
+  results = ladok.course_rounds_JSON(dasak_instance_id)
   assert json.dumps(results[:1]+results[-1:], indent=2, ensure_ascii=False)
 @
 
@@ -436,8 +432,7 @@ def course_instance_JSON(self, instance_id):
 We add the following test.
 <<test functions>>=
 def test_course_instance_JSON():
-  dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-  results = ladok.course_instance_JSON(dasak10.instance_id)
+  results = ladok.course_instance_JSON(dasak_instance_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
@@ -477,8 +472,7 @@ def course_round_components_JSON(self, round_id):
 We add the following test.
 <<test functions>>=
 def test_course_round_components_JSON():
-  dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-  components = ladok.course_round_components_JSON(dasak10.round_id)
+  components = ladok.course_round_components_JSON(dasak_round_id)
   assert json.dumps(components, indent=2, ensure_ascii=False)
 @
 
@@ -515,8 +509,7 @@ def course_instance_components_JSON(self, course_instance_id):
 We add the following test code.
 <<test functions>>=
 def test_course_instance_components_JSON():
-  dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-  components = ladok.course_instance_components_JSON(dasak10.instance_id)
+  components = ladok.course_instance_components_JSON(dasak_instance_id)
   assert json.dumps(components, indent=2, ensure_ascii=False)
 @
 
@@ -580,11 +573,8 @@ def search_reported_results_JSON(self, course_round_id, component_instance_id):
 We write the following test.
 <<test functions>>=
 def test_search_reported_results_JSON():
-  dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-  LAB1 = dasak10.components(code="LAB1")[0]
-
-  results = ladok.search_reported_results_JSON(dasak10.round_id, LAB1.instance_id)
-
+  results = ladok.search_reported_results_JSON(dasak_round_id,
+    LAB1_instance_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
@@ -628,11 +618,7 @@ def search_course_results_JSON(self, course_round_id, component_instance_id):
 We test this by the following.
 <<test functions>>=
 def test_search_course_results_JSON():
-  dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-  LAB1 = dasak10.components(code="LAB1")[0]
-
-  results = ladok.search_course_results_JSON(dasak10.round_id, LAB1.instance_id)
-
+  results = ladok.search_course_results_JSON(dasak_round_id, LAB1_instance_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
@@ -672,10 +658,7 @@ def student_results_JSON(self, student_id, course_round_id):
 We test this in the following way.
 <<test functions>>=
 def test_student_results_JSON():
-  dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-  me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
-
-  results = ladok.student_results_JSON(me.ladok_id, dasak10.round_id)
+  results = ladok.student_results_JSON(student_uid, dasak_round_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
@@ -815,8 +798,13 @@ def result_reporters_JSON(self, organization_id):
 
 We can test this as follows.
 <<test functions>>=
-def result_reporters_JSON():
-  components = ladok.course_round_components_JSON(dasak10.round_id)
+def test_result_reporters_JSON():
+  try:
+    components = ladok.course_round_components_JSON(dasak_round_id)
+    components["OrganisationUID"]
+  except:
+    raise Exception("course_round_components failed")
+
   reporters = ladok.result_reporters_JSON(components["OrganisationUID"])
   assert json.dumps(reporters[8], indent=2, ensure_ascii=False)
 @
@@ -942,10 +930,7 @@ def participants_JSON(self, course_round_id, /, **kwargs):
 We test this as follows.
 <<test functions>>=
 def test_participants_JSON():
-  dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-  me = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
-
-  results = ladok.participants_JSON(dasak10.round_id)
+  results = ladok.participants_JSON(dasak_round_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 

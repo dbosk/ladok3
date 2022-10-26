@@ -969,18 +969,10 @@ the [[pull]] method).
 self.__get_study_attributes()
 @
 
+To create a list of the student's course registrations, we use the 
+[[registrations_JSON]] API method.
 <<create a list of the student's course objects>>=
-# detta är egentligen kurstillfällen, inte kurser (ID-numret är alltså ett 
-# ID-nummer för ett kurstillfälle)
-response = self.ladok.session.get(
-  url=self.ladok.base_gui_proxy_url+
-    '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/'+
-      self.ladok_id,
-  headers=self.ladok.headers).json()
-    
-self.__courses = []
-
-for course in response['Tillfallesdeltaganden']:
+for course in self.ladok.registrations_JSON(self.ladok_id):
   if not course['Nuvarande'] or \
     'Utbildningskod' not in course['Utbildningsinformation']:
     continue
@@ -1201,23 +1193,9 @@ def components(self, /, **kwargs):
 
 Now we must fetch data from LADOK.
 <<fetch CourseInstance data object from LADOK>>=
-headers = self.ladok.headers.copy()
-headers["Content-Type"] = "application/vnd.ladok-resultat+json"
-headers["X-XSRF-TOKEN"] = self.ladok.get_xsrf_token()
-headers["Referer"] = self.ladok.base_gui_url
-
-put_data = {"Identitet": [self.__instance_id]}
-
-response = self.ladok.session.put(
-  url=self.ladok.base_gui_proxy_url + '/resultat/utbildningsinstans/moduler',
-  json=put_data,
-  headers=headers)
-response = response.json()
-
+response = self.ladok.course_instance_components_JSON(self.instance_id)
 data = response["Utbildningsinstans"][0]
-@
-
-Then data will be populated with the following values:
+@ Then data will be populated with the following values:
 \begin{minted}{JSON}
 {
   "Avvecklad": false,
