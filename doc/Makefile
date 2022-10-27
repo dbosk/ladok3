@@ -3,6 +3,7 @@ all: ladok3.pdf
 
 LATEXFLAGS+=	-shell-escape
 TEX_PYTHONTEX=	yes
+PYTHONTEXFLAGS=	--interpreter "python:poetry run python3"
 
 ladok3.pdf: ../src/ladok3
 
