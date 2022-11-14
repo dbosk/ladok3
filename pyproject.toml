@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ladok3"
-version = "1.21"
+version = "1.22"
 description = "Python wrapper and CLI for the LADOK3 REST API."
 authors = [
   "Daniel Bosk <dbosk@kth.se>",
@@ -48,7 +48,7 @@ ladok = "ladok3.cli:main"
 "Releases" = "https://github.com/dbosk/ladok3/releases"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.8"
 appdirs = "^1.4.4"
 argcomplete = "^2.0.0"
 cachetools = "^5.2.0"
