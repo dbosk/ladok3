@@ -93,7 +93,7 @@ def print_student_data(student):
   print(f"Last name:    {student.last_name}")
   print(f"Personnummer: {student.personnummer}")
   print(f"LADOK ID:     {student.ladok_id}")
-  print(f"Alice:        {student.alive}")
+  print(f"Alive:        {student.alive}")
 @
 
 \subsection{Printing student's course data}
