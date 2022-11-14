@@ -972,6 +972,8 @@ self.__get_study_attributes()
 To create a list of the student's course registrations, we use the 
 [[registrations_JSON]] API method.
 <<create a list of the student's course objects>>=
+self.__courses = []
+
 for course in self.ladok.registrations_JSON(self.ladok_id):
   if not course['Nuvarande'] or \
     'Utbildningskod' not in course['Utbildningsinformation']:
