@@ -169,7 +169,8 @@ def restore_ladok_session(credentials):
     with open(file_path, "rb") as file:
       encrypted_ls = file.read()
       <<decrypt encrypted ls>>
-      return pickle.loads(pickled_ls)
+      if pickled_ls:
+        return pickle.loads(pickled_ls)
 
   return None
 @
