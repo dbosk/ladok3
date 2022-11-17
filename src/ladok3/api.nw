@@ -407,6 +407,52 @@ The output looks like this.
 
 \chapter{Course-related API calls}
 
+\section{[[search_course_rounds_JSON]]}
+
+We want to search for course rounds by one or more keys.
+<<LadokSession data methods>>=
+def search_course_rounds_JSON(self, /, **kwargs):
+  """Query LADOK about course rounds, possible keys:
+  code, round_code, name
+  """
+  url = self.base_gui_proxy_url + "/resultat/kurstillfalle/filtrera?"
+
+  if "code" in kwargs:
+    url += f"kurskod={kwargs['code']}&"
+  if "name" in kwargs:
+    url += f"benamning={kwargs['name']}&"
+  if "round_code" in kwargs:
+    url += f"tillfalleskod={kwargs['round_code']}&"
+
+  url += "page=1&limit=400&skipCount=false&sprakkod=sv"
+
+  response = self.session.get(
+    url=url,
+    headers=self.headers)
+
+  if response.status_code == requests.codes.ok:
+    return response.json()["Resultat"]
+  raise Exception(f"search_course_rounds_JSON failed: {response.text}")
+@
+
+We add the following test.
+<<test functions>>=
+def test_search_course_rounds_JSON():
+  results = ladok.search_course_rounds_JSON(code="DD1317")
+  assert results
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+prgi = ladok.search_course_rounds_JSON(code="DD1317")[0]
+ladok3.clean_data(prgi)
+print(json.dumps(prgi, indent=2, ensure_ascii=False))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+
+
 \section{[[course_rounds_JSON]]}
 
 This method fetches all course rounds that uses the given course instance.

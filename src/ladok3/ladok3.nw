@@ -1003,71 +1003,26 @@ def search_course_rounds(self, /, **kwargs):
   """Query LADOK about course rounds, possible keys:
   code, round_code, name
   """
-  url = self.base_gui_proxy_url + "/resultat/kurstillfalle/filtrera?"
-
-  if "code" in kwargs:
-    url += f"kurskod={kwargs['code']}&"
-  if "name" in kwargs:
-    url += f"benamning={kwargs['name']}&"
-  if "round_code" in kwargs:
-    url += f"tillfalleskod={kwargs['round_code']}&"
-
-  url += "page=1&limit=400&skipCount=false&sprakkod=sv"
-
-  response = self.session.get(
-    url=url,
-    headers=self.headers)
-
-  results = response.json()["Resultat"]
-  
+  results = self.search_course_rounds_JSON(**kwargs)
   return [CourseRound(ladok=self, **result) for result in results]
 @
 
 The response consists of this JSON data:
-\begin{minted}{JSON}
-{
-	"Resultat": [
-		"0": {
-			"Slutdatum": "2021-01-15",
-			"Startdatum": "2020-08-24",
-			"StudielokaliseringID": 135195,
-			"StudietaktID": 6,
-			"TillfallesKod": "51386",
-			"Uid": "4e94fe55-1cef-11ea-a622-3565135944de",
-			"UndervisningsformID": 1,
-			"Utbildningsinstans": {
-				"Avvecklad": false,
-				"Benamning": [
-					{
-						"Sprakkod": "sv",
-						"Text": "Programmeringsteknik och Matlab",
-						"link": []
-					},
-					{
-						"Sprakkod": "en",
-						"Text": "Programming Techniques and Matlab",
-						"link": []
-					}
-				],
-				"Enhet": "HP",
-				"GallerUtbildningUtanAngivenOmfattning": false,
-				"Omfattning": 7.5,
-				"OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
-				"ResultatPaKursVidAttesteringAvModul": false,
-				"Uid": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
-				"UtbildningUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
-				"Utbildningskod": "DD1315",
-				"Versionsnummer": 2,
-				"link": []
-			},
-			"link": [ ... ]
-    },
-    "1": { ... },
-    ...
-  ],
-  TotaltAntalPoster: 32
-}
-\end{minted}
+\begin{pycode}
+import json
+import ladok3.kth
+import os
+
+ladok = ladok3.kth.LadokSession(
+          os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+          test_environment=True)
+
+print(r"\begin{minted}{JSON}")
+prgi = ladok.search_course_rounds_JSON(code="DD1317")[0]
+ladok3.clean_data(prgi)
+print(json.dumps(prgi, indent=2))
+print(r"\end{minted}")
+\end{pycode}
 
 We have two classes that are relevant here, [[CourseInstance]] and 
 [[CourseRound]].
