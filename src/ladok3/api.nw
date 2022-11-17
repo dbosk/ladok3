@@ -563,42 +563,6 @@ The output looks like this.
 \stdoutpythontex[verbatim]
 
 
-\subsection{[[course_instance_components_JSON]]}
-
-This method fetches the course components for a course instance, \ie a version 
-of the syllabus.
-<<LadokSession data methods>>=
-def course_instance_components_JSON(self, course_instance_id):
-  response = self.put_query(
-    "/resultat/utbildningsinstans/moduler",
-    {"Identitet": [course_instance_id]}
-  )
-
-  if response.status_code == 200:
-    return response.json()["Utbildningsinstans"][0]
-  raise Exception(response.json()["Meddelande"])
-@
-
-We add the following test code.
-<<test functions>>=
-def test_course_instance_components_JSON():
-  components = ladok.course_instance_components_JSON(dasak_instance_id)
-  assert json.dumps(components, indent=2, ensure_ascii=False)
-@
-
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-try:
-  components = ladok.course_instance_components_JSON(dasak10.instance_id)
-except Exception as err:
-  print(f"error: {err}")
-else:
-  ladok3.clean_data(components)
-  print(json.dumps(components, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
-
 
 \chapter{Results-related API calls}
 
