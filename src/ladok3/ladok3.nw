@@ -1024,64 +1024,65 @@ print(json.dumps(prgi, indent=2))
 print(r"\end{minted}")
 \end{pycode}
 
-We have two classes that are relevant here, [[CourseInstance]] and 
-[[CourseRound]].
-The [[CourseInstance]] corresponds to the data in [[Utbildningsinstans]] above.
-And the [[CourseRound]] is the data \enquote{wrapping around} that of the 
-[[CourseInstance]].
-Thus, we will make [[CourseRound]] a specialization of [[CourseInstance]].
-This makes sense as it contains additional data, such as start and end date.
-This class takes care of those and then defers the rest to the 
-[[CourseInstance]] class (by calling its constructor).
+The earlier design used two classes:
+[[CourseInstance]] and [[CourseRound]].
+The [[CourseInstance]] corresponded to the syllabus part, whereas 
+[[CourseRound]] was the round specific part.
+However, LADOK changed the available requests, so now we only use 
+[[CourseRound]], which captures a round of a course.
 <<classes>>=
-class CourseInstance(LadokRemoteData):
-  """Represents a course instance. Must be constructed from at least
-  ladok (a LadokSession object),
-  UtbildningsinstansUID (an instance_id from LADOK),
-  optionally a data dictionary from LADOK"""
-  <<CourseInstance methods>>
-
-class CourseRound(CourseInstance):
+class CourseRound(LadokRemoteData):
   """Represents a course round"""
   def __init__(self, /, **kwargs):
-    """Must be constructed from at least:
-    Uid, TillfallesKod, Startdatum, Slutdatum"""
-    <<prepare kwargs and call CourseInstance constructor>>
+    """
+    Must be constructed from at least Uid, which is a course round ID.
+    """
+    super().__init__(ladok=kwargs.pop("ladok"))
 
     self.__round_id = kwargs.pop("Uid")
-    self.__round_code = kwargs.pop("TillfallesKod")
+    if kwargs:
+      self.__populate_attributes(**kwargs)
 
-    self.__start = datetime.date.fromisoformat(kwargs.pop("Startdatum"))
-    self.__end = datetime.date.fromisoformat(kwargs.pop("Slutdatum"))
+  def __populate_attributes(self, /, **kwargs):
+    <<populate CourseRound attributes from kwargs>>
+
+  def pull(self):
+    """
+    Update object data from LADOK.
+    """
+    <<pull CourseRound JSON data from LADOK>>
+    self.__populate_attributes(**data)
 
   @property
   def round_id(self):
     return self.__round_id
 
-  @property
-  def round_code(self):
-    return self.__round_code
-
-  @property
-  def start(self):
-    return self.__start
-
-  @property
-  def end(self):
-    return self.__end
-
+  <<CourseRound methods and properties>>
   <<CourseRound data methods>>
 @
 
-The [[CourseInstance]] constructor expects only the [[Utbildningsinstans]] part 
-of the data.
-However, the [[Uid]] should be renamed [[UtbildningsinstansUID]].
-We must also pass on the [[ladok]] object.
-<<prepare kwargs and call CourseInstance constructor>>=
-instance_data = kwargs.pop("Utbildningsinstans")
-instance_data["UtbildningsinstansUID"] = instance_data.pop("Uid")
-super().__init__(ladok=kwargs.pop("ladok"), **instance_data)
+Now
+<<populate CourseRound attributes from kwargs>>=
+self.__round_code = kwargs.pop("TillfallesKod")
+
+self.__start = datetime.date.fromisoformat(kwargs.pop("Startdatum"))
+self.__end = datetime.date.fromisoformat(kwargs.pop("Slutdatum"))
 @
+
+<<CourseRound methods and properties>>=
+@property
+def round_code(self):
+  return self.__round_code
+
+@property
+def start(self):
+  return self.__start
+
+@property
+def end(self):
+  return self.__end
+@
+
 
 \section{Course instances}
 
