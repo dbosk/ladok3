@@ -651,9 +651,9 @@ ladok = ladok3.kth.LadokSession(
           os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
           test_environment=True)
 
-print("\\begin{minted}{JSON}")
+print(r"\begin{minted}{JSON}")
 print(json.dumps(ladok.grade_scales_JSON()[0], indent=2))
-print("\\end{minted}")
+print(r"\end{minted}")
 \end{pycode}
 
 This makes the follow class design suitable.
