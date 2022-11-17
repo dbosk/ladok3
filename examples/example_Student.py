@@ -1,4 +1,4 @@
-import ladok3
+import ladok3.kth
 import os
 
 ladok = ladok3.kth.LadokSession(
