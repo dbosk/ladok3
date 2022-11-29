@@ -57,9 +57,9 @@ KTH_org_id = "2474f616-dc41-11e8-8cc1-eaeeb71b497f"
 
 \section{HTTP queries to LADOK}
 
-To make things easier, we will add three methods: [[get_query]], [[put_query]] 
-and [[post_query]], which are shortcuts to make GET, PUT and POST queries to 
-LADOK.
+To make things easier, we will add four methods: [[get_query]], [[put_query]], 
+[[post_query]] and [[del_query]], which are shortcuts to make GET, PUT, POST 
+and DEL queries to LADOK.
 <<LadokSession data methods>>=
 def get_query(self, path, content_type="application/vnd.ladok-resultat+json"):
   """Returns GET query response for path on the LADOK server"""
@@ -94,6 +94,15 @@ def post_query(self, path, post_data,
   return self.session.post(
     url=self.base_gui_proxy_url + path,
     json=post_data,
+    headers=headers)
+
+def del_query(self, path):
+  """Returns GET query response for path on the LADOK server"""
+  headers = self.headers.copy()
+  headers["X-XSRF-TOKEN"] = self.get_xsrf_token()
+
+  return self.session.delete(
+    url=self.base_gui_proxy_url + path,
     headers=headers)
 @
 
