@@ -1,4 +1,4 @@
-import ladok3
+import ladok3.kth
 import os
 
 ladok = ladok3.kth.LadokSession(
@@ -30,11 +30,11 @@ for result in course.results():
 print()
 
 student = ladok.get_student("1234561234")
-prgi = student.courses(code="DD1315")[0]
+datintro = student.courses(code="DD1301")[0]
 
 print(f"{student.personnummer} {student.first_name} {student.last_name}")
 
-for result in prgi.results():
+for result in datintro.results():
     print(f"{result.component} {result.grade} ({result.date})", end="")
     if not result.attested:
         print("*")
@@ -44,13 +44,13 @@ for result in prgi.results():
 print("Changing grades")
 
 try:
-    lab2 = prgi.results(component="LAB1")[0]
-    lab2.set_grade("P", "2021-02-18")
-    lab2.finalize()
+    lab1 = datintro.results(component="LAB1")[0]
+    lab1.set_grade("P", "2022-11-18")
+    lab1.finalize()
 except Exception as err:
     print(f"Couldn't change LAB1: {err}")
 
-for result in prgi.results():
+for result in datintro.results():
     print(f"{result.component} {result.grade} ({result.date})", end="")
     if not result.attested:
         print("*")
