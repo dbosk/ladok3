@@ -547,7 +547,7 @@ def course_round_components_JSON(self, round_id):
   )
 
   if response.status_code == 200:
-    return response.json()["MomentPerKurstillfallen"]
+    return response.json()["MomentPerKurstillfallen"][0]["Moment"]
   raise Exception(response.json()["Meddelande"])
 @
 
@@ -579,11 +579,11 @@ of the syllabus.
 <<LadokSession data methods>>=
 def course_instance_components_JSON(self, course_instance_id):
   response = self.put_query(
-    "/resultat/utbildningsinstans/moduler",
+    "/resultat/internal/utbildningsinstans/moduler",
     {"Identitet": [course_instance_id]}
   )
 
-  if response.status_code == 200:
+  if response.status_code == requests.codes.ok:
     return response.json()["Utbildningsinstans"][0]
   raise Exception(response.json()["Meddelande"])
 @
