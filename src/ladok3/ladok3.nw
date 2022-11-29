@@ -1044,15 +1044,17 @@ class CourseInstance(LadokRemoteData):
 class CourseRound(CourseInstance):
   """Represents a course round"""
   def __init__(self, /, **kwargs):
-    """Must be constructed from at least:
-    Uid, TillfallesKod, Startdatum, Slutdatum"""
-    <<prepare kwargs and call CourseInstance constructor>>
-
+    """
+    Must be constructed from at least:
+    Uid, TillfallesKod, Startdatum, Slutdatum
+    """
     self.__round_id = kwargs.pop("Uid")
     self.__round_code = kwargs.pop("TillfallesKod")
 
     self.__start = datetime.date.fromisoformat(kwargs.pop("Startdatum"))
     self.__end = datetime.date.fromisoformat(kwargs.pop("Slutdatum"))
+
+    <<prepare kwargs and call CourseInstance constructor>>
 
   @property
   def round_id(self):
@@ -1093,8 +1095,8 @@ be initialized with the keywords [[ladok]] (for its parent) and
 This leaves the following methods.
 <<CourseInstance methods>>=
 def __init__(self, /, **kwargs):
-  super().__init__(**kwargs)
   self.__instance_id = kwargs.pop("UtbildningsinstansUID")
+  super().__init__(**kwargs)
 
   try:
     self.__assign_attr(kwargs)
@@ -1125,7 +1127,7 @@ def code(self):
 
 @property
 def name(self):
-  return self.__name.copy()
+  return self.__name["en"]
 
 @property
 def version(self):
@@ -1150,157 +1152,24 @@ def components(self, /, **kwargs):
 
 Now we must fetch data from LADOK.
 <<fetch CourseInstance data object from LADOK>>=
-response = self.ladok.course_instance_components_JSON(self.instance_id)
-data = response["Utbildningsinstans"][0]
+data = self.ladok.course_round_components_JSON(self.round_id)
 @ Then data will be populated with the following values:
-\begin{minted}{JSON}
-{
-  "Avvecklad": false,
-  "Benamning": [
-    {
-      "Sprakkod": "sv",
-      "Text": "Programmeringsteknik och Matlab",
-      "link": []
-    },
-    {
-      "Sprakkod": "en",
-      "Text": "Programming Techniques and Matlab",
-      "link": []
-    }
-  ],
-  "BetygsskalaID": 131657,
-  "Enhet": "HP",
-  "GallerUtbildningUtanAngivenOmfattning": false,
-  "KravPaHanvisningTillBeslutshandling": false,
-  "KravPaProjekttitel": false,
-  "Moduler": [
-    {
-      "Avvecklad": false,
-      "Benamning": [
-        {
-          "Sprakkod": "sv",
-          "Text": "Laborationer",
-          "link": []
-        },
-        {
-          "Sprakkod": "en",
-          "Text": "Programming Assignments",
-          "link": []
-        }
-      ],
-      "BetygsskalaID": 131656,
-      "Enhet": "HP",
-      "GallerUtbildningUtanAngivenOmfattning": false,
-      "KravPaHanvisningTillBeslutshandling": false,
-      "KravPaProjekttitel": false,
-      "Moduler": [],
-      "Omfattning": 1.5,
-      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
-      "ResultatPaKursVidAttesteringAvModul": false,
-      "Uid": "387c7248-73d8-11e8-b4e0-063f9afb40e3",
-      "UtbildningUID": "387c99a9-73d8-11e8-afa7-8e408e694e54",
-      "Utbildningskod": "MAT1",
-      "Versionsnummer": 1,
-      "link": [ ... ]
-    },
-    {
-      "Avvecklad": false,
-      "Benamning": [
-        {
-          "Sprakkod": "sv",
-          "Text": "Laborationer",
-          "link": []
-        },
-        {
-          "Sprakkod": "en",
-          "Text": "Programming Assignments",
-          "link": []
-        }
-      ],
-      "BetygsskalaID": 131657,
-      "Enhet": "HP",
-      "GallerUtbildningUtanAngivenOmfattning": false,
-      "KravPaHanvisningTillBeslutshandling": false,
-      "KravPaProjekttitel": false,
-      "Moduler": [],
-      "Omfattning": 3,
-      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
-      "ResultatPaKursVidAttesteringAvModul": false,
-      "Uid": "389b1dda-73d8-11e8-b4e0-063f9afb40e3",
-      "UtbildningUID": "389b1e62-73d8-11e8-afa7-8e408e694e54",
-      "Utbildningskod": "LAB3",
-      "Versionsnummer": 1,
-      "link": [ ... ]
-    },
-    {
-      "Avvecklad": false,
-      "Benamning": [
-        {
-          "Sprakkod": "sv",
-          "Text": "Laborationer",
-          "link": []
-        },
-        {
-          "Sprakkod": "en",
-          "Text": "Programming Assignments",
-          "link": []
-        }
-      ],
-      "BetygsskalaID": 131656,
-      "Enhet": "HP",
-      "GallerUtbildningUtanAngivenOmfattning": false,
-      "KravPaHanvisningTillBeslutshandling": false,
-      "KravPaProjekttitel": false,
-      "Moduler": [],
-      "Omfattning": 1.5,
-      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
-      "ResultatPaKursVidAttesteringAvModul": false,
-      "Uid": "38a1867d-73d8-11e8-b4e0-063f9afb40e3",
-      "UtbildningUID": "38a1d44d-73d8-11e8-afa7-8e408e694e54",
-      "Utbildningskod": "LAB2",
-      "Versionsnummer": 1,
-      "link": [ ... ]
-    },
-    {
-      "Avvecklad": false,
-      "Benamning": [
-        {
-          "Sprakkod": "sv",
-          "Text": "Laborationer",
-          "link": []
-        },
-        {
-          "Sprakkod": "en",
-          "Text": "Programming Assignments",
-          "link": []
-        }
-      ],
-      "BetygsskalaID": 131656,
-      "Enhet": "HP",
-      "GallerUtbildningUtanAngivenOmfattning": false,
-      "KravPaHanvisningTillBeslutshandling": false,
-      "KravPaProjekttitel": false,
-      "Moduler": [],
-      "Omfattning": 1.5,
-      "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
-      "ResultatPaKursVidAttesteringAvModul": false,
-      "Uid": "38a6416f-73d8-11e8-b4e0-063f9afb40e3",
-      "UtbildningUID": "38a66848-73d8-11e8-afa7-8e408e694e54",
-      "Utbildningskod": "LAB1",
-      "Versionsnummer": 1,
-      "link": [ ... ]
-    }
-  ],
-  "Omfattning": 7.5,
-  "OrganisationUID": "2474f616-dc41-11e8-8cc1-eaeeb71b497f",
-  "ResultatPaKursVidAttesteringAvModul": false,
-  "Uid": "9f30cc02-d6b5-11e8-8fd5-cf9d2c5c41ba",
-  "UtbildningUID": "38ab2393-73d8-11e8-afa7-8e408e694e54",
-  "Utbildningskod": "DD1315",
-  "Versionsnummer": 2,
-  "link": [ ... ]
-}
-\end{minted}
+\begin{pycode}
+import json
+import ladok3.kth
+import os
+
+ladok = ladok3.kth.LadokSession(
+          os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+          test_environment=True)
+
+print(r"\begin{minted}{JSON}")
+data = ladok.course_round_components_JSON(
+                  "cf7045a7-3e1c-11eb-b960-5f936a674375")
+ladok3.clean_data(data)
+print(json.dumps(data, indent=2))
+print(r"\end{minted}")
+\end{pycode}
 
 Now that we have the [[data]] object, we can assign its values to the private 
 attributes.
@@ -1308,10 +1177,7 @@ attributes.
 self.__education_id = data.pop("UtbildningUID")
 
 self.__code = data.pop("Utbildningskod")
-self.__name = {}
-names = data.pop("Benamning")
-for name in names:
-  self.__name[name["Sprakkod"]] = name["Text"]
+self.__name = data.pop("Benamning")
 self.__version = data.pop("Versionsnummer")
 
 self.__credits = data.pop("Omfattning")
@@ -1320,9 +1186,12 @@ self.__unit = data.pop("Enhet")
 self.__grade_scale = self.ladok.get_grade_scales(
   id=data.pop("BetygsskalaID"))
 
-self.__components = [CourseComponent(
-    ladok=self.ladok,
-    **component) for component in data["Moduler"]]
+if "IngaendeMoment" in data:
+  self.__components = [CourseComponent(
+      ladok=self.ladok, course=self,
+      **component) for component in data["IngaendeMoment"]]
+else:
+  self.__components = []
 @
 
 
@@ -1337,6 +1206,8 @@ class CourseComponent(LadokData):
   def __init__(self, /, **kwargs):
     super().__init__(**kwargs)
 
+    self.__course = kwargs.pop("course")
+
     if "UtbildningsinstansUID" in kwargs:
       self.__instance_id = kwargs.pop("UtbildningsinstansUID")
     else:
@@ -1347,7 +1218,7 @@ class CourseComponent(LadokData):
     self.__code = kwargs.pop("Utbildningskod")
     description = kwargs.pop("Benamning")
     if isinstance(description, dict):
-      self.__description = get_translation("sv", description)
+      self.__description = description["sv"]
     else:
       self.__description = description
 
@@ -1357,6 +1228,10 @@ class CourseComponent(LadokData):
     ladok = kwargs.pop("ladok")
     grade_scale_id = kwargs.pop("BetygsskalaID")
     self.__grade_scale = ladok.get_grade_scales(id=grade_scale_id)[0]
+
+  @property
+  def course(self):
+    return self.__course
 
   @property
   def instance_id(self):
@@ -1463,8 +1338,6 @@ This is the object that must be used to get results for a student.
 class CourseRegistration(CourseInstance):
   """Represents a student's participation in a course instance"""
   def __init__(self, /, **kwargs):
-    super().__init__(**kwargs)
-
     self.__student = kwargs.pop("student")
 
     # ett Ladok-ID för kursomgången
@@ -1474,6 +1347,8 @@ class CourseRegistration(CourseInstance):
     dates = kwargs.pop("Studieperiod")
     self.__start = datetime.date.fromisoformat(dates["Startdatum"])
     self.__end = datetime.date.fromisoformat(dates["Slutdatum"])
+
+    super().__init__(**kwargs)
 
   @property
   def round_id(self):
@@ -1524,19 +1399,17 @@ From the response we get from LADOK, we construct [[CourseResult]] objects that
 deal with the details.
 <<pull existing CourseResult objects from LADOK>>=
 response = self.ladok.student_results_JSON(
-  self.__student.ladok_id, self.round_id
-)
+  self.__student.ladok_id, self.education_id
+)["Kursversioner"][0]
 
-self.__results_id = response["Uid"]
+#self.__results_id = response["Uid"]
 self.__results = []
-for result in response["ResultatPaUtbildningar"]:
+for result in response["VersionensModuler"]:
   try:
-    self.__results.append(CourseResult(
-      ladok=self.ladok,
-      components=self.components(),
-      student=self.__student,
-      study_results_id=self.__results_id,
-      **result))
+    self.__results.append(CourseResult(ladok=self.ladok,
+                                       components=self.components(),
+                                       student=self.__student,
+                                       **result))
   except TypeError:
     pass
 @
@@ -1550,8 +1423,7 @@ for component in self.components():
       CourseResult(
         ladok=self.ladok,
         component=component,
-        student=self.__student,
-        study_results_id=self.__results_id))
+        student=self.__student))
 @
 
 
@@ -1571,22 +1443,23 @@ class CourseResult(LadokRemoteData):
     super().__init__(**kwargs)
 
     self.__student = kwargs.pop("student")
-    self.__study_results_id = kwargs.pop("study_results_id")
 
+    self.__attested = False
     if "component" in kwargs:
       self.__component = kwargs.pop("component")
-      self.__attested = False
       self.__populate_attributes()
-    elif "components" in kwargs and \
-        ("Arbetsunderlag" in kwargs or "SenastAttesteradeResultat" in kwargs):
+    elif "components" in kwargs and "ResultatPaUtbildning" in kwargs:
       components = kwargs.pop("components")
 
-      if "Arbetsunderlag" in kwargs:
-        self.__attested = False
-        data = kwargs.pop("Arbetsunderlag")
-      elif "SenastAttesteradeResultat" in kwargs:
+      results = kwargs.pop("ResultatPaUtbildning")
+
+      if "Arbetsunderlag" in results:
+        data = results["Arbetsunderlag"]
+      elif "SenastAttesteradeResultat" in results:
         self.__attested = True
-        data = kwargs.pop("SenastAttesteradeResultat")
+        data = results["SenastAttesteradeResultat"]
+      else:
+        data = kwargs
 
       self.__populate_attributes(**data, components=components)
     else:
@@ -1655,25 +1528,31 @@ class CourseResult(LadokRemoteData):
 
 If we get the data from LADOK, then we can fill in all the attributes.
 <<populate CourseResult attributes from data>>=
-self.__uid = data.pop("Uid")
+self.__uid = data.pop("Uid", None)
 self.__instance_id = data.pop("UtbildningsinstansUID")
-self.__results_id = data.pop("ResultatUID")
-self.__study_results_id = data.pop("StudieresultatUID")
+self.__results_id = data.pop("ResultatUID", None)
+self.__study_results_id = data.pop("StudieresultatUID", None)
 
-grade_scale_id = data.pop("BetygsskalaID")
-grade = data.pop("Betygsgrad")
+try:
+  grade = data.pop("Betygsgrad", None)
+  grade_scale_id = data.pop("BetygsskalaID")
+except KeyError:
+  grade_scale_id = int(data["Betygsskala"]["ID"])
 
-self.__date = data.pop("Examinationsdatum")
+self.__date = data.pop("Examinationsdatum", None)
 self.__grade_scale = self.ladok.get_grade_scales(id=grade_scale_id)[0]
-self.__grade = self.__grade_scale.grades(id=grade)[0]
+if grade:
+  self.__grade = self.__grade_scale.grades(id=grade)[0]
+else:
+  self.__grade = None
 
 if "components" in data:
   components = data.pop("components")
   component_list = filter_on_keys(components, instance_id=self.__instance_id)
   self.__component = component_list[0] if component_list \
-                                      else None
+                                       else None
 
-self.__last_modified = data.pop("SenasteResultatandring")
+self.__last_modified = data.pop("SenasteResultatandring", None)
 self.__modified = False
 @
 
@@ -1725,8 +1604,7 @@ To push an updated result to LADOK, we do the following.
 <<push the existing CourseResult grade data to LADOK>>=
 try:
   response = self.ladok.update_result_JSON(
-    self.grade.id, self.grade_scale.id, self.date.isoformat(),
-    self.__uid, self.__last_modified
+    self.__uid, self.grade.id, self.date.isoformat(), self.__last_modified
   )
 except Exception as err:
   raise Exception(
@@ -1734,7 +1612,7 @@ except Exception as err:
     f" to LADOK: {err}"
   )
 
-self.__populate_attributes(**response[0])
+self.__populate_attributes(**response)
 @
 
 \subsection{Adding new results}
@@ -1746,14 +1624,16 @@ Particularly, we must add something to the student's study results.
 <<push the new CourseResult grade data to LADOK>>=
 try:
   response = self.ladok.create_result_JSON(
-    self.grade.id, self.grade_scale.id, self.date.isoformat(),
-    self.__study_results_id, self.__instance_id
+    self.__student.ladok_id,
+    self.__component.course.instance_id,
+    self.__component.instance_id,
+    self.grade.id, self.date.isoformat()
   )
 except Exception as err:
   raise Exception("Couldn't register "
     f"{self.component} {self.grade} {self.date}: {err}")
 
-self.__populate_attributes(**response[0])
+self.__populate_attributes(**response)
 @
 
 
