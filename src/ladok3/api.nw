@@ -842,26 +842,47 @@ Note also that we use the [[ResultatUID]] and not the [[StudieresultatUID]] as
 we did for [[create_result_JSON]].
 <<LadokSession data methods>>=
 def update_result_JSON(self,
-      grade_id, grade_scale_id, date,
-      result_id, last_modified, notes=[]):
+      result_id, grade_id, date, last_modified, notes=[]):
   response = self.put_query(
-    '/resultat/studieresultat/uppdatera',
+    f"/resultat/internal/resultat/uppdatera/{result_id}",
     {
-      'Resultat': [{
-        'ResultatUID': result_id,
-        'Betygsgrad': grade_id,
-        'BetygsskalaID': grade_scale_id,
-        'Noteringar': notes,
-        'Examinationsdatum': date,
-        'SenasteResultatandring': last_modified
-      }]
+      'Betygsgrad': grade_id,
+      'Examinationsdatum': date,
+      'Noteringar': notes,
+      'SenasteResultatandring': last_modified
     }
   )
 
-  if response.status_code == 200:
-    return response.json()["Resultat"]
-  raise Exception(response.json()["Meddelande"])
+  if response.status_code == requests.codes.ok:
+    return response.json()
+  raise Exception(f"LADOK request to modify result failed: "
+                  f"{response.json()['Meddelande']}")
 @
+
+We test this in the following way.
+<<test functions>>=
+def test_update_result_JSON():
+  global result_uid
+  global result_last_modified
+
+  result = ladok.update_result_JSON(
+    result_uid, 131658, "2022-11-28", result_last_modified)
+
+  result_last_modified = result["SenasteResultatandring"]
+
+  assert json.dumps(result, indent=2, ensure_ascii=False)
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+result = ladok.update_result_JSON(
+  result["Uid"], 131658, "2022-11-29", result["SenasteResultatandring"])
+
+ladok3.clean_data(result)
+print(json.dumps(result, indent=2, ensure_ascii=False))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
 
 \section{Finalizing a result}
 
