@@ -834,7 +834,7 @@ The output looks like this.
 
 LADOK changed this API request in 2022.
 
-\subsection{[[update_result_JSON]]}
+\subsection{[[update_result_JSON]]}\label{UpdateResult}
 
 This method updates an existing result draft.
 Note that we cannot use this method to update a finalized result.
@@ -887,6 +887,10 @@ The output looks like this.
 \section{Finalizing a result}
 
 Here we cover the API calls needed to finalize (klarmarkera) a result in LADOK.
+To finalize a result, we first need to know the possible reporters and 
+attestants.
+However, normally that's us, so we want to find the info of the currently 
+logged in LADOK user.
 
 \subsection{[[result_attestants_JSON]] and [[result_reporters_JSON]]}
 
@@ -1005,17 +1009,15 @@ that person.
 (LADOK changed this API request in 2022.)
 <<LadokSession data methods>>=
 def finalize_result_JSON(self,
-    result_id, last_modified, reporter_id, attestant_id=None):
+    result_id, last_modified, reporter_id, attestant_ids=[]):
   """Marks a result as finalized (klarmarkera)"""
   response = self.put_query(
-    f"/resultat/studieresultat/resultat/klarmarkerany",
+    f"/resultat/internal/resultat/klarmarkera/{result_id}",
     {
-      "Klarmarkering": {
-        "Beslutsfattare": [attestant_id] if attestant_id else [],
-        "RattadAv": [reporter_id],
-        "ResultatetsSenastSparad": last_modified
-      },
-      "ResultatUIDer": [result_id]
+      "Beslutsfattare": attestant_ids,
+      "KlarmarkeradAvUID": reporter_id,
+      "RattadAv": [],
+      "ResultatetsSenastSparad": last_modified
     }
   )
 
@@ -1023,6 +1025,154 @@ def finalize_result_JSON(self,
     return response.json()
   raise Exception(response.json()["Meddelande"])
 @ This method returns a copy of the finalized result.
+
+We test this in the following way.
+<<test functions>>=
+reporter_id = "21f4667a-e864-11ea-adbf-a14961264cf0"
+
+def test_finalize_result_JSON():
+  global result_uid
+  global result_last_modified
+
+  result = ladok.finalize_result_JSON(
+    result_uid, result_last_modified, reporter_id)
+
+  result_last_modified = result["SenasteResultatandring"]
+
+  assert json.dumps(result, indent=2, ensure_ascii=False)
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+reporter_id = "21f4667a-e864-11ea-adbf-a14961264cf0"
+
+result = ladok.finalize_result_JSON(
+  result["Uid"], result["SenasteResultatandring"], reporter_id)
+
+ladok3.clean_data(result)
+print(json.dumps(result, indent=2, ensure_ascii=False))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+\subsection{[[update_finalized_result_JSON]]}
+
+To update an already finalised result, we can use the following API call.
+The only difference from the call above (\cref{UpdateResult}) is that the URL 
+uses [[uppdateraklarmarkerat]] instead of just [[uppdatera]].
+<<LadokSession data methods>>=
+def update_finalized_result_JSON(self,
+      result_id, grade_id, date, last_modified, notes=[]):
+  response = self.put_query(
+    f"/resultat/internal/resultat/uppdateraklarmarkerat/{result_id}",
+    {
+      'Betygsgrad': grade_id,
+      'Examinationsdatum': date,
+      'Noteringar': notes,
+      'SenasteResultatandring': last_modified
+    }
+  )
+
+  if response.status_code == requests.codes.ok:
+    return response.json()
+  raise Exception(f"LADOK request to modify finalized result failed: "
+                  f"{response.json()['Meddelande']}")
+@
+
+We test this in the following way.
+<<test functions>>=
+def test_update_finalized_result_JSON():
+  global result_uid
+  global result_last_modified
+
+  result = ladok.update_finalized_result_JSON(
+    result_uid, 131658, "2022-11-29", result_last_modified)
+
+  result_last_modified = result["SenasteResultatandring"]
+
+  assert json.dumps(result, indent=2, ensure_ascii=False)
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+result = ladok.update_finalized_result_JSON(
+  result["Uid"], 131658, "2022-11-29", result["SenasteResultatandring"])
+
+ladok3.clean_data(result)
+print(json.dumps(result, indent=2, ensure_ascii=False))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+\subsection{[[finalized_result_to_draft_JSON]]}
+
+We can also change a result from finalized back to draft status.
+<<LadokSession data methods>>=
+def finalized_result_to_draft_JSON(self, result_id, last_modified):
+  response = self.put_query(
+    f"/resultat/internal/resultat/tillbakatillutkast/{result_id}",
+    {
+      'ResultatUID': result_id,
+      'ResultatetsSenastSparad': last_modified
+    }
+  )
+
+  if response.status_code == requests.codes.ok:
+    return response.json()
+  raise Exception(f"LADOK request to change finalized result to draft failed: "
+                  f"{response.json()['Meddelande']}")
+@
+
+We test this in the following way.
+<<test functions>>=
+def test_finalized_result_to_draft_JSON():
+  global result_uid
+  global result_last_modified
+
+  result = ladok.finalized_result_to_draft_JSON(
+    result_uid, result_last_modified)
+
+  assert json.dumps(result, indent=2, ensure_ascii=False)
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+result = ladok.finalized_result_to_draft_JSON(
+  result["Uid"], result["SenasteResultatandring"])
+
+ladok3.clean_data(result)
+print(json.dumps(result, indent=2, ensure_ascii=False))
+\end{pyblock}
+The output looks like this.
+\stdoutpythontex[verbatim]
+
+\subsection{[[remove_result_draft_JSON]]}
+
+We can also change a result from finalized back to draft status.
+<<LadokSession data methods>>=
+def remove_result_draft_JSON(self, result_id):
+  response = self.del_query(
+    f"/resultat/internal/resultat/tabort/{result_id}"
+  )
+
+  if response.status_code != 204:
+    raise Exception(f"LADOK request to remove draft result failed: "
+                    f"{response.status_code}: {response.text}")
+@
+
+We test this in the following way.
+<<test functions>>=
+def test_remove_result_draft_JSON():
+  global result_uid
+
+  ladok.remove_result_draft_JSON(result_uid)
+@
+
+This method is used as follows.
+\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+result = ladok.remove_result_draft_JSON(result["Uid"])
+\end{pyblock}
+There is no output.
 
 
 \section{[[participants_JSON]]}
