@@ -1224,7 +1224,7 @@ def participants_JSON(self, course_round_id, /, **kwargs):
   }
 
   response = self.put_query(
-    '/studiedeltagande/deltagare/kurstillfalle',
+    '/studiedeltagande/internal/deltagare/kurstillfalle',
     put_data,
     "application/vnd.ladok-studiedeltagande+json")
   if response.status_code == 200:
