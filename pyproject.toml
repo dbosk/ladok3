@@ -36,7 +36,7 @@ exclude = [
   {path="src/**/*.nw", format="wheel"},
   {path="doc/", format="wheel"},
   "*/**/*.csv",
-  "*/**/ltxobj/*",
+  "*/**/ltxobj",
   "*/**/*.pdf"
 ]
 
