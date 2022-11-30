@@ -25,14 +25,10 @@ ladok3.pdf: ../examples/example_LadokSession.py
 ladok3.pdf: ../examples/example_Student.py
 ladok3.pdf: ../examples/example_Course.py
 ladok3.pdf: ../examples/canvas2ladok.tex
-ladok3.pdf: DD1315.csv
 
 ../%::
 	${MAKE} -C $(dir $@) $(notdir $@)
 
-
-DD1315.csv: ../examples/DD1315.csv
-	ln -sf $^ $@
 
 .PHONY: clean
 clean:
