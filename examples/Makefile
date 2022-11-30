@@ -8,13 +8,13 @@ canvas2ladok.py: canvas2ladok.nw
 stats: DD1315.csv DD1310.csv DD1312.csv
 
 DD1315.csv:
-	ladok data DD1315 > $@
+	poetry run ladok data DD1315 > $@
 
 DD1310.csv:
-	ladok data DD1310 > $@
+	poetry run ladok data DD1310 > $@
 
 DD1312.csv: statsdata.py
-	ladok data DD1312 > $@
+	poetry run ladok data DD1312 > $@
 
 
 .PHONY: clean
