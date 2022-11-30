@@ -119,6 +119,7 @@ be removed.
 def clean_data(json_obj):
   remove_links(json_obj)
   pseudonymize(json_obj)
+  return json_obj
 @
 
 The [[remove_links]] functions removes the [[link]] key--value pairs.
@@ -145,10 +146,22 @@ def pseudonymize(json_obj):
     if "Fornamn" in json_obj:
       json_obj["Fornamn"] = "Student"
     if "Efternamn" in json_obj:
-      json_obj["Efternamn"] = "Studentsson"
+      json_obj["Efternamn"] = "Studentzadeh"
     if "Personnummer" in json_obj:
       json_obj["Personnummer"] = "191234561234"
-    for key, value in json_obj.items():
+    if "Epostadress" in json_obj:
+      json_obj["Epostadress"] = "user@domain.se"
+    if "Anvandarnamn" in json_obj:
+      json_obj["Anvandarnamn"] = "user@domain.se"
+    if "Utdelningsadress" in json_obj:
+      json_obj["Utdelningsadress"] = "Stora vägen 1"
+    if "Postnummer" in json_obj:
+      json_obj["Postnummer"] = "12345"
+    if "Postort" in json_obj:
+      json_obj["Postort"] = "Byn"
+    if "Telefonnummer" in json_obj:
+      json_obj["Telefonnummer"] = "0701234567"
+    for value in json_obj.values():
       pseudonymize(value)
   elif isinstance(json_obj, list):
     for item in json_obj:
