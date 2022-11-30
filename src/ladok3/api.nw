@@ -15,6 +15,7 @@ the example outputs from the API requests.
 We will use the following to test the API methods.
 <<test api.py>>=
 import json
+import ladok3
 import ladok3.kth
 import os
 
