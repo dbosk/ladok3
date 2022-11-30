@@ -924,9 +924,9 @@ the path.
 We can test this in the following way.
 <<test functions>>=
 def test_result_attestants_JSON():
+  global result_uid
   try:
-    attestants = ladok.result_attestants_JSON(
-      "319558de-55c6-11ed-b4c5-e36d0ff64f20")
+    attestants = ladok.result_attestants_JSON(result_uid)
     assert json.dumps(attestants, indent=2, ensure_ascii=False)
   except Exception as err:
     assert "Några av angivna resultatidentiter" in str(err)
