@@ -26,7 +26,7 @@ ladok = ladok3.kth.LadokSession(
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
 dasak_education_id = "39cf7fb4-73d8-11e8-afa7-8e408e694e54"
-dasak_round_id = "79b4b213-73da-11e8-b4e0-063f9afb40e3"
+dasak_round_id = "79a8cb1b-73da-11e8-b4e0-063f9afb40e3"
 LAB1_uid = "39ca27fe-73d8-11e8-afa7-8e408e694e54"
 LAB1_instance_id = "39ca2861-73d8-11e8-b4e0-063f9afb40e3"
 KTH_org_id = "2474f616-dc41-11e8-8cc1-eaeeb71b497f"
@@ -34,10 +34,10 @@ KTH_org_id = "2474f616-dc41-11e8-8cc1-eaeeb71b497f"
 <<test functions>>
 @ We will then add [[test_X()]] functions in the [[<<test functions>>]] code 
 block that will perform the tests.
-
-The example code will be typeset with syntax highlighting.
-It will all have the following block of code included.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+These test functions will also show how to use the functions.
+Also we will include example output from the function calls in the tests.
+This is useful for development and when LADOK changes anything in the API.
+\begin{pycode}[apitest]
 import json
 import ladok3.kth
 import os
@@ -49,11 +49,11 @@ ladok = ladok3.kth.LadokSession(
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
 dasak_education_id = "39cf7fb4-73d8-11e8-afa7-8e408e694e54"
-dasak_round_id = "79b4b213-73da-11e8-b4e0-063f9afb40e3"
+dasak_round_id = "79a8cb1b-73da-11e8-b4e0-063f9afb40e3"
 LAB1_uid = "39ca27fe-73d8-11e8-afa7-8e408e694e54"
 LAB1_instance_id = "39ca2861-73d8-11e8-b4e0-063f9afb40e3"
 KTH_org_id = "2474f616-dc41-11e8-8cc1-eaeeb71b497f"
-\end{pyblock}
+\end{pycode}
 
 
 \section{HTTP queries to LADOK}
@@ -176,17 +176,17 @@ If we can convert the return value do JSON, it's probably correct.
 (No this isn't the best of tests.)
 <<test functions>>=
 def test_grade_scales_JSON():
-  assert ladok.grade_scales_JSON()[0]
+  assert ladok.grade_scales_JSON()
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 print(json.dumps(
   ladok3.clean_data(ladok.grade_scales_JSON()[0]),
   indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 \chapter{Student-related API calls}
@@ -267,13 +267,12 @@ def test_get_student_data_by_uid_JSON():
 @
 
 The result is the same for both method.
-We show the output of the last one.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 result = ladok.get_student_data_by_uid_JSON(student_uid)
 print(json.dumps(ladok3.clean_data(result), indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 \section{[[get_student_contact_data_JSON]]}
@@ -299,13 +298,13 @@ def test_get_student_contact_data_JSON():
   assert ladok.get_student_contact_data_JSON(student_uid)
 @
 
-To use the function, we do as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output is as follows.
+\begin{pycode}[apitest][numbers=left,firstnumber=last]
+print(r"\begin{minted}{JSON}")
 result = ladok.get_student_contact_data_JSON(student_uid)
 print(json.dumps(ladok3.clean_data(result), indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 \section{[[get_student_suspensions_JSON]]}
@@ -333,13 +332,13 @@ def test_get_student_suspensions_JSON():
   assert ladok.get_student_suspensions_JSON(student_uid)
 @
 
-To use the function, we do as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 result = ladok.get_student_suspensions_JSON(student_uid)
 print(json.dumps(ladok3.clean_data(result), indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 
@@ -367,13 +366,13 @@ def test_registrations_JSON():
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 results = ladok.registrations_JSON(student_uid)
 print(json.dumps(ladok3.clean_data(results), indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 
@@ -405,13 +404,13 @@ def test_registrations_on_course_JSON():
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 results = ladok.registrations_on_course_JSON(dasak_education_id, student_uid)
 print(json.dumps(ladok3.clean_data(results), indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 
@@ -452,14 +451,14 @@ def test_search_course_rounds_JSON():
   assert results
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-prgi = ladok.search_course_rounds_JSON(code="DD1317")[0]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+prgi = ladok.search_course_rounds_JSON(code="DD1317")
 ladok3.clean_data(prgi)
 print(json.dumps(prgi, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 
@@ -477,23 +476,22 @@ def course_rounds_JSON(self, course_instance_id):
   return None
 @
 
-We add the following test.
+We test this method as follows.
 <<test functions>>=
 def test_course_rounds_JSON():
   results = ladok.course_rounds_JSON(dasak_instance_id)
   assert json.dumps(results[:1]+results[-1:], indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-results = ladok.course_rounds_JSON(dasak10.instance_id)
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+results = ladok.course_rounds_JSON(dasak_instance_id)
 
 ladok3.clean_data(results)
 print(json.dumps(results[:1]+results[-1:], indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 \section{[[course_instance_JSON]]}
@@ -519,15 +517,15 @@ def test_course_instance_JSON():
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-results = ladok.course_instance_JSON(dasak10.instance_id)
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+results = ladok.course_instance_JSON(dasak_instance_id)
 
 ladok3.clean_data(results)
 print(json.dumps(results, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 \section{Course components}
@@ -559,18 +557,18 @@ def test_course_round_components_JSON():
   assert json.dumps(components, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 try:
-  components = ladok.course_round_components_JSON(dasak10.round_id)
+  components = ladok.course_round_components_JSON(dasak_round_id)
 except Exception as err:
   print(f"error: {err}")
 else:
   ladok3.clean_data(components)
   print(json.dumps(components, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 \subsection{[[course_instance_components_JSON]]}
@@ -596,18 +594,18 @@ def test_course_instance_components_JSON():
   assert json.dumps(components, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 try:
-  components = ladok.course_instance_components_JSON(dasak10.instance_id)
+  components = ladok.course_instance_components_JSON(dasak_instance_id)
 except Exception as err:
   print(f"error: {err}")
 else:
   ladok3.clean_data(components)
   print(json.dumps(components, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 \chapter{Results-related API calls}
@@ -661,20 +659,18 @@ def test_search_reported_results_JSON():
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-LAB1 = dasak10.components(code="LAB1")[0]
-
-results = ladok.search_reported_results_JSON(dasak10.round_id, LAB1.instance_id)
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+results = ladok.search_reported_results_JSON(dasak_round_id, LAB1_instance_id)
 
 ladok3.clean_data(results)
 results = list(filter(
-  lambda x: x["Student"]["Uid"] == me.ladok_id,
+  lambda x: x["Student"]["Uid"] == student_uid,
   results))
 print(json.dumps(results, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 \subsection{[[search_course_results_JSON]]}
 
@@ -705,21 +701,18 @@ def test_search_course_results_JSON():
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-dasak10 = ladok.search_course_rounds(code="DD2395", round_code="81099")[0]
-LAB1 = dasak10.components(code="LAB1")[0]
-
-results = ladok.search_course_results_JSON(dasak10.round_id, LAB1.instance_id)
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+results = ladok.search_course_results_JSON(dasak_round_id, LAB1_instance_id)
 
 ladok3.clean_data(results)
 results = list(filter(
-  lambda x: x["Student"]["Uid"] == me.ladok_id,
+  lambda x: x["Student"]["Uid"] == student_uid,
   results))
 print(json.dumps(results, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 \section{Results for a student: [[student_results_JSON]]}
@@ -746,15 +739,15 @@ def test_student_results_JSON():
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-results = ladok.student_results_JSON(me.ladok_id, dasak10.round_id)
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+results = ladok.student_results_JSON(student_uid, dasak_education_id)
 
 ladok3.clean_data(results)
 print(json.dumps(results, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 
 \section{Modifying results}
@@ -817,8 +810,9 @@ def test_create_result_JSON():
   assert json.dumps(result, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 datintro_student_uid = "76291c55-d24a-11ea-a4db-82cca4dd4b3e"
 datintro_instance_id = "2179e02c-d6b5-11e8-8fd5-cf9d2c5c41ba"
 datintro_LAB1_id = "385a4428-73d8-11e8-b4e0-063f9afb40e3"
@@ -829,9 +823,8 @@ result = ladok.create_result_JSON(
 
 ladok3.clean_data(result)
 print(json.dumps(result, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 LADOK changed this API request in 2022.
 
@@ -874,16 +867,16 @@ def test_update_result_JSON():
   assert json.dumps(result, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 result = ladok.update_result_JSON(
   result["Uid"], 131658, "2022-11-29", result["SenasteResultatandring"])
 
 ladok3.clean_data(result)
 print(json.dumps(result, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 \section{Finalizing a result}
 
@@ -926,15 +919,14 @@ def test_result_attestants_JSON():
     assert "Några av angivna resultatidentiter" in str(err)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-attestants = ladok.result_attestants_JSON(
-  "319558de-55c6-11ed-b4c5-e36d0ff64f20")
-
-print(json.dumps(attestants[0], indent=2, ensure_ascii=False))
-\end{pyblock}
 The output looks like this.
-\stdoutpythontex[verbatim]
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+attestants = ladok.result_attestants_JSON(result["Uid"])
+
+print(json.dumps(ladok3.clean_data(attestants), indent=2, ensure_ascii=False))
+print(r"\end{minted}")
+\end{pycode}
 
 Now, we get a list of who can report (basically anyone registered in the entire 
 organization).
@@ -952,22 +944,23 @@ def result_reporters_JSON(self, organization_id):
   raise Exception(response.text)
 @
 
-We can test this as follows.
+We test this method as follows.
 <<test functions>>=
 def test_result_reporters_JSON():
   reporters = ladok.result_reporters_JSON(KTH_org_id)
   assert json.dumps(reporters, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 reporters = ladok.result_reporters_JSON(components["OrganisationUID"])
 ladok3.remove_links(reporters)
 
-print(json.dumps(reporters[8], indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(json.dumps(ladok3.clean_data(reporters[:3]),
+  indent=2, ensure_ascii=False))
+print(r"\end{minted}")
+\end{pycode}
 
 \subsection{[[user_info_JSON]]}
 
@@ -992,15 +985,15 @@ def test_user_info_JSON():
   assert json.dumps(me_teacher, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 me_teacher = ladok.user_info_JSON()
-ladok3.remove_links(me_teacher)
+ladok3.clean_data(me_teacher)
 
 print(json.dumps(me_teacher, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 \subsection{[[finalize_result_JSON]]}
 
@@ -1043,8 +1036,9 @@ def test_finalize_result_JSON():
   assert json.dumps(result, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 reporter_id = "21f4667a-e864-11ea-adbf-a14961264cf0"
 
 result = ladok.finalize_result_JSON(
@@ -1052,9 +1046,8 @@ result = ladok.finalize_result_JSON(
 
 ladok3.clean_data(result)
 print(json.dumps(result, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 \subsection{[[update_finalized_result_JSON]]}
 
@@ -1094,16 +1087,16 @@ def test_update_finalized_result_JSON():
   assert json.dumps(result, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 result = ladok.update_finalized_result_JSON(
   result["Uid"], 131658, "2022-11-29", result["SenasteResultatandring"])
 
 ladok3.clean_data(result)
 print(json.dumps(result, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 \subsection{[[finalized_result_to_draft_JSON]]}
 
@@ -1136,16 +1129,16 @@ def test_finalized_result_to_draft_JSON():
   assert json.dumps(result, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
 result = ladok.finalized_result_to_draft_JSON(
   result["Uid"], result["SenasteResultatandring"])
 
 ladok3.clean_data(result)
 print(json.dumps(result, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
 \subsection{[[remove_result_draft_JSON]]}
 
@@ -1169,11 +1162,10 @@ def test_remove_result_draft_JSON():
   ladok.remove_result_draft_JSON(result_uid)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-result = ladok.remove_result_draft_JSON(result["Uid"])
-\end{pyblock}
 There is no output.
+\begin{pycode}[apitest]
+ladok.remove_result_draft_JSON(result["Uid"])
+\end{pycode}
 
 
 \section{[[participants_JSON]]}
@@ -1234,16 +1226,16 @@ def test_participants_JSON():
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
 
-This method is used as follows.
-\begin{pyblock}[apitest][numbers=left,firstnumber=last]
-results = ladok.participants_JSON(dasak10.round_id)
+The output looks like this.
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+results = ladok.participants_JSON(dasak_round_id)
 
 ladok3.clean_data(results)
 results = list(filter(
-  lambda x: x["Student"]["Uid"] == me.ladok_id,
+  lambda x: x["Student"]["Uid"] == student_uid,
   results))
 print(json.dumps(results, indent=2, ensure_ascii=False))
-\end{pyblock}
-The output looks like this.
-\stdoutpythontex[verbatim]
+print(r"\end{minted}")
+\end{pycode}
 
