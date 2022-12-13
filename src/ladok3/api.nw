@@ -310,7 +310,8 @@ def get_student_contact_data_JSON(self, student_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  return None
+  raise Exception("can't get contact data for "
+                 f"student {student_id}: {response.text}")
 @
 
 We test this function.
@@ -344,7 +345,8 @@ def get_student_suspensions_JSON(self, student_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  return None
+  raise Exception("can't get suspensions for "
+                 f"student {student_id}: {response.text}")
 @
 
 We test this function.
@@ -371,13 +373,14 @@ on courses and programmes.
 def registrations_JSON(self, student_id):
   """Return all registrations for student with ID student_id."""
   response = self.get_query(
-    '/studiedeltagande/tillfallesdeltagande/kurstillfallesdeltagande/student/'+
-      student_id,
+    "/studiedeltagande/internal/tillfallesdeltagande/kurstillfallesdeltagande"
+      f"/student/{student_id}",
     "application/vnd.ladok-studiedeltagande+json")
 
-  if response.status_code == 200:
+  if response.status_code == requests.codes.ok:
     return response.json()["Tillfallesdeltaganden"]
-  return None
+  raise Exception("can't get registrations for "
+                  f"student {student_id}: {response.text}")
 @
 
 We provide the following test.
@@ -409,13 +412,15 @@ def registrations_on_course_JSON(self,
   """Return a list of registrations on course with education_id for student 
   with student_id. JSON format."""
   response = self.get_query(
-    "/studiedeltagande/tillfallesdeltagande"
+    "/studiedeltagande/internal/tillfallesdeltagande"
       f"/utbildning/{course_education_id}/student/{student_id}",
     "application/vnd.ladok-studiedeltagande+json")
   
-  if response.status_code == 200:
+  if response.status_code == requests.codes.ok:
     return response.json()["Tillfallesdeltaganden"]
-  return None
+  raise Exception("can't get registrations for "
+                  f"student {student_id} on course {course_education_id}: "
+                  f"{response.text}")
 @
 
 We add the following test.
@@ -490,9 +495,10 @@ def course_rounds_JSON(self, course_instance_id):
   response = self.get_query(
     f"/resultat/internal/kurstillfalle/kursinstans/{course_instance_id}")
 
-  if response.status_code == 200:
+  if response.status_code == requests.codes.ok:
     return response.json()["Utbildningstillfalle"]
-  return None
+  raise Exception(f"can't list course round for course {course_instance_id}: "
+                  f"{response.text}")
 @
 
 We test this method as follows.
@@ -522,11 +528,12 @@ It requires the course instance ID.
 def course_instance_JSON(self, instance_id):
   """Returns course instance data for a course with instance ID instance_id"""
   response = self.get_query(
-    f"/resultat/utbildningsinstans/kursinstans/{instance_id}")
+    f"/resultat/internal/utbildningsinstans/kursinstans/{instance_id}")
 
-  if response.status_code == 200:
+  if response.status_code == requests.codes.ok:
     return response.json()
-  return None
+  raise Exception(f"can't get course instance data for {instance_id}: "
+                  f"{response.text}")
 @
 
 We add the following test.
@@ -661,13 +668,15 @@ def search_reported_results_JSON(self, course_round_id, component_instance_id):
   }
 
   response = self.put_query(
-    '/resultat/studieresultat/rapportera/utbildningsinstans/' +
-      component_instance_id + '/sok',
+    "/resultat/internal/studieresultat/rapportera"
+      f"/utbildningsinstans/{component_instance_id}/sok",
     put_data)
 
-  if response.status_code == 200:
+  if response.status_code == requests.codes.ok:
     return response.json()["Resultat"]
-  return None
+  raise Exception(f"failed searching for results for "
+                  f"course {course_round_id}, "
+                  f"component {component_instance_id}: {response.text}")
 @
 
 We write the following test.
@@ -705,12 +714,14 @@ def search_course_results_JSON(self, course_round_id, component_instance_id):
   }
 
   response = self.put_query(
-    "/resultat/resultatuppfoljning/resultatuppfoljning/sok",
+    "/resultat/internal/resultatuppfoljning/resultatuppfoljning/sok",
     put_data)
 
-  if response.status_code == 200:
+  if response.status_code == requests.codes.ok:
     return response.json()["Resultat"]
-  return None
+  raise Exception("can't get course results for "
+                 f"course {course_round_id}, "
+                 f"component {component_instance_id}: {response.text}")
 @
 
 We test this by the following.
@@ -1233,9 +1244,11 @@ def participants_JSON(self, course_round_id, /, **kwargs):
     '/studiedeltagande/internal/deltagare/kurstillfalle',
     put_data,
     "application/vnd.ladok-studiedeltagande+json")
-  if response.status_code == 200:
+  if response.status_code == requests.codes.ok:
     return response.json()["Resultat"]
-  return None
+  raise Exception(f"can't get participants "
+                  f"with course_round_id = {course_round_id}: "
+                  f"{response.text}")
 @
 
 We test this as follows.
