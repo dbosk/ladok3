@@ -177,11 +177,13 @@ To request the grading scales from LADOK, we request all of them and return a
 list of JSON data objects containing the grading scale data.
 <<LadokSession data methods>>=
 def grade_scales_JSON(self):
-  response = self.get_query('/resultat/grunddata/betygsskala')
+  response = self.get_query(
+    "/kataloginformation/internal/grunddata/betygsskala",
+    content_type="application/vnd.ladok-kataloginformation+json;charset=UTF-8")
 
-  if response.status_code == 200:
+  if response.status_code == requests.codes.ok:
     return response.json()["Betygsskala"]
-  return None
+  raise Exception(f"can't fetch grading scales: {response.text}")
 @
 
 We add the following test.
@@ -231,19 +233,24 @@ def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
 
   response = self.session.get(
     url=self.base_gui_proxy_url +
-      '/studentinformation/student/filtrera?limit=2&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC&orderby=PERSONNUMMER_ASC&page=1&personnummer='
-        + person_nr + '&skipCount=false&sprakkod='+lang,
+      "/studentinformation/internal/student/filtrera"
+      f"?personnummer={person_nr}"
+      "&limit=2&page=1"
+      "&orderby=EFTERNAMN_ASC&orderby=FORNAMN_ASC"
+      "&orderby=PERSONNUMMER_ASC",
     headers=self.headers)
   
   if response.status_code == requests.codes.ok:
     record = response.json()["Resultat"]
   else:
     raise ValueError(
-      f"can't find student based on personnummer {person_nr_raw}")
+      f"can't find student based on personnummer {person_nr}: "
+      f"bad response: {response.text}")
 
   if len(record) != 1:
     raise ValueError(
-      f"can't find student based on personnummer {person_nr_raw}")
+      f"can't find student based on personnummer {person_nr}: "
+      f"not a unique match: {record}")
 
   return record[0]
 @
@@ -265,9 +272,10 @@ directly.
 #
 # RETURNERAR en dictionary med för- och efternamn and more
 def get_student_data_by_uid_JSON(self, uid):
-  response = self.session.get(
-    url = self.base_gui_proxy_url +
-      '/studentinformation/student/'+uid, headers = self.headers)
+  response = self.get_query(
+    f"/studentinformation/internal/student/{uid}",
+    content_type="application/vnd.ladok-studentinformation+json;charset=UTF-8")
+
   if response.status_code == requests.codes.ok:
     return response.json()
   raise AttributeError(f"can't fetch student attributes by LADOK ID {uid}")
@@ -437,7 +445,7 @@ def search_course_rounds_JSON(self, /, **kwargs):
   """Query LADOK about course rounds, possible keys:
   code, round_code, name
   """
-  url = self.base_gui_proxy_url + "/resultat/kurstillfalle/filtrera?"
+  url = "/resultat/internal/kurstillfalle/filtrera?"
 
   if "code" in kwargs:
     url += f"kurskod={kwargs['code']}&"
@@ -446,11 +454,9 @@ def search_course_rounds_JSON(self, /, **kwargs):
   if "round_code" in kwargs:
     url += f"tillfalleskod={kwargs['round_code']}&"
 
-  url += "page=1&limit=400&skipCount=false&sprakkod=sv"
+  url += "page=1&limit=400&sprakkod=sv"
 
-  response = self.session.get(
-    url=url,
-    headers=self.headers)
+  response = self.get_query(url)
 
   if response.status_code == requests.codes.ok:
     return response.json()["Resultat"]
@@ -482,7 +488,7 @@ This method fetches all course rounds that uses the given course instance.
 def course_rounds_JSON(self, course_instance_id):
   """Requires course instance ID"""
   response = self.get_query(
-    f"/resultat/kurstillfalle/kursinstans/{course_instance_id}")
+    f"/resultat/internal/kurstillfalle/kursinstans/{course_instance_id}")
 
   if response.status_code == 200:
     return response.json()["Utbildningstillfalle"]
@@ -554,7 +560,7 @@ unlike the method in the next section.
 <<LadokSession data methods>>=
 def course_round_components_JSON(self, round_id):
   response = self.put_query(
-    "/resultat/kurstillfalle/moment",
+    "/resultat/internal/kurstillfalle/moment",
     {"Identitet": [round_id]}
   )
 
@@ -947,7 +953,7 @@ organization).
 def result_reporters_JSON(self, organization_id):
   """Returns a list of who can report results in an organization"""
   response = self.get_query(
-    "/kataloginformation/anvandare/organisation/" +
+    "/kataloginformation/internal/anvandare/organisation/" +
       organization_id + "/resultatrapportorer",
     "application/vnd.ladok-kataloginformation+json"
   )
@@ -982,7 +988,7 @@ We can use the following API call to get information about the logged-in user.
 <<LadokSession data methods>>=
 def user_info_JSON(self):
   response = self.get_query(
-    "/kataloginformation/anvandare/anvandarinformation",
+    "/kataloginformation/internal/anvandare/anvandarinformation",
     "application/vnd.ladok-kataloginformation+json"
   )
 
