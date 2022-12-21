@@ -670,7 +670,7 @@ class GradeScale(LadokData):
       self.__code = kwargs.pop("Kod")
       self.__name = kwargs.pop("Benamning")["sv"]
       self.__grades = [Grade(**grade_data)
-                        for grade_data in kwargs.pop("Betygsgrad")]
+                        for grade_data in kwargs.pop("Betygsgrader")]
 
   @property
   def id(self):

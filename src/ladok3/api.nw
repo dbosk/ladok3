@@ -198,7 +198,7 @@ The output looks like this.
 \begin{pycode}[apitest]
 print(r"\begin{minted}{JSON}")
 print(json.dumps(
-  ladok3.clean_data(ladok.grade_scales_JSON()[0]),
+  ladok3.clean_data(ladok.grade_scales_JSON()),
   indent=2, ensure_ascii=False))
 print(r"\end{minted}")
 \end{pycode}
