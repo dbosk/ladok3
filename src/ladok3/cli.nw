@@ -27,12 +27,15 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import getpass
 import json
 import keyring
-import ladok3.kth
+import ladok3
 import os
 import pickle
 import re
 import sys
 import traceback
+import weblogin
+import weblogin.ladok
+import weblogin.seamlessaccess as sa
 
 <<modules>>
 
@@ -124,22 +127,35 @@ be passed to the subcommand:
 \begin{enumerate}
 \item The first one is to read the user's credentials (from the keyring, 
 environment or configuration) and create the [[ls]] object by instantiating the 
-[[LadokSession]] class (technically the [[ladok3.kth.LadokSession]] class).
+[[LadokSession]] class.
 \item Read a pickled [[LadokSession]] object from file.
 \end{enumerate}
 The second option allows us to save time by not having to reestablish an 
 authenticated session to LADOK.
-The authentication step takes much more time that individual LADOK requests.
+The authentication step takes much more time than individual LADOK requests.
+
+We want to handle authentication for all universities.
+This means that we must keep track of two things, the institution and the 
+user's credentials\footnote{%
+  Which is usually a username and a password.
+} at that institution.
+When we create the LADOK session object, we must supply those credentials to 
+the [[weblogin.ladok.SSOlogin]] login handler.
 
 This leads to the following approach.
+[[LADOK_INST]] is simply a string identifying the institution at 
+SeamlessAccess.org (see documentation of [[weblogin]]) and [[LADOK_VARS]] is a 
+dictionary where the keys map to variable names and the values should be 
+substituted in the login forms (see documentation of [[weblogin]]).
+We use [[LADOK_VARS]] as credentials, since it contains the credentials.
 <<create or restore the LadokSession ls>>=
-LADOK_USER, LADOK_PASS = load_credentials(args.config_file)
-ls = restore_ladok_session([LADOK_USER, LADOK_PASS])
+LADOK_INST, LADOK_VARS = load_credentials(args.config_file)
+ls = restore_ladok_session(LADOK_VARS)
 if not ls:
-  ls = ladok3.kth.LadokSession(LADOK_USER, LADOK_PASS)
-@
+  ls = ladok3.LadokSession([weblogin.ladok.SSOlogin(LADOK_INST,
+                                                    LADOK_VARS)])
 <<save LadokSession ls>>=
-store_ladok_session(ls, [LADOK_USER, LADOK_PASS])
+store_ladok_session(ls, LADOK_VARS)
 @
 
 
@@ -148,7 +164,8 @@ store_ladok_session(ls, [LADOK_USER, LADOK_PASS])
 Now we need to implement the [[store_ladok_session]] and 
 [[restore_ladok_session]] functions.
 We will use [[pickle]] for storing and restoring the object.
-But we also want to encrypt the stored object.
+But we also want to encrypt the stored object using authenticated encryption.
+That way, we know that we can trust the pickle (which is otherwise a problem).
 <<functions>>=
 def store_ladok_session(ls, credentials):
   if not os.path.isdir(dirs.user_cache_dir):
@@ -189,7 +206,7 @@ Then we do the encryption/decryption.
 
 fernet_protocol = Fernet(key)
 encrypted_ls = fernet_protocol.encrypt(pickled_ls)
-@
+
 <<decrypt encrypted ls>>=
 <<set up kdf and derive key from credentials>>
 
@@ -202,15 +219,32 @@ except Exception as err:
 @
 
 To actually do the key derivation, we use the PBKDF2 based on HMAC.
-We use the LADOK username as salt and the password as password.
+We use the supplied credentials for salt and password.
 <<set up kdf and derive key from credentials>>=
+if len(credentials) < 2:
+  raise ValueError(f"|credentials| < 2 is too small")
+
+if isinstance(credentials, dict):
+  try:
+    salt = credentials["username"]
+    passwd = credentials["password"]
+  except KeyError:
+    credentials = list(credentials.values())
+    <<get salt and passwd from credentials list>>
+else:
+  <<get salt and passwd from credentials list>>
+
 kdf = PBKDF2HMAC(
   algorithm=hashes.SHA256(),
   length=32,
-  salt=credentials[0].encode("utf-8"),
+  salt=salt.encode("utf-8"),
   iterations=100000
 )
-key = base64.urlsafe_b64encode(kdf.derive(credentials[1].encode("utf-8")))
+key = base64.urlsafe_b64encode(kdf.derive(passwd.encode("utf-8")))
+
+<<get salt and passwd from credentials list>>=
+salt = credentials[0]
+passwd = credentials[1]
 @
 
 
@@ -241,31 +275,39 @@ In particular, we need the user to be able to change the credentials in the
 system keyring, \eg in case the user wrote the wrong password.
 The rest we don't need to do much about, merely point out the possibilities to 
 the user.
-<<add subparsers to subp>>=
-login_parser = subp.add_parser("login",
-  help="Manage login credentials",
-  description="""
-Manages the user's LADOK login credentials (only credentials at KTH supported 
-right now). There are three ways to supply the login credentials, in order of 
-priority:
+<<login description>>=
+Manages the user's LADOK login credentials. There are three ways to supply the 
+login credentials, in order of priority:
 
 1) Through the system keyring: Just run `ladok login` and you'll be asked to 
    enter the credentials and they will be stored in the keyring.
 
-2) Through the environment: Just set the environment variables LADOK_USER and 
-   LADOK_PASS.
+2) Through the environment: Just set the environment variables
+
+  a) LADOK_INST, the name of the institution, e.g. KTH Royal Institute of 
+  Technology;
+  b) LADOK_VARS, a colon-separated list of environment variables, similarly to 
+  what's done in `ladok login` --- most don't need this, but can rather set
+  LADOK_USER (the username, e.g. dbosk@ug.kth.se) and
+  LADOK_PASS (the password) instead.
 
 3) Through the configuration file: Just write
 
-      {
+      {{
+        "institution": "the name of the university"
         "username": "the actual username",
         "password": "the actual password"
-      }
+      }}
 
-   to the file """ + dirs.user_config_dir + """/config.json (default, or use 
-   the -f option).
-"""
-)
+   to the file {dirs.user_config_dir}/config.json (default, or use the -f 
+   option). (The keys 'username' and 'password' can be renamed to correspond to 
+   the necessary values if the university login system uses other names.)
+
+<<add subparsers to subp>>=
+login_parser = subp.add_parser("login",
+  help="Manage login credentials",
+  description=f"""<<login description>>""")
+
 login_parser.set_defaults(func=update_credentials_in_keyring)
 @
 
@@ -273,18 +315,121 @@ login_parser.set_defaults(func=update_credentials_in_keyring)
 
 As stated, if the subcommand is run, we should update the credentials in the 
 keyring.
+<<login prompt>>=
+This login process is exactly the same as when you log in using
+the web browser. You need three things:
+
+  1) The name of your institution, so that it can be uniquely identified.
+
+  2) Your username at your institution. This is sometimes a username (such as 
+     `dbosk`) or an email address (such as `dbosk@kth.se`). However, 
+     occasionally, you type in the username in the web browser and it is 
+     actually complemented: for instance, at KTH, I type in my username `dbosk` 
+     and then on the password screen, I can see it has been complemented to 
+     `dbosk@ug.kth.se`. Be observant about that.
+
+@
+
 If we run this subcommand, also want to clear the cache; otherwise, the cache 
 will keep the outdated credentials.
 <<functions>>=
 def update_credentials_in_keyring(ls, args):
-  user = input("LADOK username: ")
-  passwd = getpass.getpass("LADOK password: [input is hidden]")
+  print("""<<login prompt>>""")
+  while True:
+    institution = input("Institution: ")
+    <<check that institution uniquely identifies on SeamlessAccess>>
 
-  keyring.set_password("ladok3", "username", user)
-  keyring.set_password("ladok3", "password", passwd)
+  vars = {
+    "username": input("Institution username: "),
+    "password": getpass.getpass("Institution password: [input is hidden]")
+  }
+  <<try to log into LADOK to verify credentials or update vars>>
+
+  keyring.set_password("ladok3", "institution", institution)
+  keyring.set_password("ladok3", "vars", ";".join(vars.keys()))
+  for key, value in vars:
+    keyring.set_password("ladok3", key, value)
 
   clear_cache(ls, args)
 @
+
+Now, we want to check that the institution is uniquely identified at 
+SeamlessAccess using the name provided by the user.
+We do this by looking up the name and asking the user to change if not a unique 
+match.
+<<check that institution uniquely identifies on SeamlessAccess>>=
+matches = sa.find_entity_data_by_name(institution)
+
+if not matches:
+  print("No match, try again.")
+  continue
+
+if len(matches) > 1:
+  print("More than one match. Which one?")
+  for match in matches:
+    print(f"- {match['title']}")
+  continue
+
+match = matches[0]
+
+print(f"Matched uniquely, "
+      f"using {match['title']} "
+      f"with domain {match['domain']}.")
+break
+@
+
+Once we're done with the institution, we can try to log in with the 
+credentials.
+We do this by creating a LADOK session object and try if we can successfully 
+make an API call.
+If there is an authentication error, we'll get a 
+[[weblogin.AuthenticationError]] exception that can be used by the user to 
+debug and adjust the variable names needed by their institution's login 
+service.
+<<try to log into LADOK to verify credentials or update vars>>=
+while True:
+  temp_ls = ladok.LadokSession([
+      weblogin.ladok.SSOlogin(institution, vars)
+    ])
+
+  try:
+    temp_ls.user_info_JSON()
+  except weblogin.AuthenticationError as err:
+    <<adjust vars using variables from err>>
+  else:
+    break
+@
+
+An authentication error can be due to several things:
+\begin{enumerate}
+\item the user entered the username or (more likely) the password incorrectly,
+\item the user's institution uses different names for their form fields than 
+[[username]] and [[password]].
+\end{enumerate}
+In both cases, we'll ask the user to review the variables and their contents, 
+and adjust if necessary.
+<<user instructions to adapt variable names and values>>=
+Some part of the authentication went wrong. Either you typed your username or 
+password incorrectly, or your institution requires some adjustments. We'll 
+guide you through it.
+
+We will show you some variable names and values and give you the opportunity to 
+change the values according to the name of the variable. For instance, we 
+assume that the institution call the variable for the username `username`, but 
+they might call it `användarnamn` instead. You'll have to figure this out.
+
+Note: Your password will be visible on screen during this process.
+@
+<<adjust vars using variables from err>>=
+print("""<<user instructions to adapt variable names and values>>""")
+input("\nPress return to continue.\n")
+
+for key, value in err.variables:
+  new_val = input(f"{key} = '{value}' [enter new value, blank to keep] ")
+  if new_val:
+    vars[key] = new_val
+@
+
 
 \subsection{Loading user credentials}
 
@@ -292,7 +437,8 @@ The [[load_credentials]] function will try to get the user's LADOK credentials.
 There are three locations:
 \begin{enumerate}
 \item the system keyring,
-\item the environment variables [[LADOK_USER]] and [[LADOK_PASS]],
+\item the environment variables: [[LADOK_INST]], [[LADOK_USER]] and 
+[[LADOK_PASS]],
 \item the configuration file.
 \end{enumerate}
 They are given the priority they are listed in above.
@@ -303,29 +449,100 @@ If all fail, the function will return [[None]] for both.
 <<functions>>=
 def load_credentials(filename="config.json"):
   """Load credentials from environment or file named filename"""
-  try:
-    user = keyring.get_password("ladok3", "username")
-    passwd = keyring.get_password("ladok3", "password")
-    if user and passwd:
-      return user, passwd
-  except:
-    pass
 
-  try:
-    user = os.environ["LADOK_USER"]
-    passwd = os.environ["LADOK_PASS"]
-    return user, passwd
-  except:
-    pass
-
-  try:
-    with open(filename) as conf_file:
-      config = json.load(conf_file)
-    return config["username"], config["password"]
-  except:
-    pass
+  <<fetch vars from keyring>>
+  <<fetch username and password from keyring>>
+  <<fetch institution from environment>>
+  <<fetch username and password from environment>>
+  <<fetch vars from environment>>
+  <<fetch vars from config file>>
 
   return None, None
+@
+
+First we try the newest format.
+We try to fetch the institution and vars from the keyring.
+<<fetch vars from keyring>>=
+try:
+  institution = keyring.get_password("ladok3", "institution")
+  vars_keys = keyring.get_password("ladok3", "vars")
+
+  vars = {}
+  for key in vars_keys.split(";"):
+    vars[key] = keyring.get_password("ladok3", key)
+
+  if institution and vars:
+    return institution, vars
+except:
+  pass
+@
+
+However, if that fails, we fall back on the previous format, that only 
+supported KTH.
+<<fetch username and password from keyring>>=
+try:
+  institution = "KTH Royal Institute of Technology"
+  vars = {
+    "username": keyring.get_password("ladok3", "username"),
+    "password": keyring.get_password("ladok3", "password")
+  }
+  if vars:
+    return institution, vars
+except:
+  pass
+@
+
+Next in priority is to read from the environment.
+We try to read the institution.
+If that fails, we assume we're using the old format that only supported KTH.
+<<fetch institution from environment>>=
+try:
+  institution = os.environ["LADOK_INST"]
+except:
+  institution = "KTH Royal Institute of Technology"
+
+<<fetch username and password from environment>>=
+try:
+  vars = {
+    "username": os.environ["LADOK_USER"],
+    "password": os.environ["LADOK_PASS"]
+  }
+  if institution and vars:
+    return institution, vars
+except:
+  pass
+@
+
+If we couldn't read the old [[LADOK_USER]] and [[LADOK_PASS]], we try to read 
+the [[vars]] from the environment using [[LADOK_VARS]].
+<<fetch vars from environment>>=
+try:
+  vars_keys = os.environ["LADOK_VARS"]
+
+  vars = {}
+  for key in vars_keys.split(":"):
+    vars[key] = os.environ[key]
+
+  if institution and vars:
+    return institution, vars
+except:
+  pass
+@
+
+If none of the above worked, the last resort is to try to read the 
+configuration file.
+We pop the institution from the configuration file (a dictionary), because then 
+the remaining entries will be used as [[vars]].
+<<fetch vars from config file>>=
+try:
+  with open(filename) as conf_file:
+    config = json.load(conf_file)
+
+  institution = config.pop("institution",
+                            "KTH Royal Institute of Technology")
+  return institution, config
+except:
+  pass
 @
 
 
