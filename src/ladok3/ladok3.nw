@@ -119,8 +119,8 @@ KTH needs the LADOK SSO handler (specifying KTH), the KTH SAML server handler
 <<test functions>>=
 ladok = ladok3.LadokSession(
         "KTH Royal Institute of Technology",
-        vars={"username": os.environ["KTH_LOGIN"],
-              "password": os.environ["KTH_PASSWD"]},
+        vars={"username": os.environ["LADOK_USER"],
+              "password": os.environ["LADOK_PASS"]},
         test_environment=True) # for experiments
 
 def test_LadokSession():
@@ -130,8 +130,8 @@ def test_LadokSession():
           "KTH Royal Institute of Technology",
           autologin_handlers = [
             weblogin.kth.SAMLlogin(),
-            weblogin.kth.UGlogin(os.environ["KTH_LOGIN"],
-                                 os.environ["KTH_PASSWD"])
+            weblogin.kth.UGlogin(os.environ["LADOK_USER"],
+                                 os.environ["LADOK_PASS"])
           ],
           test_environment=True) # for experiments
 
@@ -602,8 +602,8 @@ import os
 
 ladok = ladok3.LadokSession(
           "KTH Royal Institute of Technology",
-          vars={"username": os.environ["KTH_LOGIN"],
-                "password": os.environ["KTH_PASSWD"]},
+          vars={"username": os.environ["LADOK_USER"],
+                "password": os.environ["LADOK_PASS"]},
           test_environment=True)
 
 print(r"\begin{minted}{JSON}")
@@ -970,8 +970,8 @@ import os
 
 ladok = ladok3.LadokSession(
           "KTH Royal Institute of Technology",
-          vars={"username": os.environ["KTH_LOGIN"],
-                "password": os.environ["KTH_PASSWD"]},
+          vars={"username": os.environ["LADOK_USER"],
+                "password": os.environ["LADOK_PASS"]},
           test_environment=True)
 
 print(r"\begin{minted}{JSON}")
@@ -1118,8 +1118,8 @@ import os
 
 ladok = ladok3.LadokSession(
           "KTH Royal Institute of Technology",
-          vars={"username": os.environ["KTH_LOGIN"],
-                "password": os.environ["KTH_PASSWD"]},
+          vars={"username": os.environ["LADOK_USER"],
+                "password": os.environ["LADOK_PASS"]},
           test_environment=True)
 
 print(r"\begin{minted}{JSON}")
