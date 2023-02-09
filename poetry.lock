@@ -392,7 +392,7 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 
 [[package]]
 name = "weblogin"
-version = "1.2"
+version = "1.4"
 description = "Automates logging into web UIs to access unofficial APIs"
 category = "main"
 optional = false
@@ -417,7 +417,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "flake8 
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "4ab5e3797720c73d1600a7b3e81868145aac9009dfe860965aed21799c795195"
+content-hash = "06b3c82ec07925ac91ef7c23c7f7b6523636bb6f7c6b79fb8f877ad147b18b2f"
 
 [metadata.files]
 appdirs = [

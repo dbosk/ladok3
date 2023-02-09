@@ -158,7 +158,9 @@ if not vars:
 if not autologin_handlers:
   autologin_handlers = []
 
-autologin_handlers.insert(0, weblogin.ladok.SSOlogin(institution, vars))
+autologin_handlers.insert(0,
+            weblogin.ladok.SSOlogin(institution, vars=vars,
+                                    test_environment=test_environment))
 
 self.__session = weblogin.AutologinSession(autologin_handlers)
 @
