@@ -19,7 +19,7 @@ import ladok3
 import os
 
 ladok = ladok3.LadokSession(
-            "KTH Royal Institute of Technology",
+            os.environ["LADOK_INST"],
             vars={"username": os.environ["LADOK_USER"],
                   "password": os.environ["LADOK_PASS"]},
             test_environment=True) # for experiments
@@ -44,7 +44,7 @@ import ladok3
 import os
 
 ladok = ladok3.LadokSession(
-            "KTH Royal Institute of Technology",
+            os.environ["LADOK_INST"],
             vars={"username": os.environ["LADOK_USER"],
                   "password": os.environ["LADOK_PASS"]},
             test_environment=True) # for experiments
