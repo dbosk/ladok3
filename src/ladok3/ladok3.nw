@@ -234,7 +234,7 @@ def restore(json_dict):
 
   <<check type and return such object>>
 
-  raise TypeError(f"cannot restor type {json_dict.type}, not a known type")
+  raise TypeError(f"cannot restore type {json_dict.type}, not a known type")
 @
 
 For completeness, we also provide [[LadokDataEncoder]], a subclass of 
