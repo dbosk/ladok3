@@ -4,7 +4,6 @@ CLI=	cli.nw data.nw report.nw student.nw
 .PHONY: all
 all: ${LIB:.nw=.tex} __init__.py
 all: ${CLI:.nw=.tex} ${CLI:.nw=.py} ladok.bash
-all: kth.py
 
 __init__.py: ladok3.py
 	mv $^ $@
@@ -21,7 +20,6 @@ clean:
 	${RM} ${LIB:.nw=.tex}
 	${RM} ${CLI:.nw=.tex}
 	${RM} ${CLI:.nw=.py} ladok.bash
-	${RM} kth.py kth.tex
 
 .PHONY: distclean
 distclean:

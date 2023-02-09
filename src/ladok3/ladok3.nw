@@ -17,6 +17,7 @@ import operator
 import re
 import requests
 import urllib.parse
+import weblogin.ladok
 
 <<classes>>
 <<functions>>
@@ -28,8 +29,8 @@ These illustrate how to the [[ladok3]] module and provide testing using
 <<test ladok3.py>>=
 import json
 import ladok3
-import ladok3.kth
 import os
+import weblogin.kth
 
 <<test functions>>
 @
@@ -67,59 +68,37 @@ We want to provide the attribute [[session]] which is an active and logged-in
 session for querying LADOK.
 We must thus handle authentication to LADOK.
 The authentication for using LADOK is performed using a university SSO system.
-The [[login]] method will set up a [[session]] object which is logged in.
-The [[login]] method will in turn use the [[saml_login]] method at the 
-suitable place in the code to actually log in to LADOK by authenticating to the 
-appropriate university.
-We can provide the interactions with LADOK, but not with the SSO system.
-So that one is left to implement by a university-specific child class.
-We provide [[ladok3.kth.LadokSession]] as an example.
-
-We let the [[session]] attribute be a property, this way we can ensure that 
-there exists an active session whenever it's used.
-This also means that we don't log in until we actually need to use the 
-[[session]] attribute.
-We also automatically reauthenticate whenever the session has timed out.
+We will use the [[weblogin]] package\footnote{%
+  URL: \url{https://github.com/dbosk/weblogin}
+} to handle this.
+This will guarantee that we're always signed in.
 <<classes>>=
 class LadokSession:
   """This is an interface for reading and writing data from and to LADOK."""
-  def __init__(self, test_environment=False):
-    """Log in and fetch base data"""
+  def __init__(self, institution, vars=None, autologin_handlers=None,
+               test_environment=False):
+    """
+    Creates a session with LADOK.
+    - `institution` is the name (str) of the university that will give a unique 
+      match when searching SeamlessAccess.org (see weblogin.ladok.SSOlogin).
+    - `vars` is a dictionary that is passed to weblogin.ladok.SSOlogin to 
+      supply the login credentials. Usually contains keys 'username' and 
+      'password', see weblogin.ladok.SSOlogin documentation for details.
+    - `autologin_handlers` is a list of weblogin.AutologinHandler objects 
+      specific to the institution. Usually one for the SAML handler and one for 
+      the actual login server. (For KTH it's weblogin.kth.SAMLlogin and 
+      weblogin.kth.UGlogin.) Default value is None, only the 
+      `weblogin.ladok.SSOlogin` handler will be used.
+    - `test_environment` specifies whether we should use LADOK's test 
+      environment instead of the production environment.
+    """
     self.__session = None
-    self.__login_time = None
+    <<construct the session object from the autologin handlers>>
     <<LadokSession constructor body>>
-
-  def login(self):
-    """Log in to LADOK"""
-    self.__login_time = datetime.datetime.now()
-    try:
-      <<log in to LADOK>>
-    except Exception as err:
-      self.__login_time = None
-      raise err
-
-  def saml_login(self, url):
-    """Perform authentication to university SSO"""
-    raise NotImplementedError()
-
-  def logged_in(self):
-    """Check if we have an active, logged-in session"""
-    if self.__login_time:
-      timeout = datetime.timedelta(minutes=15)
-      return datetime.datetime.now() - self.__login_time < timeout
-    return False
-
-  def logout(self):
-    """Close the session"""
-    self.__login_time = None
-    <<log out from LADOK>>
 
   @property
   def session(self):
     """A guaranteed to be active and logged in requests session to LADOK"""
-    if not self.logged_in():
-      self.login()
-    self.__login_time = datetime.datetime.now()
     return self.__session
 
   @property
@@ -134,23 +113,58 @@ class LadokSession:
   <<LadokSession data methods>>
 @
 
-Note that it's important to set [[login_time]] as soon as we start logging in 
-(first thing in the [[login]] method), because the login function will actually 
-use the [[session]] property.
-
-The [[saml_login]] method must be implemented by a child class.
-See for example \cref{KTHlogin}, which covers how to log in at KTH.
-
 Now let's test this class.
 We will use the KTH version to log in.
+KTH needs the LADOK SSO handler (specifying KTH), the KTH SAML server handler 
+(to handle the SSO request) and the KTH UG server (the actual login server).
 <<test functions>>=
-ladok = ladok3.kth.LadokSession(
-        os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+ladok = ladok3.LadokSession(
+        os.environ["LADOK_INST"],
+        vars={"username": os.environ["LADOK_USER"],
+              "password": os.environ["LADOK_PASS"]},
         test_environment=True) # for experiments
 
-def test_LadokSession():
-  assert ladok.session is not None
+def test_LadokSession_vars():
+  assert ladok.user_info_JSON()
+
+def test_LadokSession_autologin_handlers():
+  ladok_handlers = ladok3.LadokSession(
+          "KTH Royal Institute of Technology",
+          autologin_handlers = [
+            weblogin.kth.SAMLlogin(),
+            weblogin.kth.UGlogin(os.environ["KTH_LOGIN"],
+                                 os.environ["KTH_PASSWD"])
+          ],
+          test_environment=True) # for experiments
+
+  assert ladok_handlers.user_info_JSON()
 @
+
+
+\subsection{Construct the session using [[weblogin]]}
+
+To construct the session, we simply construct a [[weblogin.AutologinSession]] 
+object.
+This one requires a list of [[weblogin.AutologinHandler]] objects.
+
+We simply pass the institution to the constructor of the 
+[[weblogin.ladok.SSOlogin]] class.
+We add that to the list of autologin handlers supplied by the user.
+Due to the internal workings of [[weblogin.AutologinSession]], we add it first 
+as a, probably negligible, optimization.
+<<construct the session object from the autologin handlers>>=
+if not vars:
+  vars = {}
+if not autologin_handlers:
+  autologin_handlers = []
+
+autologin_handlers.insert(0,
+            weblogin.ladok.SSOlogin(institution, vars=vars,
+                                    test_environment=test_environment))
+
+self.__session = weblogin.AutologinSession(autologin_handlers)
+@
+
 
 \subsection{Data about the session}
 
@@ -182,65 +196,8 @@ application/vnd.ladok-uppfoljning+json, application/vnd.ladok-extra+json, \
 application/json, text/plain' }
 @
 
-\subsection{Signing in to LADOK}
-
-The aim of the [[self.login()]] method is to set up the [[self.session]] object 
-which will be used for requests to LADOK.
-What we do here is to go through the same steps as a user would do with the web 
-browser\footnote{%
-  This neat trick is due to Alexander Baltatzis.
-}.
-<<log in to LADOK>>=
-self.session = requests.session()
-<<get shibboleth url>>
-response = self.saml_login(url)
-<<check SAML login response>>
-@
-
-We let [[self.session]] be our (HTTP) session to LADOK.
-The login functions set this up.
-<<get shibboleth url>>=
-response = self.session.get(url = self.base_gui_url+'/loggain')
-response = self.session.get(url = self.base_gui_url+'/shiblogin')
-        
-shibstate = re.search('return=(.*?)(&|$)', response.url).group(1)
-url = urllib.parse.unquote(shibstate)
-@
-
-Note that this URL is independent of the university chosen, which means we can 
-simply authenticate to the university's system by passing the URL to the 
-[[saml_login]] method for the university that we're interested in.
-See \cref{KTHlogin} for an example.
-
-\subsubsection{Check that login worked}
-
-When we have [[relay_state]] and [[saml_response]] from the SSO system, we can 
-post them back to LADOK.
-<<check SAML login response>>=
-if 'Din användare finns inte i Ladok' in response.text:
-  raise Exception('Signed in successfully, but not as a teacher.')
-@
 
 
-\subsection{Signing out of LADOK}
-
-We might also want to close the session\footnote{%
-  This code is a slight modification of the code provided by Maguire.
-}.
-<<log out from LADOK>>=
-def logout(self):
-  response = self.session.get(
-    url=self.base_gui_proxy_url + '/logout',
-    headers=self.headers)
-
-  if response.status_code == 200:
-    self.session.close()
-    self.session = None
-  else:
-    raise Exception("Failed to log out of LADOK.")
-@
-
-       
 \section{The [[LadokSession]] data methods}\label{LadokSession-data-methods}
 
 The data methods are essentially factories for various objects mapping to data 
@@ -644,11 +601,13 @@ it on [[LadokData]].
 [[kwargs]] will have the following format:
 \begin{pycode}
 import json
-import ladok3.kth
+import ladok3
 import os
 
-ladok = ladok3.kth.LadokSession(
-          os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+ladok = ladok3.LadokSession(
+          os.environ["LADOK_INST"],
+          vars={"username": os.environ["LADOK_USER"],
+                "password": os.environ["LADOK_PASS"]},
           test_environment=True)
 
 print(r"\begin{minted}{JSON}")
@@ -1010,11 +969,13 @@ def search_course_rounds(self, /, **kwargs):
 The response consists of this JSON data:
 \begin{pycode}
 import json
-import ladok3.kth
+import ladok3
 import os
 
-ladok = ladok3.kth.LadokSession(
-          os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+ladok = ladok3.LadokSession(
+          os.environ["LADOK_INST"],
+          vars={"username": os.environ["LADOK_USER"],
+                "password": os.environ["LADOK_PASS"]},
           test_environment=True)
 
 print(r"\begin{minted}{JSON}")
@@ -1156,11 +1117,13 @@ data = self.ladok.course_round_components_JSON(self.round_id)
 @ Then data will be populated with the following values:
 \begin{pycode}
 import json
-import ladok3.kth
+import ladok3
 import os
 
-ladok = ladok3.kth.LadokSession(
-          os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
+ladok = ladok3.LadokSession(
+          os.environ["LADOK_INST"],
+          vars={"username": os.environ["LADOK_USER"],
+                "password": os.environ["LADOK_PASS"]},
           test_environment=True)
 
 print(r"\begin{minted}{JSON}")
