@@ -3486,11 +3486,10 @@ def examen_student_uid_JSON(self):
 ##
 
 def __get_xsrf_token(self):
-  cookies = self.session.cookies.get_dict()
-  return next(cookies[cookie] for cookie in cookies if cookie == 'XSRF-TOKEN')
+  return self.xsrf_token
 
 def get_xsrf_token(self):
-  return self.__get_xsrf_token()
+  return self.xsrf_token
 
 
 # returns None or a LADOK-formated date

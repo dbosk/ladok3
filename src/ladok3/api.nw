@@ -61,14 +61,58 @@ KTH_org_id = "2474f616-dc41-11e8-8cc1-eaeeb71b497f"
 
 \section{HTTP queries to LADOK}
 
+We will make all queries to LADOK over HTTP as they provide a REST API.
+This means that we must keep track of some headers and whether we use the test 
+or production system.
+
+\subsection{Data about the LADOK session}
+
+The data that we must keep track of is which URL to use, \ie which system to 
+access: the production system or test system.
+To run against the test environment, change the base URL to
+\begin{center}
+\url{https://www.test.ladok.se}\footnote{%
+  According to 
+  \url{https://ladok.se/drift-och-support/produktionsmiljo-for-nya-ladok}.
+}
+\end{center}
+<<LadokSession constructor body>>=
+self.base_url = "https://www.start.ladok.se" if not test_environment \
+  else "https://www.test.ladok.se"
+self.base_gui_url = self.base_url + "/gui"
+self.base_gui_proxy_url = self.base_gui_url + "/proxy"
+@
+
+We also set the headers that we will accept.
+<<LadokSession constructor body>>=
+self.headers = { 'Accept' : 'application/vnd.ladok-resultat+json, \
+application/vnd.ladok-kataloginformation+json, \
+application/vnd.ladok-studentinformation+json, \
+application/vnd.ladok-studiedeltagande+json, \
+application/vnd.ladok-utbildningsinformation+json, \
+application/vnd.ladok-examen+json, application/vnd.ladok-extintegration+json, \
+application/vnd.ladok-uppfoljning+json, application/vnd.ladok-extra+json, \
+application/json, text/plain' }
+@
+
+
+\subsection{GET, PUT and POST queries}
+
 To make things easier, we will add four methods: [[get_query]], [[put_query]], 
 [[post_query]] and [[del_query]], which are shortcuts to make GET, PUT, POST 
 and DEL queries to LADOK.
+
+We note that we must record the time of the last GET request to track the 
+freshness of the XSRF token.
+The other requests track that by the use of the XSRF token itself.
+We'll get back to this in \cref{XSRFtoken}.
 <<LadokSession data methods>>=
 def get_query(self, path, content_type="application/vnd.ladok-resultat+json"):
   """Returns GET query response for path on the LADOK server"""
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
+
+  <<record time of GET request>>
 
   return self.session.get(
     url=self.base_gui_proxy_url + path,
@@ -79,7 +123,7 @@ def put_query(self, path, put_data,
   """Returns PUT query response for path on the LADOK server"""
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
-  headers["X-XSRF-TOKEN"] = self.get_xsrf_token()
+  headers["X-XSRF-TOKEN"] = self.xsrf_token
   headers["Referer"] = self.base_gui_url
 
   return self.session.put(
@@ -92,7 +136,7 @@ def post_query(self, path, post_data,
   """Returns POST query response for path on the LADOK server"""
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
-  headers["X-XSRF-TOKEN"] = self.get_xsrf_token()
+  headers["X-XSRF-TOKEN"] = self.xsrf_token
   headers["Referer"] = self.base_gui_url
 
   return self.session.post(
@@ -103,11 +147,55 @@ def post_query(self, path, post_data,
 def del_query(self, path):
   """Returns GET query response for path on the LADOK server"""
   headers = self.headers.copy()
-  headers["X-XSRF-TOKEN"] = self.get_xsrf_token()
+  headers["X-XSRF-TOKEN"] = self.xsrf_token
 
   return self.session.delete(
     url=self.base_gui_proxy_url + path,
     headers=headers)
+@
+
+\subsection{The XSRF token}\label{XSRFtoken}
+
+We note that the PUT, POST and DEL queries require an XSRF token.
+They all get it through [[self.xsrf_token]].
+We provide a property for that.
+LADOK sets the XSRF token when we make our first request.
+If we haven't made any request, we don't have one.
+Also, if too long time passes between requests, the existing XSRF token will be 
+invalidated by LADOK.
+<<LadokSession data methods>>=
+@property
+def xsrf_token(self):
+  <<ensure the XSRF token is fresh>>
+
+  cookies = self.session.cookies.get_dict()
+  return cookies["XSRF-TOKEN"]
+@
+
+Now, we must ensure there is a fresh XSRF token.
+There are two cases:
+\begin{enumerate}
+\item
+If we don't have an XSRF token, this means that we must log in to get one.
+Since we use [[weblogin]], we'll simply perform a GET request, \ie one that 
+doesn't require an XSRF token.
+\item
+If we have one, it might be expired due to a timeout.
+In this case, we must log in again to get a new one.
+\end{enumerate}
+This means that we want to keep track of when the last request happened, so we 
+can determine if our XSRF token is fresh or not.
+<<LadokSession constructor body>>=
+self.__access_time = None
+self.__timeout = datetime.timedelta(minutes=15)
+
+<<record time of GET request>>=
+self.__access_time = datetime.datetime.now()
+
+<<ensure the XSRF token is fresh>>=
+if not self.__access_time \
+      or datetime.datetime.now()-self.__access_time > self.__timeout:
+  self.user_info_JSON() # trigger login
 @
 
 

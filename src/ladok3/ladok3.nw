@@ -101,11 +101,6 @@ class LadokSession:
     """A guaranteed to be active and logged in requests session to LADOK"""
     return self.__session
 
-  @property
-  def xsrf_token(self):
-    cookies = self.session.cookies.get_dict()
-    return next(cookies[cookie] for cookie in cookies if cookie == 'XSRF-TOKEN')
-
   @session.setter
   def session(self, new_value):
     self.__session = new_value
@@ -164,38 +159,6 @@ autologin_handlers.insert(0,
 
 self.__session = weblogin.AutologinSession(autologin_handlers)
 @
-
-
-\subsection{Data about the session}
-
-The data that we must keep track of is which URL to use, \ie which system to 
-access: the production system or test system.
-To run against the test environment, change the base URL to
-\begin{center}
-\url{https://www.test.ladok.se}\footnote{%
-  According to 
-  \url{https://ladok.se/drift-och-support/produktionsmiljo-for-nya-ladok}.
-}
-\end{center}
-<<LadokSession constructor body>>=
-self.base_url = "https://www.start.ladok.se" if not test_environment \
-  else "https://www.test.ladok.se"
-self.base_gui_url = self.base_url + "/gui"
-self.base_gui_proxy_url = self.base_gui_url + "/proxy"
-@
-
-We also set the headers that we will accept.
-<<LadokSession constructor body>>=
-self.headers = { 'Accept' : 'application/vnd.ladok-resultat+json, \
-application/vnd.ladok-kataloginformation+json, \
-application/vnd.ladok-studentinformation+json, \
-application/vnd.ladok-studiedeltagande+json, \
-application/vnd.ladok-utbildningsinformation+json, \
-application/vnd.ladok-examen+json, application/vnd.ladok-extintegration+json, \
-application/vnd.ladok-uppfoljning+json, application/vnd.ladok-extra+json, \
-application/json, text/plain' }
-@
-
 
 
 \section{The [[LadokSession]] data methods}\label{LadokSession-data-methods}
