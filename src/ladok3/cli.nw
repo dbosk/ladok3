@@ -371,9 +371,11 @@ if len(matches) > 1:
 
 match = matches[0]
 
-print(f"Matched uniquely, "
-      f"using {match['title']} "
-      f"with domain {match['domain']}.")
+print(f"Matched uniquely, using {match['title']}\n"
+      f"            with domain {match['domain']} and\n"
+      f"      unique identifier {match['id']}.")
+
+institution = match['id']
 break
 @
 
