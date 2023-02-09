@@ -112,7 +112,7 @@ def get_query(self, path, content_type="application/vnd.ladok-resultat+json"):
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
 
-  <<record time of GET request>>
+  <<record time of request>>
 
   return self.session.get(
     url=self.base_gui_proxy_url + path,
@@ -188,12 +188,18 @@ can determine if our XSRF token is fresh or not.
 <<LadokSession constructor body>>=
 self.__access_time = None
 self.__timeout = datetime.timedelta(minutes=15)
-<<record time of GET request>>=
+<<record time of request>>=
 self.__access_time = datetime.datetime.now()
+@ We note here that we assume that whenever the XSRF token is requested, a PUT, 
+POST or DEL request will soon follow.
+Hence, we can update the time of the last request whenever the XSRF token is 
+read.
 <<ensure the XSRF token is fresh>>=
 if not self.__access_time \
       or datetime.datetime.now()-self.__access_time > self.__timeout:
   self.user_info_JSON() # trigger login
+else:
+  <<record time of request>>
 @
 
 
