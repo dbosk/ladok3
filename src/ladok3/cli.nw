@@ -152,8 +152,7 @@ We use [[LADOK_VARS]] as credentials, since it contains the credentials.
 LADOK_INST, LADOK_VARS = load_credentials(args.config_file)
 ls = restore_ladok_session(LADOK_VARS)
 if not ls:
-  ls = ladok3.LadokSession([weblogin.ladok.SSOlogin(LADOK_INST,
-                                                    LADOK_VARS)])
+  ls = ladok3.LadokSession(LADOK_INST, vars=LADOK_VARS)
 <<save LadokSession ls>>=
 store_ladok_session(ls, LADOK_VARS)
 @
@@ -388,9 +387,7 @@ debug and adjust the variable names needed by their institution's login
 service.
 <<try to log into LADOK to verify credentials or update vars>>=
 while True:
-  temp_ls = ladok.LadokSession([
-      weblogin.ladok.SSOlogin(institution, vars)
-    ])
+  temp_ls = ladok3.LadokSession(institution, vars=vars)
 
   try:
     temp_ls.user_info_JSON()
