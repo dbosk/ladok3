@@ -188,10 +188,8 @@ can determine if our XSRF token is fresh or not.
 <<LadokSession constructor body>>=
 self.__access_time = None
 self.__timeout = datetime.timedelta(minutes=15)
-
 <<record time of GET request>>=
 self.__access_time = datetime.datetime.now()
-
 <<ensure the XSRF token is fresh>>=
 if not self.__access_time \
       or datetime.datetime.now()-self.__access_time > self.__timeout:
