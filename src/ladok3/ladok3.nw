@@ -30,6 +30,7 @@ These illustrate how to the [[ladok3]] module and provide testing using
 import json
 import ladok3
 import os
+import weblogin.kth
 
 <<test functions>>
 @
