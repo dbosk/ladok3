@@ -340,13 +340,13 @@ def update_credentials_in_keyring(ls, args):
 
   vars = {
     "username": input("Institution username: "),
-    "password": getpass.getpass("Institution password: [input is hidden]")
+    "password": getpass.getpass("Institution password: [input is hidden] ")
   }
   <<try to log into LADOK to verify credentials or update vars>>
 
   keyring.set_password("ladok3", "institution", institution)
   keyring.set_password("ladok3", "vars", ";".join(vars.keys()))
-  for key, value in vars:
+  for key, value in vars.items():
     keyring.set_password("ladok3", key, value)
 
   clear_cache(ls, args)
@@ -421,10 +421,10 @@ Note: Your password will be visible on screen during this process.
 print("""<<user instructions to adapt variable names and values>>""")
 input("\nPress return to continue.\n")
 
-for key, value in err.variables:
+for key, value in err.variables.items():
   new_val = input(f"{key} = '{value}' [enter new value, blank to keep] ")
   if new_val:
-    vars[key] = new_val
+    vars[key.casefold()] = new_val
 @
 
 
