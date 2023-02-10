@@ -305,7 +305,10 @@ login credentials, in order of priority:
 <<add subparsers to subp>>=
 login_parser = subp.add_parser("login",
   help="Manage login credentials",
-  description=f"""<<login description>>""")
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+  description=f"""
+<<login description>>
+""")
 
 login_parser.set_defaults(func=update_credentials_in_keyring)
 @
@@ -333,7 +336,9 @@ If we run this subcommand, also want to clear the cache; otherwise, the cache
 will keep the outdated credentials.
 <<functions>>=
 def update_credentials_in_keyring(ls, args):
-  print("""<<login prompt>>""")
+  print("""
+<<login prompt>>
+""")
   while True:
     institution = input("Institution: ")
     <<check that institution uniquely identifies on SeamlessAccess>>
@@ -394,9 +399,17 @@ while True:
   try:
     temp_ls.user_info_JSON()
   except weblogin.AuthenticationError as err:
-    <<adjust vars using variables from err>>
+    adjust_vars(vars, err.variables)
   else:
     break
+<<functions>>=
+def adjust_vars(vars, form_variables):
+  print("""
+<<user instructions to adapt variable names and values>>
+""")
+  input("\nPress return to continue.\n")
+
+  <<adjust vars using variables from err>>
 @
 
 An authentication error can be due to several things:
@@ -417,16 +430,23 @@ change the values according to the name of the variable. For instance, we
 assume that the institution call the variable for the username `username`, but 
 they might call it `användarnamn` instead. You'll have to figure this out.
 
+Remember, the problem might also be that you entered your username as 'dbosk', 
+when it should be 'dbosk@ug.kth.se' --- or something similar. Use your 
+institution's login page to figure this out.
+
 Note: Your password will be visible on screen during this process.
 @
-<<adjust vars using variables from err>>=
-print("""<<user instructions to adapt variable names and values>>""")
-input("\nPress return to continue.\n")
 
-for key, value in err.variables.items():
-  new_val = input(f"{key} = '{value}' [enter new value, blank to keep] ")
+We note that [[weblogin.ladok.SSOlogin]] requires the keys to be casefolded.
+So we do that too, and present the variables casefolded so that the users use 
+casefolded names when they try to set up environment variables.
+<<adjust vars using variables from err>>=
+for key, value in form_variables.items():
+  key = key.casefold()
+  new_val = input(f"{key} = '{value}' "
+                  f"[enter new value, blank to keep] ")
   if new_val:
-    vars[key.casefold()] = new_val
+    vars[key] = new_val
 @
 
 
