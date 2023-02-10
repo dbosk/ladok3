@@ -267,7 +267,7 @@ available, so we can use [[args.config_file]] directly when we want to access
 the configuration file.
 
 
-\section{Managing credentials}
+\section{Managing credentials: the \texttt{login} command}
 
 We want a subcommand to handle the user's credentials for accessing LADOK.
 In particular, we need the user to be able to change the credentials in the 
@@ -545,7 +545,7 @@ except:
 @
 
 
-\section{Managing the cache}
+\section{Managing the cache: the \texttt{cache} command and subcommands}
 
 We need a command to control the cache.
 For this purpose we provide the [[cache]] subcommand.
