@@ -177,7 +177,7 @@ That way, we know that we can trust the pickle (which is otherwise a problem).
 <<functions>>=
 def store_ladok_session(ls, credentials):
   if not os.path.isdir(dirs.user_cache_dir):
-    os.mkdir(dirs.user_cache_dir)
+    os.makedirs(dirs.user_cache_dir)
 
   file_path = dirs.user_cache_dir + "/LadokSession"
 
