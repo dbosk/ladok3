@@ -630,7 +630,6 @@ function [[add_command_options]] that takes [[subp]] as an argument.
 We add the [[data]] subcommand.
 <<modules>>=
 import ladok3.data
-@
 <<add subparsers to subp>>=
 ladok3.data.add_command_options(subp)
 @
@@ -638,7 +637,6 @@ ladok3.data.add_command_options(subp)
 We add the [[report]] command.
 <<modules>>=
 import ladok3.report
-@
 <<add subparsers to subp>>=
 ladok3.report.add_command_options(subp)
 @
@@ -646,7 +644,6 @@ ladok3.report.add_command_options(subp)
 We add the [[student]] command.
 <<modules>>=
 import ladok3.student
-@
 <<add subparsers to subp>>=
 ladok3.student.add_command_options(subp)
 @
