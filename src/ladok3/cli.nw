@@ -339,6 +339,8 @@ the web browser. You need three things:
      and then on the password screen, I can see it has been complemented to 
      `dbosk@ug.kth.se`. Be observant about that.
 
+  3) Your password at your institution.
+
 @
 
 If we run this subcommand, also want to clear the cache; otherwise, the cache 
