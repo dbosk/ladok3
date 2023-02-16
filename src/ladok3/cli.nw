@@ -114,6 +114,15 @@ set the [[func]] attribute.
 Then we can execute the correct function and let that function check the 
 remaining arguments.
 We must also pass on a LADOK session object~[[ls]].
+
+We note, however, that some subcommands (like [[cache]] or [[login]]) don't 
+need the [[ls]].
+The command [[login]] in particular is expected to run before the [[ls]] object 
+can be constructed (no credentials exist).
+The reason this works is that we can create the [[ls]] object with [[None]] for 
+credentials, the failure will not happen until we make the first request.
+The first request is made by the command's function, which in the case of 
+[[login]] never uses [[ls]].
 <<execute subcommand>>=
 if "func" in args:
   args.func(ls, args)
