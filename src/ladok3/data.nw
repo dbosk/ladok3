@@ -230,20 +230,30 @@ if component.instance_id != result_data["UtbildningsinstansUID"]:
 Finally, if there is a grade, we can extract the grade and compute the 
 normalized date.
 However, if there are no results, we set [[None]].
+
 We also only consider grades finished during the course.
 \Ie if the student has finished after the course ended, we set it as not 
 finished.
 Otherwise, we cannot compare with earlier courses, since then students have had 
 the chance to finish, so we want to see how many didn't finish on time.
+We use [[args.time_limit]] to specify this.
+
+Sometimes, there is a result draft without any date, we ignore these 
+completely.
 <<extract grade and normalized date from result data>>=
 if "Betygsgradsobjekt" in result_data:
   grade = result_data["Betygsgradsobjekt"]["Kod"]
-  date = datetime.date.fromisoformat(
-    result_data["Examinationsdatum"])
-  normalized_date = (date - course_start) / course_length
-  if args.time_limit and normalized_date > args.time_limit:
-    grade = "-"
+  try:
+    date = datetime.date.fromisoformat(
+      result_data["Examinationsdatum"])
+  except KeyError:
     normalized_date = None
+    grade = "-"
+  else:
+    normalized_date = (date - course_start) / course_length
+    if args.time_limit and normalized_date > args.time_limit:
+      grade = "-"
+      normalized_date = None
 else:
   grade = "-"
   normalized_date = None
