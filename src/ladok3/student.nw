@@ -104,6 +104,6 @@ that the user supplies.
 def print_course_data(student, course):
   """Prints the courses"""
   print("Courses:")
-  for course in student.courses(courde_code=course):
+  for course in student.courses(code=course):
     print(f"- {course}")
 @
