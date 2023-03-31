@@ -1,0 +1,248 @@
+\section{Overview}
+
+We want to get results out of Canvas and put them into LADOK.
+We want to take each assignment group in Canvas and map into a course component 
+in LADOK.
+\emph{Assumption}:
+we assume that all assignments in the Canvas course instance are grouped; and 
+each group must map exactly to the names of the LADOK components.
+
+The course components in LADOK (and assignment groups in Canvas) for the 
+datintro (DD1301) course are
+\begin{itemize}
+\item LAB1.
+\end{itemize}
+
+For now we will ignore setting the grade on the full course.
+
+\paragraph{Accessing the systems}
+
+We use the standard structure for the script.
+We start with the imports and set up our [[ladok]] and [[canvas]] objects, 
+these are used to access the two systems.
+<<datintro.py>>=
+# -*- coding: utf-8 -*-
+import cachetools
+from canvasapi import Canvas
+import collections
+import datetime
+import ladok3
+import os
+
+KTH_LOGIN = os.environ["KTH_LOGIN"]
+KTH_PASSWD = os.environ["KTH_PASSWD"]
+
+ladok = ladok3.LadokSession("KTH",
+                            vars={"username": KTH_LOGIN,
+                                  "password": KTH_PASSWD},
+                            test_environment=False) # for experiments
+
+API_URL = os.environ["CANVAS_SERVER"]
+API_KEY = os.environ["CANVAS_TOKEN"]
+
+canvas = Canvas(API_URL, API_KEY)
+
+course_code_ladok = "DD1301"
+course_code_canvas = "DD1301HT201"
+components = [
+  "LAB1"
+]
+
+<<classes>>
+<<functions>>
+
+def main():
+  <<main body>>
+
+if __name__ == "__main__":
+  main()
+@
+
+
+\section{Getting the results out of Canvas}
+
+We must first select the course.
+<<functions>>=
+@cachetools.cached(cache={})
+def get_course(code):
+  for course in canvas.get_courses():
+    if course.course_code == code:
+      return course
+  return None
+@
+
+We must process each assignment group (which corresponds to a LADOK component).
+So we get all relevant objects from Canvas.
+<<functions>>=
+def get_components(course):
+  for component in course.get_assignment_groups():
+    if component.name in components:
+      yield component
+@
+
+For each component, we must check which students passed all assignments; we 
+must report the student's LADOK identifier, what grade they should have and the 
+time of submission of the assignment.
+<<functions>>=
+def students_results(course, component):
+  <<produce results for a component>>
+@ We cover the details in \cref{producing-results}, once we've covered what 
+LADOK needs in \cref{into-ladok}.
+
+\section{The main body}
+
+Then we can report those results to LADOK.
+In summary, we do the following:
+<<main body>>=
+course = get_course(course_code_canvas)
+course_components = get_components(course)
+for component in course_components:
+  print(f"{component.name} <- Canvas")
+  component_results = students_results(course, component)
+  print(f"{component.name} -> LADOK")
+  report_results(course_code_ladok, component.name, component_results)
+@
+
+
+\section{Putting the results into LADOK}\label{into-ladok}
+
+We get a list of results for a component.
+We simply try to report them to LADOK.
+<<functions>>=
+def report_results(course_code, component_name, results):
+  for result in results:
+    try:
+      ladok.save_result(
+        result.person_nr,
+        course_code,
+        component_name,
+        str(result.date),
+        result.grade,
+        result.grade_scale)
+    except Exception as err:
+      try:
+        student = ladok.get_student(result.person_nr)
+        print(f"{student.first_name} {student.last_name}: {err}")
+      except ValueError as verr:
+        print(f"{verr}: {result.person_nr}: {err}")
+@
+
+
+\section{Producing the list of results}\label{producing-results}
+
+We need the result to have the following data:
+<<classes>>=
+Result = collections.namedtuple(
+  "Result", ["person_nr", "date", "grade", "grade_scale"])
+@ Now, given a [[component]], we should produce such [[Result]] tuples.
+
+\subsection{Produce gradebook}
+
+To do this, we must first produce a gradebook that we can filter.
+The gradebook will use the simpler [[Grade]] tuple.
+It will use the student's LADOK ID as the key.
+<<classes>>=
+Grade = collections.namedtuple("Grade", ["grade", "date"])
+@
+<<functions>>=
+def make_gradebook(course, component):
+  gradebook = {}
+
+  for user in course.get_users():
+    grades = {}
+    for assignment in assignments_in_component(course, component):
+      try:
+        submission = assignment.get_submission(user.id)
+      except:
+        grades[assignment.name] = None
+        continue
+
+      if not submission.graded_at:
+        grades[assignment.name] = None
+        continue
+
+      date = submission.submitted_at or submission.graded_at
+      date = datetime.date.fromisoformat(date.split("T")[0]) or None
+      graded_date = datetime.date.fromisoformat(
+        submission.graded_at.split("T")[0])
+      if date > graded_date:
+        date = graded_date
+
+      grades[assignment.name] = Grade(grade=submission.grade, date=date)
+
+    gradebook[user.integration_id] = grades
+
+  return gradebook
+@ Note that for some users, we won't get any submission.
+And for some other users, we get a submission with no grade and no date.
+
+We the component object doesn't give the assignments it include.
+We must check each assignment if it belongs to the component or not.
+<<functions>>=
+def assignments_in_component(course, component):
+  return filter(
+    lambda assignment: assignment.assignment_group_id == component.id,
+    course.get_assignments())
+@
+
+\subsection{Assignment grades to component grade}
+
+Next, we must filter the gradebook so that only the students who passed all 
+assignments are reported to LADOK with a pass.
+A student must pass all assignments, the latest date sets the date to use in 
+LADOK.
+\emph{Assumption:}
+If some assignments are P/F and some are A--F, then the A--F one should be the 
+grade.
+There will not be more than one A--F assignment per component.
+<<functions>>=
+def summarize(grades):
+  max_grade = "P"
+  grade_scale = "PF"
+  max_date = datetime.date(year=1970, month=1, day=1)
+  for _, grade in grades.items():
+    if grade is None or grade.grade is None or grade.grade[0] == "F":
+      return None
+
+    if grade.date > max_date:
+      max_date = grade.date
+
+    if grade.grade in "ABCDE":
+      max_grade = grade.grade
+      grade_scale = "AF"
+
+  return (Grade(grade=max_grade, date=max_date), grade_scale)
+@
+
+\subsection{Convert to LADOK result form}
+
+Lastly, we must put these things together and convert the result to the 
+[[Result]] format that we need.
+<<produce results for a component>>=
+to_report = []
+gradebook = make_gradebook(course, component)
+
+for ladok_id, grades in gradebook.items():
+  try:
+    grade, grade_scale = summarize(grades)
+  except TypeError as err:
+    try:
+      student = ladok.get_student(ladok_id)
+      print(f"not done: {student.first_name} {student.last_name}: {err}")
+    except ValueError as verr:
+      print(f"not done: {verr}: {ladok_id}: {err}")
+    continue
+
+  to_report.append(Result(
+    person_nr=ladok.get_student(ladok_id).personnummer,
+    grade=grade.grade,
+    grade_scale=grade_scale,
+    date=grade.date))
+
+return to_report
+@
+
+
+\printbibliography{}
+
+\end{document}

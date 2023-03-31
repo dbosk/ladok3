@@ -1,5 +1,7 @@
 .PHONY: all
 all: canvas2ladok.py
+all: datintro.py
+
 
 canvas2ladok.py: canvas2ladok.nw
 
