@@ -1,9 +1,12 @@
-import ladok3.kth
+import ladok3
 import os
 
-ladok = ladok3.kth.LadokSession(
-        os.environ["KTH_LOGIN"], os.environ["KTH_PASSWD"],
-        test_environment=True) # for experiments
+ladok = ladok3.LadokSession("KTH",
+                            vars={
+                                "username": os.environ["KTH_LOGIN"],
+                                "password": os.environ["KTH_PASSWD"]
+                            },
+                            test_environment=True) # for experiments
 
 me = ladok.get_student("8506097891")
 me2 = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")

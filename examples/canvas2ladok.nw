@@ -95,9 +95,9 @@ import re
 LOGIN = os.environ["LADOK_USER"]
 PASSWD = os.environ["LADOK_PASS"]
 
-ladok = ladok3.kth.LadokSession(
-        LOGIN, PASSWD,
-        test_environment=False) # for experiments
+ladok = ladok3.LadokSession("KTH",
+                            vars={"username": LOGIN, "password": PASSWD},
+                            test_environment=False) # for experiments
 
 API_URL = os.environ["CANVAS_SERVER"]
 API_KEY = os.environ["CANVAS_TOKEN"]
