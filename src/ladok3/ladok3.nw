@@ -1223,7 +1223,7 @@ class CourseComponent(LadokData):
     return self.__grade_scale
 
   def __str__(self):
-    return self.code
+    return f"{self.code} {self.description} {self.credits} {self.unit}"
 
   def __eq__(self, other):
     if isinstance(other, str):
