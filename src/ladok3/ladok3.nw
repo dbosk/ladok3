@@ -1117,15 +1117,20 @@ print(r"\end{minted}")
 
 Now that we have the [[data]] object, we can assign its values to the private 
 attributes.
+We note, however, that some course instances lack both [[Versionsnummer]] and 
+[[Omfattning]].
+It seems like faux courses are created to document when students go on 
+Exchanges.
+These faux courses have a name and code, but no credits or version of syllabus.
 <<assign CourseInstance data to private attributes>>=
 self.__education_id = data.pop("UtbildningUID")
 
 self.__code = data.pop("Utbildningskod")
 self.__name = data.pop("Benamning")
-self.__version = data.pop("Versionsnummer")
+self.__version = data.pop("Versionsnummer", None) 
 
-self.__credits = data.pop("Omfattning")
-self.__unit = data.pop("Enhet")
+self.__credits = data.pop("Omfattning", None)
+self.__unit = data.pop("Enhet", None)
 
 self.__grade_scale = self.ladok.get_grade_scales(
   id=data.pop("BetygsskalaID"))
@@ -1144,6 +1149,10 @@ else:
 The [[CourseComponent]] class will make the attributes available.
 We specify the most interesting ones and let the [[LadokData]] constructor turn 
 the rest into properties as well, so that they are available for the curious.
+
+Turns out that some course components don't have any credits.
+This is probably a consequence of being a component in a course with no 
+credits, \eg one of those faux courses to register exchange studies.
 <<classes>>=
 class CourseComponent(LadokData):
   """Represents a course component of a course registration"""
@@ -1166,8 +1175,8 @@ class CourseComponent(LadokData):
     else:
       self.__description = description
 
-    self.__credits = kwargs.pop("Omfattning")
-    self.__unit = kwargs.pop("Enhet")
+    self.__credits = kwargs.pop("Omfattning", None)
+    self.__unit = kwargs.pop("Enhet", None)
 
     ladok = kwargs.pop("ladok")
     grade_scale_id = kwargs.pop("BetygsskalaID")
@@ -1278,6 +1287,12 @@ def __fetch_participants(self):
 Students register for a course.
 The [[CourseRegistration]] class represents this data from LADOK.
 This is the object that must be used to get results for a student.
+This object keeps more info than the course instance.
+
+We note that some registrations lack the \enquote{Utbildningstillfalleskod} 
+attribute.
+This happens on \enquote{custom courses} like Erasmus exchanges.
+If that's the case, we use the value [[None]] in its place.
 <<classes>>=
 class CourseRegistration(CourseInstance):
   """Represents a student's participation in a course instance"""
@@ -1286,7 +1301,7 @@ class CourseRegistration(CourseInstance):
 
     # ett Ladok-ID för kursomgången
     self.__round_id = kwargs.pop("UtbildningstillfalleUID")
-    self.__round_code = kwargs.pop("Utbildningstillfalleskod")
+    self.__round_code = kwargs.pop("Utbildningstillfalleskod", None)
 
     dates = kwargs.pop("Studieperiod")
     self.__start = datetime.date.fromisoformat(dates["Startdatum"])
@@ -1313,10 +1328,10 @@ class CourseRegistration(CourseInstance):
     return self.__end
 
   def __str__(self):
-    return f"{self.code} {self.round_code} ({self.start}--{self.end})"
+    return f"{self.code} {self.round_code or ''} ({self.start}--{self.end})"
 
   def __repr__(self):
-    return f"{self.code}:{self.round_code}:{self.start}--{self.end}"
+    return f"{self.code}:{self.round_code or ''}:{self.start}--{self.end}"
 
   def results(self, /, **kwargs):
     """Returns the student's results on the course, filtered on keywords"""
