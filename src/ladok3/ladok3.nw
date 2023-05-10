@@ -1122,6 +1122,7 @@ We note, however, that some course instances lack both [[Versionsnummer]] and
 It seems like faux courses are created to document when students go on 
 Exchanges.
 These faux courses have a name and code, but no credits or version of syllabus.
+Consequently they don't have any grading scales either.
 <<assign CourseInstance data to private attributes>>=
 self.__education_id = data.pop("UtbildningUID")
 
@@ -1132,8 +1133,11 @@ self.__version = data.pop("Versionsnummer", None)
 self.__credits = data.pop("Omfattning", None)
 self.__unit = data.pop("Enhet", None)
 
-self.__grade_scale = self.ladok.get_grade_scales(
-  id=data.pop("BetygsskalaID"))
+try:
+  self.__grade_scale = self.ladok.get_grade_scales(
+    id=data.pop("BetygsskalaID"))
+except KeyError:
+  self.__grade_scale = None
 
 if "IngaendeMoment" in data:
   self.__components = [CourseComponent(
