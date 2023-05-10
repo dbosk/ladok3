@@ -94,6 +94,7 @@ def print_student_data(student):
   print(f"Personnummer: {student.personnummer}")
   print(f"LADOK ID:     {student.ladok_id}")
   print(f"Alive:        {student.alive}")
+  print(f"Suspended:    {student.suspensions}")
 @
 
 \subsection{Printing student's course data}

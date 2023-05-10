@@ -908,6 +908,24 @@ for course in self.ladok.registrations_JSON(self.ladok_id):
 @
 
 
+\section{Is the student suspended?}
+
+We also want to know if a student is suspended or not.
+We can get a list of suspensions for a student.
+However, since suspended students are rare, we haven't found a specimen to 
+study; so we simply don't know what the list contains.
+But we can return it nonetheless.
+We never cache this result since we always want the most up-to-date version.
+<<student attribute methods>>=
+@property
+def suspensions(self):
+  """
+  The list of the students' suspensions.
+  """
+  return self.ladok.get_student_suspensions_JSON(self.ladok_id)["Avstangning"]
+@
+
+
 \chapter{Courses}\label{CourseClasses}
 
 We can use the course-related classes as follows.
