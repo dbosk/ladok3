@@ -79,6 +79,7 @@ except Exception as err:
 print_student_data(student)
 
 if args.course:
+  print()
   print_course_data(student, args.course)
 @
 
@@ -101,10 +102,13 @@ def print_student_data(student):
 
 To print the student's course data, we simply filter the courses on the option 
 that the user supplies.
+We then print all results for each course.
 <<functions>>=
 def print_course_data(student, course):
   """Prints the courses"""
   print("Courses:")
   for course in student.courses(code=course):
-    print(f"- {course}")
+    print(f"{course}")
+    for result in course.results():
+      print(f"  {result}")
 @

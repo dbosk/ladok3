@@ -1477,6 +1477,10 @@ class CourseResult(LadokRemoteData):
     """Returns True if the grade has been attested in LADOK"""
     return self.__attested
 
+  def __str__(self):
+    return f"{self.component} {self.grade} " \
+           f"{self.date}{'*' if not self.attested else ''}"
+
   def push(self):
     if self.__uid:
       <<push the existing CourseResult grade data to LADOK>>
