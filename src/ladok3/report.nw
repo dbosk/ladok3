@@ -129,8 +129,8 @@ them.
 <<check that we got all positional arguments>>
 try:
   student = ladok.get_student(args.student_id)
-  course = student.courses(code=args.course_code)[0]
-  result = course.results(component=args.component_code)[0]
+  <<look up [[course]] from [[student]]>>
+  <<look up [[result]] from [[course]]>>
   result.set_grade(args.grade, args.date)
   if args.finalize:
     result.finalize()
@@ -139,9 +139,25 @@ except Exception as err:
     print(f"{student}: {err}")
   except ValueError as verr:
     print(f"{verr}: {args.student_id}: {err}")
-@ This means that we need the following command-line arguments.
-The option [[args.finalize]] is already set above, so we don't need to add that 
-one here.
+@ The option [[args.finalize]] is already set above, so we don't need to add 
+that one here.
+
+Both looking up the course and the component can yield index errors.
+We'd like to distinguish these.
+We will catch the exception, the reraise the same exception but with a better 
+error message.
+<<look up [[course]] from [[student]]>>=
+try:
+  course = student.courses(code=args.course_code)[0]
+except IndexError:
+  raise Exception("f{args.course_code}: No such course for {student}")
+<<look up [[result]] from [[course]]>>=
+try:
+  result = course.results(component=args.component_code)[0]
+except IndexError:
+  raise Exception(f"{args.component_code}: "
+                  f"No such component for {args.course_code}")
+@
 
 
 \section{Report many results given in standard input}
