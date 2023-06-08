@@ -1134,10 +1134,14 @@ self.__credits = data.pop("Omfattning", None)
 self.__unit = data.pop("Enhet", None)
 
 try:
-  self.__grade_scale = self.ladok.get_grade_scales(
-    id=data.pop("BetygsskalaID"))
+  grade_scale_id = data.pop("BetygsskalaID")
 except KeyError:
+  grade_scale_id = None
+
+if grade_scale_id is None:
   self.__grade_scale = None
+else:
+  self.__grade_scale = self.ladok.get_grade_scales(id=grade_scale_id)[0]
 
 if "IngaendeMoment" in data:
   self.__components = [CourseComponent(
