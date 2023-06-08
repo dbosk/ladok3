@@ -196,23 +196,14 @@ try:
   try:
     course = student.courses(code=course_code)[0]
   except IndexError:
-    raise Exception(f"{course_code}: no such course.")
+    raise Exception(f"{course_code}: No such course for {student}")
 
   try:
     component = course.results(component=component_code)[0]
   except IndexError:
-    raise Exception(f"{course_code} has no component {component_code}.")
+    raise Exception(f"{component_code}: no such component for {course_code}")
 
-  if not component.attested and component.grade != grade:
-    component.set_grade(grade, date)
-    component.finalize()
-    if args.verbose:
-      print(f"{course_code} {student}: reported "
-        f"{component.component} = {component.grade} ({date}).")
-  elif component.grade != grade:
-    print(f"{course_code} {student}: attested {component.component} "
-      f"result {component.grade} ({component.date}) "
-      f"is different from {grade} ({date}).")
+  <<set [[grade]] to [[component]], output if verbose>>
 except Exception as err:
   try:
     print(f"{course_code} {component_code}={grade} ({date}) {student}: {err}",
@@ -221,6 +212,30 @@ except Exception as err:
     print(f"{verr}: "
       f"{course_code} {component_code}={grade} ({date}) {student_id}: {err}",
       file=sys.stderr)
+@
+
+Now, when we set the grade, there are a few cases that should be handled.
+If the grade isn't attested, we try to change it.
+(This might still fail if the grade is finalized but not attested.)
+If we've selected the verbose option, then we print what we have reported.
+
+If the grade was attested, then we check if it's different.
+If it's different, we output this.
+If it's the same, we silently ignore it.
+This is best for bulk reporting, because then we can always try to report for 
+all students.
+<<set [[grade]] to [[component]], output if verbose>>=
+if not component.attested and component.grade != grade:
+  component.set_grade(grade, date)
+  if args.finalize:
+    component.finalize()
+  if args.verbose:
+    print(f"{course_code} {student}: reported "
+      f"{component.component} = {component.grade} ({date}).")
+elif component.grade != grade:
+  print(f"{course_code} {student}: attested {component.component} "
+    f"result {component.grade} ({component.date}) "
+    f"is different from {grade} ({date}).")
 @
 
 
