@@ -1137,7 +1137,7 @@ try:
   self.__grade_scale = self.ladok.get_grade_scales(
     id=data.pop("BetygsskalaID"))
 except KeyError:
-  self.__grade_scale = None
+  pass
 
 if "IngaendeMoment" in data:
   self.__components = [CourseComponent(
