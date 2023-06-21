@@ -288,7 +288,9 @@ Manages the user's LADOK login credentials. There are three ways to supply the
 login credentials, in order of priority:
 
 1) Through the system keyring: Just run `ladok login` and you'll be asked to 
-   enter the credentials and they will be stored in the keyring.
+   enter the credentials and they will be stored in the keyring. Note that for 
+   this to work on the WSL platform (and possibly on Windows), you need to 
+   install the `keyrings.alt` package: `python3 -m pip install keyrings.alt`.
 
 2) Through the environment: Just set the environment variables
 
