@@ -132,7 +132,8 @@ one_parser.add_argument("date", nargs="?",
 Finally, we have the list of graders.
 <<add one result group arguments>>=
 one_parser.add_argument("graders", nargs="*",
-  help="Who did the grading, give as 'Name <email@instutution.se>'.")
+  help="Space separated list of who did the grading, "
+       "give each grader as 'First Last <email@instutution.se>'.")
 @
 
 Now that we have the arguments, we can just execute the following code using 
