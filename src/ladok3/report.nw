@@ -5,12 +5,15 @@ We need the following data for each result:
 \item course component,
 \item student identifier,
 \item grade, and
-\item date\footnote{Optional, we set today's date if not present.}.
+\item date\footnote{Optional, we set today's date if not present.};
+\item grader 1,
+\item grader 2,
+\item \dots
 \end{itemize}
 
 We provide two ways to do this:
 The first is to provide positional arguments on the command line.
-The second is to not provide any positinoal argument, and in this case we read 
+The second is to not provide any positional argument, and in this case we read 
 CSV data from standard input.
 
 
@@ -47,7 +50,7 @@ one_parser = report_parser.add_argument_group(
 <<add one result group arguments>>
 many_parser = report_parser.add_argument_group(
   "many results read from standard input as CSV, columns: "
-  "course, component, student, grade, date.")
+  "course, component, student, grade, date, grader 1, ..., grader N")
 <<add many results group arguments>>
 @
 
@@ -68,9 +71,12 @@ finalized.
 We add an option whether we want to finalize the grade for attestation by the 
 examiner.
 We add this argument outside the two groups, since it's valid for both.
+<<finalize option help>>=
+Finalize the grade (mark as ready/klarmarkera) for examiner to attest.
+Note that without this option, no graders will be registered in LADOK.
 <<add report command arguments to report parser>>=
 report_parser.add_argument("-f", "--finalize",
-  help="Finalize the grade (mark as ready/klarmarkera) for examiner to attest",
+  help="""<<finalize option help>>""",
   action="store_true",
   default=False
 )
@@ -123,6 +129,12 @@ one_parser.add_argument("date", nargs="?",
 )
 @
 
+Finally, we have the list of graders.
+<<add one result group arguments>>=
+one_parser.add_argument("graders", nargs="*",
+  help="Who did the grading, give as 'Name <email@instutution.se>'.")
+@
+
 Now that we have the arguments, we can just execute the following code using 
 them.
 <<report results given in args>>=
@@ -133,7 +145,7 @@ try:
   <<look up [[result]] from [[course]]>>
   result.set_grade(args.grade, args.date)
   if args.finalize:
-    result.finalize()
+    result.finalize(args.graders)
 except Exception as err:
   try:
     print(f"{student}: {err}")
@@ -165,7 +177,7 @@ except IndexError:
 We want to read CSV data from standard input.
 <<report results given in stdin>>=
 data_reader = csv.reader(sys.stdin, delimiter=args.delimiter)
-for course_code, component_code, student_id, grade, date in data_reader:
+for course_code, component_code, student_id, grade, date, *graders in data_reader:
   <<report a result read from stdin>>
 @ We need to add an argument for the delimiter.
 <<add many results group arguments>>=
@@ -228,10 +240,11 @@ all students.
 if not component.attested and component.grade != grade:
   component.set_grade(grade, date)
   if args.finalize:
-    component.finalize()
+    component.finalize(graders)
   if args.verbose:
     print(f"{course_code} {student}: reported "
-      f"{component.component} = {component.grade} ({date}).")
+          f"{component.component} = {component.grade} ({date}) "
+          f"by {', '.join(graders)}.")
 elif component.grade != grade:
   print(f"{course_code} {student}: attested {component.component} "
     f"result {component.grade} ({component.date}) "

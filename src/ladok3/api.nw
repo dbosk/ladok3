@@ -1128,7 +1128,8 @@ that person.
 (LADOK changed this API request in 2022.)
 <<LadokSession data methods>>=
 def finalize_result_JSON(self,
-    result_id, last_modified, reporter_id, attestant_ids=[]):
+    result_id, last_modified, reporter_id, attestant_ids=[],
+    others=[]):
   """Marks a result as finalized (klarmarkera)"""
   response = self.put_query(
     f"/resultat/internal/resultat/klarmarkera/{result_id}",
@@ -1136,6 +1137,7 @@ def finalize_result_JSON(self,
       "Beslutsfattare": attestant_ids,
       "KlarmarkeradAvUID": reporter_id,
       "RattadAv": [],
+      "OvrigaMedverkande": "\n".join(set(others)),
       "ResultatetsSenastSparad": last_modified
     }
   )
