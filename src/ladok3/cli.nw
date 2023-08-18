@@ -368,10 +368,18 @@ def update_credentials_in_keyring(ls, args):
     for key, value in vars.items():
       keyring.set_password("ladok3", key, value)
   except Exception as err:
-    err(-1, "You don't seem to have a working keyring. Use one of "
-            "the other methods, see `ladok login -h`.")
+    <<print error message about keyring>>
 
   clear_cache(ls, args)
+@
+
+We want to print using the [[err]] function defined earlier.
+But this doesn't work due to all exceptions named [[err]].
+However, we can access it using the [[globabl()["err"]]].
+<<print error message about keyring>>=
+globals()["err"](-1, f"You don't seem to have a working keyring. "
+                      f"Use one of the other methods, see "
+                      f"`ladok login -h`: {err}.")
 @
 
 Now, we want to check that the institution is uniquely identified at 
