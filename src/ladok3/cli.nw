@@ -159,13 +159,25 @@ substituted in the login forms (see documentation of [[weblogin]]).
 We use [[LADOK_VARS]] as credentials, since it contains the credentials.
 <<create or restore the LadokSession ls>>=
 LADOK_INST, LADOK_VARS = load_credentials(args.config_file)
-ls = restore_ladok_session(LADOK_VARS)
+try:
+  ls = restore_ladok_session(LADOK_VARS)
+<<handle exceptions during restore of [[ls]]>>
 if not ls:
   ls = ladok3.LadokSession(LADOK_INST, vars=LADOK_VARS)
 <<save LadokSession ls>>=
 store_ladok_session(ls, LADOK_VARS)
 @
 
+Now, if there is an error from [[restore_ladok_session]], we know that there is 
+a session that should be loaded.
+If there is no previous session, it will just return [[None]].
+In the event of an exception, we know that either the credentials aren't 
+available to decrypt it or the file is corrupted.
+In either case, we should tell the user.
+<<handle exceptions during restore of [[ls]]>>=
+except ValueError as error:
+  err(-1, f"Couldn't restore LADOK session: {error}")
+@
 
 \subsection{Saving and restoring the [[LadokSession]] object}
 
@@ -230,7 +242,7 @@ To actually do the key derivation, we use the PBKDF2 based on HMAC.
 We use the supplied credentials for salt and password.
 <<set up kdf and derive key from credentials>>=
 if not credentials or len(credentials) < 2:
-  raise ValueError(f"|credentials| < 2 is too small")
+  raise ValueError(f"Missing credentials, see `ladok login -h`.")
 
 if isinstance(credentials, dict):
   try:
