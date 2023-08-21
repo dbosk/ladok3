@@ -229,7 +229,7 @@ except Exception as err:
 To actually do the key derivation, we use the PBKDF2 based on HMAC.
 We use the supplied credentials for salt and password.
 <<set up kdf and derive key from credentials>>=
-if len(credentials) < 2:
+if not credentials or len(credentials) < 2:
   raise ValueError(f"|credentials| < 2 is too small")
 
 if isinstance(credentials, dict):
