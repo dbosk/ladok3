@@ -504,7 +504,11 @@ If all fail, the function will return [[None]] for both.
 (This is due to how we handle the [[login]] command.)
 <<functions>>=
 def load_credentials(filename="config.json"):
-  """Load credentials from environment or file named filename"""
+  """
+  Loads credentials from environment or file named filename.
+  Returns the tuple (instituation, credential dictionary) that
+  can be passed to `LadokSession(instiution, credential dictionary)`.
+  """
 
   <<fetch vars from keyring>>
   <<fetch username and password from keyring>>
