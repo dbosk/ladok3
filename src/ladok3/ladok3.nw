@@ -1463,7 +1463,7 @@ class CourseResult(LadokRemoteData):
     self.__modified = True
     self.push()
 
-  def finalize(self, notify=False):
+  def finalize(self, graders=[], notify=False):
     """Finalizes the set grade"""
     if self.modified:
       self.push()
@@ -1616,11 +1616,13 @@ reporter_id = self.ladok.user_info_JSON()["AnvandareUID"]
 
 if notify:
   response = self.ladok.finalize_result_JSON(
-    self.__results_id, self.__last_modified, reporter_id, reporter_id
+    self.__results_id, self.__last_modified, reporter_id, reporter_id,
+    others=graders
   )
 else:
   response = self.ladok.finalize_result_JSON(
-    self.__results_id, self.__last_modified, reporter_id
+    self.__results_id, self.__last_modified, reporter_id,
+    others=graders
   )
 
 self.__populate_attributes(**response)

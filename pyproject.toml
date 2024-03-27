@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ladok3"
-version = "3.6"
+version = "4.9"
 description = "Python wrapper and CLI for the LADOK3 REST API."
 authors = [
   "Daniel Bosk <dbosk@kth.se>",
@@ -52,9 +52,9 @@ python = "^3.8"
 appdirs = "^1.4.4"
 argcomplete = "^2.0.0"
 cachetools = "^5.2.0"
-cryptography = "^37.0.3"
-keyring = "^23.6.0"
-requests = "^2.28.0"
+cryptography = "^41.0.3"
+keyring = "^24.2.0"
+requests = "^2.31.0"
 urllib3 = "^1.26.9"
 weblogin = "^1.5"
 
