@@ -191,7 +191,6 @@ Purpose: Use the data in a Canvas course room together with the data from Ladok3
 
 Input: 
 ```
-Input 
 cl_user_info.py Canvas_user_id|KTHID|Ladok_id [course_id]
 ```
 The course_id can be a Canvas course_id **or** if you have dashboard cards, you can specific a course code, a nickname, unique part of the short name or original course name.
