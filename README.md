@@ -33,9 +33,17 @@ command-line tool `ladok`.
 Let's assume that we have a student with personnummer 123456-1234.
 Let's also assume that this student has taken a course with course code AB1234 
 and finished the module LAB1 on date 2021-03-15.
+Say also that the student's assignments were graded by the teacher and two TAs:
+
+  - Daniel Bosk <dbosk@kth.se> (teacher)
+  - Teaching Assistantsdotter <tad@kth.se>
+  - Teaching Assistantsson <tas@kth.se>
+
 Then we can report this result like this:
 ```bash
-ladok report 123456-1234 AB1234 LAB1 -d 2021-03-15 -f
+ladok report 123456-1234 AB1234 LAB1 -d 2021-03-15 -f \
+  "Daniel Bosk <dbosk@kth.se>" "Teaching Assistantsdotter <tad@kth.se>" \
+  "Teaching Assistantsson <tas@kth.se>"
 ```
 
 If we use Canvas for all results, we can even report all results for a 
@@ -48,13 +56,24 @@ canvaslms results -c AB1234 -A LAB1 | ladok report -v
 The `canvaslms results` command will export the results in CSV format, this 
 will be piped to `ladok report` that can read it and report it in bulk.
 
+Most likely you'll need to pass the CSV through `sed` to change the column 
+containing the course identifier to just contain the course code. At KTH, the 
+course code attribute in Canvas contains course code and the semester. So I 
+have to `sed` away the semester part.
+
 ### As a Python package
 
 To use the package, it's just to import the package as usual.
 ```python
 import ladok3
 
-ls = ladok3.kth.LadokSession("user", "password")
+credentials = {
+  "username": "dbosk@ug.kth.se",
+  "password": "password ..."
+}
+
+ls = ladok3.LadokSession("KTH Royal Institute of Technology",
+                         vars=credentials)
 
 student = ls.get_student("123456-1234")
 
