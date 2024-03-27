@@ -159,13 +159,25 @@ substituted in the login forms (see documentation of [[weblogin]]).
 We use [[LADOK_VARS]] as credentials, since it contains the credentials.
 <<create or restore the LadokSession ls>>=
 LADOK_INST, LADOK_VARS = load_credentials(args.config_file)
-ls = restore_ladok_session(LADOK_VARS)
+try:
+  ls = restore_ladok_session(LADOK_VARS)
+<<handle exceptions during restore of [[ls]]>>
 if not ls:
   ls = ladok3.LadokSession(LADOK_INST, vars=LADOK_VARS)
 <<save LadokSession ls>>=
 store_ladok_session(ls, LADOK_VARS)
 @
 
+Now, if there is an error from [[restore_ladok_session]], we know that there is 
+a session that should be loaded.
+If there is no previous session, it will just return [[None]].
+In the event of an exception, we know that either the credentials aren't 
+available to decrypt it or the file is corrupted.
+In either case, we should tell the user.
+<<handle exceptions during restore of [[ls]]>>=
+except ValueError as error:
+  err(-1, f"Couldn't restore LADOK session: {error}")
+@
 
 \subsection{Saving and restoring the [[LadokSession]] object}
 
@@ -229,8 +241,8 @@ except Exception as err:
 To actually do the key derivation, we use the PBKDF2 based on HMAC.
 We use the supplied credentials for salt and password.
 <<set up kdf and derive key from credentials>>=
-if len(credentials) < 2:
-  raise ValueError(f"|credentials| < 2 is too small")
+if not credentials or len(credentials) < 2:
+  raise ValueError(f"Missing credentials, see `ladok login -h`.")
 
 if isinstance(credentials, dict):
   try:
@@ -288,7 +300,9 @@ Manages the user's LADOK login credentials. There are three ways to supply the
 login credentials, in order of priority:
 
 1) Through the system keyring: Just run `ladok login` and you'll be asked to 
-   enter the credentials and they will be stored in the keyring.
+   enter the credentials and they will be stored in the keyring. Note that for 
+   this to work on the WSL platform (and possibly on Windows), you need to 
+   install the `keyrings.alt` package: `python3 -m pip install keyrings.alt`.
 
 2) Through the environment: Just set the environment variables
 
@@ -360,12 +374,24 @@ def update_credentials_in_keyring(ls, args):
   }
   <<try to log into LADOK to verify credentials or update vars>>
 
-  keyring.set_password("ladok3", "institution", institution)
-  keyring.set_password("ladok3", "vars", ";".join(vars.keys()))
-  for key, value in vars.items():
-    keyring.set_password("ladok3", key, value)
+  try:
+    keyring.set_password("ladok3", "institution", institution)
+    keyring.set_password("ladok3", "vars", ";".join(vars.keys()))
+    for key, value in vars.items():
+      keyring.set_password("ladok3", key, value)
+  except Exception as err:
+    <<print error message about keyring>>
 
   clear_cache(ls, args)
+@
+
+We want to print using the [[err]] function defined earlier.
+But this doesn't work due to all exceptions named [[err]].
+However, we can access it using the [[globabl()["err"]]].
+<<print error message about keyring>>=
+globals()["err"](-1, f"You don't seem to have a working keyring. "
+                      f"Use one of the other methods, see "
+                      f"`ladok login -h`: {err}.")
 @
 
 Now, we want to check that the institution is uniquely identified at 
@@ -478,7 +504,11 @@ If all fail, the function will return [[None]] for both.
 (This is due to how we handle the [[login]] command.)
 <<functions>>=
 def load_credentials(filename="config.json"):
-  """Load credentials from environment or file named filename"""
+  """
+  Loads credentials from environment or file named filename.
+  Returns the tuple (instituation, credential dictionary) that
+  can be passed to `LadokSession(instiution, credential dictionary)`.
+  """
 
   <<fetch vars from keyring>>
   <<fetch username and password from keyring>>

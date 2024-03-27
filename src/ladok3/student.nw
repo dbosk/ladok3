@@ -63,6 +63,17 @@ student_parser.add_argument("-c", "--course",
 )
 @
 
+\subsection{A results flag}
+
+We also want a flag for specifying whether or not to include the results of 
+each course.
+<<add student command arguments to student parser>>=
+student_parser.add_argument("-r", "--results",
+  action="store_true", default=False,
+  help="Set to include results for each course listed."
+)
+@
+
 \section{Print the student data}
 
 Now that we have the student identifier, we can simply use that to fetch the 
@@ -80,7 +91,7 @@ print_student_data(student)
 
 if args.course:
   print()
-  print_course_data(student, args.course)
+  print_course_data(student, args)
 @
 
 \subsection{Printing personal student data}
@@ -102,13 +113,15 @@ def print_student_data(student):
 
 To print the student's course data, we simply filter the courses on the option 
 that the user supplies.
-We then print all results for each course.
+We then print all courses and, if the flag is set, we also print the results 
+for each course.
 <<functions>>=
-def print_course_data(student, course):
+def print_course_data(student, args):
   """Prints the courses"""
   print("Courses:")
-  for course in student.courses(code=course):
+  for course in student.courses(code=args.course):
     print(f"{course}")
-    for result in course.results():
-      print(f"  {result}")
+    if args.results:
+      for result in course.results():
+        print(f"  {result}")
 @
