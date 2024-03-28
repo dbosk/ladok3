@@ -46,6 +46,17 @@ It uses the [[requests]] module.
 We can use the class as follows.
 \inputminted{python}{../examples/example_LadokSession.py}
 
+An alternative way would be to use the general authentication procedure that 
+seems to work at most Swedish universities.
+\begin{minted}[linenos]{python}
+import ladok3
+
+ladok = ladok3.LadokSession("KTH Royal Institute of Technology",
+                            vars={"username": os.environ["KTH_LOGIN"],
+                                  "password": os.environ["KTH_PASSWD"]},
+                            test_environment=True) # for experiments
+\end{minted}
+
 This chapter covers how the [[LadokSession]] class work.
 The remaining chapters cover what the [[ladok]] object can be used for.
 \Cref{StudentClasses} covers how we can work with student data.
