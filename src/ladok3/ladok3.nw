@@ -1034,27 +1034,126 @@ This is essentially an \enquote{instance of a course syllabus}.
 We know from above that it inherits from [[LadokRemoteData]] and that it must 
 be initialized with the keywords [[ladok]] (for its parent) and 
 [[UtbildningsinstansUID]] (for itself) and optionally some data.
-This leaves the following methods.
 <<CourseInstance methods>>=
 def __init__(self, /, **kwargs):
   self.__instance_id = kwargs.pop("UtbildningsinstansUID")
-  super().__init__(**kwargs)
+  super().__init__(**kwargs) # sets self.ladok
 
-  try:
-    self.__assign_attr(kwargs)
-  except:
-    self.__pull_attributes()
+  <<CourseInstance constructor body>>
+@
 
+We can fetch the data from LADOK as follows.
+Note that we need to use the [[round_id]] from the [[CourseRound]] object.
+This works since we never have a [[CourseInstance]] object on its own, it's 
+always parent of a [[CourseRound]] object.
+(And that makes this kind of ugly from an OOP perspective.)
+<<fetch CourseInstance data from LADOK>>=
+data = self.ladok.course_round_components_JSON(self.round_id)
+@
+
+Then data will be populated with the following values:
+\begin{pycode}
+import json
+import ladok3
+import os
+
+ladok = ladok3.LadokSession(
+          os.environ["LADOK_INST"],
+          vars={"username": os.environ["LADOK_USER"],
+                "password": os.environ["LADOK_PASS"]},
+          test_environment=True)
+
+print(r"\begin{minted}{JSON}")
+data = ladok.course_round_components_JSON(
+                  "cf7045a7-3e1c-11eb-b960-5f936a674375")
+ladok3.clean_data(data)
+print(json.dumps(data, indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+Now that we have all data in [[data]], we can assign its values to the private 
+attributes.
+We note, however, that some course instances lack both [[Versionsnummer]] and 
+[[Omfattning]].
+It seems like faux courses are created to document when students go on 
+Exchanges.
+These faux courses have a name and code, but no credits or version of syllabus.
+Consequently they don't have any grading scales either.
+
+Our approach will be to try to assign the attributes using [[kwargs]], and if 
+that fails, we will fetch the data (pull from LADOK).
+If that pull fails with missing data, then we will assume that it's one of 
+these faux courses.
+<<CourseInstance constructor body>>=
+try:
+  self.__assign_attr(kwargs)
+except:
+  self.__pull_attributes()
+<<CourseInstance methods>>=
 def __assign_attr(self, data):
   <<assign CourseInstance data to private attributes>>
 
 def __pull_attributes(self):
-  <<fetch CourseInstance data object from LADOK>>
-  self.__assign_attr(data)
+  <<fetch CourseInstance data from LADOK>>
+  try:
+    self.__assign_attr(data)
+  except:
+    self.__assign_faux(data)
 
 def pull(self):
   self.__pull_attributes()
 
+def __assign_faux(self, data):
+  <<assign faux CourseInstance data to private attributes>>
+@
+
+By trial-and-error, it seems like the faux courses has none of the attributes 
+that the real courses have.
+However, we try our best.
+<<assign common CourseInstance data to private attributes>>=
+if "IngaendeMoment" in data:
+  self.__components = [CourseComponent(
+      ladok=self.ladok, course=self,
+      **component) for component in data["IngaendeMoment"]]
+else:
+  self.__components = []
+<<assign CourseInstance data to private attributes>>=
+<<assign common CourseInstance data to private attributes>>
+
+self.__name = data.pop("Benamning")
+self.__code = data.pop("Utbildningskod")
+
+self.__credits = data.pop("Omfattning")
+self.__unit = data.pop("Enhet")
+
+self.__version = data.pop("Versionsnummer")
+
+self.__education_id = data.pop("UtbildningUID")
+
+self.__grade_scale = self.ladok.get_grade_scales(
+  id=data.pop("BetygsskalaID"))
+<<assign faux CourseInstance data to private attributes>>=
+<<assign common CourseInstance data to private attributes>>
+
+self.__name = data.pop("Benamning", None)
+self.__code = data.pop("Utbildningskod", None)
+
+self.__credits = data.pop("Omfattning", None)
+self.__unit = data.pop("Enhet", None)
+
+self.__version = data.pop("Versionsnummer", None)
+
+self.__education_id = data.pop("UtbildningUID", None)
+
+try:
+  self.__grade_scale = self.ladok.get_grade_scales(
+    id=data.pop("BetygsskalaID"))
+except KeyError:
+  self.__grade_scale = None
+@
+
+Finally, we want to have properties to access the private attributes.
+<<CourseInstance methods>>=
 @property
 def instance_id(self):
   return self.__instance_id
@@ -1090,61 +1189,6 @@ def unit(self):
 def components(self, /, **kwargs):
   """Returns the list of components, filtered on keywords"""
   return filter_on_keys(self.__components, **kwargs)
-@
-
-Now we must fetch data from LADOK.
-<<fetch CourseInstance data object from LADOK>>=
-data = self.ladok.course_round_components_JSON(self.round_id)
-@ Then data will be populated with the following values:
-\begin{pycode}
-import json
-import ladok3
-import os
-
-ladok = ladok3.LadokSession(
-          os.environ["LADOK_INST"],
-          vars={"username": os.environ["LADOK_USER"],
-                "password": os.environ["LADOK_PASS"]},
-          test_environment=True)
-
-print(r"\begin{minted}{JSON}")
-data = ladok.course_round_components_JSON(
-                  "cf7045a7-3e1c-11eb-b960-5f936a674375")
-ladok3.clean_data(data)
-print(json.dumps(data, indent=2))
-print(r"\end{minted}")
-\end{pycode}
-
-Now that we have the [[data]] object, we can assign its values to the private 
-attributes.
-We note, however, that some course instances lack both [[Versionsnummer]] and 
-[[Omfattning]].
-It seems like faux courses are created to document when students go on 
-Exchanges.
-These faux courses have a name and code, but no credits or version of syllabus.
-Consequently they don't have any grading scales either.
-<<assign CourseInstance data to private attributes>>=
-self.__education_id = data.pop("UtbildningUID")
-
-self.__code = data.pop("Utbildningskod")
-self.__name = data.pop("Benamning")
-self.__version = data.pop("Versionsnummer", None) 
-
-self.__credits = data.pop("Omfattning", None)
-self.__unit = data.pop("Enhet", None)
-
-try:
-  self.__grade_scale = self.ladok.get_grade_scales(
-    id=data.pop("BetygsskalaID"))
-except KeyError:
-  self.__grade_scale = None
-
-if "IngaendeMoment" in data:
-  self.__components = [CourseComponent(
-      ladok=self.ladok, course=self,
-      **component) for component in data["IngaendeMoment"]]
-else:
-  self.__components = []
 @
 
 
