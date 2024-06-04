@@ -522,6 +522,9 @@ def load_credentials(filename="config.json"):
 
 First we try the newest format.
 We try to fetch the institution and vars from the keyring.
+
+Note that [[keyring]] returns [[None]] if the key doesn't exist, it doesn't 
+raise an exception.
 <<fetch vars from keyring>>=
 try:
   institution = keyring.get_password("ladok3", "institution")
@@ -529,7 +532,9 @@ try:
 
   vars = {}
   for key in vars_keys.split(";"):
-    vars[key] = keyring.get_password("ladok3", key)
+    value = keyring.get_password("ladok3", key)
+    if value:
+      vars[key] = value
 
   if institution and vars:
     return institution, vars
@@ -542,12 +547,10 @@ supported KTH.
 <<fetch username and password from keyring>>=
 try:
   institution = "KTH Royal Institute of Technology"
-  vars = {
-    "username": keyring.get_password("ladok3", "username"),
-    "password": keyring.get_password("ladok3", "password")
-  }
-  if vars:
-    return institution, vars
+  username = keyring.get_password("ladok3", "username")
+  password = keyring.get_password("ladok3", "password")
+  if username and password:
+    return institution, {"username": username, "password": password}
 except:
   pass
 @
@@ -581,12 +584,23 @@ try:
 
   vars = {}
   for key in vars_keys.split(":"):
-    vars[key] = os.environ[key]
+    try:
+      vars[key] = os.environ[key]
+    except KeyError:
+      <<print warning about missing variable in [[LADOK_VARS]]>>
 
   if institution and vars:
     return institution, vars
 except:
   pass
+@
+
+Unlike in the other cases, we don't just ignore the exception of the key not 
+existing.
+Since the user has explicitly specified the variable, we should warn them that 
+it doesn't exist.
+<<print warning about missing variable in [[LADOK_VARS]]>>=
+warn(f"Variable {key} not set, ignoring.")
 @
 
 If none of the above worked, the last resort is to try to read the 
@@ -599,7 +613,7 @@ try:
     config = json.load(conf_file)
 
   institution = config.pop("institution",
-                            "KTH Royal Institute of Technology")
+                           "KTH Royal Institute of Technology")
   return institution, config
 except:
   pass
