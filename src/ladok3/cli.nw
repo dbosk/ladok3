@@ -570,7 +570,7 @@ try:
     "username": os.environ["LADOK_USER"],
     "password": os.environ["LADOK_PASS"]
   }
-  if institution and vars:
+  if institution and vars["username"] and vars["password"]:
     return institution, vars
 except:
   pass
@@ -585,7 +585,9 @@ try:
   vars = {}
   for key in vars_keys.split(":"):
     try:
-      vars[key] = os.environ[key]
+      value = os.environ[key]
+      if value:
+        vars[key] = value
     except KeyError:
       <<print warning about missing variable in [[LADOK_VARS]]>>
 
