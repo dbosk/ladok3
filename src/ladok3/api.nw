@@ -889,6 +889,9 @@ Note that since this is a new result, we must provide the [[StudieresultatUID]]
 where we want to add the result.
 When we've done this, we'll get a [[ResultatUID]] back in the response.
 From then on, it's the [[ResultatUID]] that's interesting.
+
+Note also that we can use [[course_instance_id]] as [[component_id]], this will 
+set the result on the whole course.
 <<LadokSession data methods>>=
 def create_result_JSON(self,
       student_id, course_instance_id, component_id,

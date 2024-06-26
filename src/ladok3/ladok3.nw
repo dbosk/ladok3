@@ -1122,12 +1122,8 @@ By trial-and-error, it seems like the faux courses has none of the attributes
 that the real courses have.
 However, we try our best.
 <<assign common CourseInstance data to private attributes>>=
-if "IngaendeMoment" in data:
-  self.__components = [CourseComponent(
-      ladok=self.ladok, course=self,
-      **component) for component in data["IngaendeMoment"]]
-else:
-  self.__components = []
+self.__components = []
+<<add course components to [[self.__components]]>>
 <<assign CourseInstance data to private attributes>>=
 <<assign common CourseInstance data to private attributes>>
 
@@ -1200,6 +1196,33 @@ def unit(self):
 def components(self, /, **kwargs):
   """Returns the list of components, filtered on keywords"""
   return filter_on_keys(self.__components, **kwargs)
+@
+
+
+\subsection{Course components}
+
+We need to add the courses components to the course instance.
+That is things like LAB1 or EXA1 that make up the course in LADOK.
+<<add course components to [[self.__components]]>>=
+if "IngaendeMoment" in data:
+  self.__components += [CourseComponent(
+      ladok=self.ladok, course=self,
+      **component) for component in data["IngaendeMoment"]]
+@
+
+We also add the course itself as a component.
+This is to handle the grade on the course itself.
+Once all the components have a grade, the course itself will get a grade.
+This component represents that grade.
+It will get the course code as its code.
+<<add course components to [[self.__components]]>>=
+try:
+  course_component_data = data.copy()
+  course_component_data["ladok"] = self.ladok
+  self.__components.append(CourseComponent(course=self,
+                                           **course_component_data))
+except KeyError:
+  pass
 @
 
 
@@ -1415,13 +1438,15 @@ We can pull these from LADOK as well.
 We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
 From the response we get from LADOK, we construct [[CourseResult]] objects that 
 deal with the details.
+(It's a bit unclear why [[Kursversioner]] is a list, so far it has always 
+worked to take the first.)
 <<pull existing CourseResult objects from LADOK>>=
 response = self.ladok.student_results_JSON(
   self.__student.ladok_id, self.education_id
 )["Kursversioner"][0]
 
-#self.__results_id = response["Uid"]
 self.__results = []
+
 for result in response["VersionensModuler"]:
   try:
     self.__results.append(CourseResult(ladok=self.ladok,
@@ -1430,6 +1455,20 @@ for result in response["VersionensModuler"]:
                                        **result))
   except TypeError:
     pass
+@
+
+As with the components, the course grade itself is a special case.
+That data is not in [[VersionensModuler]], but in [[VersionensKurs]].
+But we can do the same with it, just as we could with the components.
+(And this works since it's a component in [[self.components()]].)
+<<pull existing CourseResult objects from LADOK>>=
+try:
+  self.__results.append(CourseResult(ladok=self.ladok,
+                                     components=self.components(),
+                                     student=self.__student,
+                                     **response["VersionensKurs"]))
+except TypeError:
+  pass
 @
 
 Now we can see which components from [[self.components]] are missing from 
