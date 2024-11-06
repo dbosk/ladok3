@@ -782,13 +782,13 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 
 [[package]]
 name = "weblogin"
-version = "1.9"
+version = "1.10"
 description = "Automates logging into web UIs to access unofficial APIs"
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "weblogin-1.9-py3-none-any.whl", hash = "sha256:81829fca16c5a7e079eb757e54afa18b21d1f88ac3f3e03536020664f3ebbdad"},
-    {file = "weblogin-1.9.tar.gz", hash = "sha256:85fb49c066adc0de011aa7dadb56588aa68ccc330b636efdc5ea86934fc3012f"},
+    {file = "weblogin-1.10-py3-none-any.whl", hash = "sha256:a2f05e44153b4c233cdb9a096be5a672967ac1da0497458d3e416d73e11b69cd"},
+    {file = "weblogin-1.10.tar.gz", hash = "sha256:3de0b7f765164d7a89050299ed0a7d39bcf2293bbf4a5afaa67cdab1d2d1dc97"},
 ]
 
 [package.dependencies]
@@ -813,4 +813,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "ce62befc3f238d1770c3254c1c23ab892433fea5d23e133b91058a66739ce260"
+content-hash = "822eaec4c1b6dfb5ea2ff701eeb109522c73504fb92cc6f8ffff59dcee77db6f"
