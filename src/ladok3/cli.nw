@@ -299,21 +299,17 @@ the user.
 Manages the user's LADOK login credentials. There are three ways to supply the 
 login credentials, in order of priority:
 
-1) Through the system keyring: Just run `ladok login` and you'll be asked to 
-   enter the credentials and they will be stored in the keyring. Note that for 
-   this to work on the WSL platform (and possibly on Windows), you need to 
-   install the `keyrings.alt` package: `python3 -m pip install keyrings.alt`.
+1) Through the environment: Just set the environment variables
 
-2) Through the environment: Just set the environment variables
+   a) LADOK_INST, the name of the institution, e.g. KTH Royal Institute of
+      Technology;
 
-  a) LADOK_INST, the name of the institution, e.g. KTH Royal Institute of 
-  Technology;
-  b) LADOK_VARS, a colon-separated list of environment variables, similarly to 
-  what's done in `ladok login` --- most don't need this, but can rather set
-  LADOK_USER (the username, e.g. dbosk@ug.kth.se) and
-  LADOK_PASS (the password) instead.
+   b) LADOK_VARS, a colon-separated list of environment variables, similarly to
+      what's done in `ladok login` --- most don't need this, but can rather set 
+      LADOK_USER (the username, e.g. dbosk@ug.kth.se) and LADOK_PASS (the 
+      password) instead.
 
-3) Through the configuration file: Just write
+2) Through the configuration file: Just write
 
       {{
         "institution": "the name of the university"
@@ -324,6 +320,17 @@ login credentials, in order of priority:
    to the file {dirs.user_config_dir}/config.json (default, or use the -f 
    option). (The keys 'username' and 'password' can be renamed to correspond to 
    the necessary values if the university login system uses other names.)
+
+3) Through the system keyring: Just run `ladok login` and you'll be asked to
+   enter the credentials and they will be stored in the keyring. Note that for 
+   this to work on the WSL platform (and possibly on Windows), you need to 
+   install the `keyrings.alt` package: `python3 -m pip install keyrings.alt`.
+
+The keyring is the most secure. However, sometimes one want to try different 
+credentials, so the environment should override the keyring. Also, on WSL the 
+keyring might require you to enter a password in the terminal---this is very 
+inconvenient in scripts. However, when logging in, we first try to store the 
+credentials in the keyring.
 
 <<add subparsers to subp>>=
 login_parser = subp.add_parser("login",
@@ -510,19 +517,84 @@ def load_credentials(filename="config.json"):
   can be passed to `LadokSession(instiution, credential dictionary)`.
   """
 
-  <<fetch vars from keyring>>
-  <<fetch username and password from keyring>>
   <<fetch institution from environment>>
   <<fetch username and password from environment>>
   <<fetch vars from environment>>
   <<fetch vars from config file>>
+  <<fetch vars from keyring>>
+  <<fetch username and password from keyring>>
 
   return None, None
 @
 
-First we try the newest format.
-We try to fetch the institution and vars from the keyring.
+First in priority is to read from the environment.
+We try to read the institution.
+If that fails, we assume we're using the old format that only supported KTH.
+<<fetch institution from environment>>=
+try:
+  institution = os.environ["LADOK_INST"]
+except:
+  institution = "KTH Royal Institute of Technology"
+<<fetch username and password from environment>>=
+try:
+  vars = {
+    "username": os.environ["LADOK_USER"],
+    "password": os.environ["LADOK_PASS"]
+  }
+  if institution and vars["username"] and vars["password"]:
+    return institution, vars
+except:
+  pass
+@
 
+If we couldn't read the old [[LADOK_USER]] and [[LADOK_PASS]], we try to read 
+the [[vars]] from the environment using [[LADOK_VARS]].
+Note that we need the [[institution]] to be set from [[LADOK_INST]] above for 
+this.
+<<fetch vars from environment>>=
+try:
+  vars_keys = os.environ["LADOK_VARS"]
+
+  vars = {}
+  for key in vars_keys.split(":"):
+    try:
+      value = os.environ[key]
+      if value:
+        vars[key] = value
+    except KeyError:
+      <<print warning about missing variable in [[LADOK_VARS]]>>
+
+  if institution and vars:
+    return institution, vars
+except:
+  pass
+@
+
+Unlike in the other cases, we don't just ignore the exception of the key not 
+existing.
+Since the user has explicitly specified the variable, we should warn them that 
+it doesn't exist.
+<<print warning about missing variable in [[LADOK_VARS]]>>=
+warn(f"Variable {key} not set, ignoring.")
+@
+
+If none of the above worked, we try the config file next.
+We pop the institution from the configuration file (a dictionary), because then 
+the remaining entries will be used as [[vars]].
+<<fetch vars from config file>>=
+try:
+  with open(filename) as conf_file:
+    config = json.load(conf_file)
+
+  institution = config.pop("institution",
+                           "KTH Royal Institute of Technology")
+  return institution, config
+except:
+  pass
+@
+
+Lastly, if nothing else worked, we try to fetch the institution and vars from 
+the keyring.
 Note that [[keyring]] returns [[None]] if the key doesn't exist, it doesn't 
 raise an exception.
 <<fetch vars from keyring>>=
@@ -551,72 +623,6 @@ try:
   password = keyring.get_password("ladok3", "password")
   if username and password:
     return institution, {"username": username, "password": password}
-except:
-  pass
-@
-
-Next in priority is to read from the environment.
-We try to read the institution.
-If that fails, we assume we're using the old format that only supported KTH.
-<<fetch institution from environment>>=
-try:
-  institution = os.environ["LADOK_INST"]
-except:
-  institution = "KTH Royal Institute of Technology"
-
-<<fetch username and password from environment>>=
-try:
-  vars = {
-    "username": os.environ["LADOK_USER"],
-    "password": os.environ["LADOK_PASS"]
-  }
-  if institution and vars["username"] and vars["password"]:
-    return institution, vars
-except:
-  pass
-@
-
-If we couldn't read the old [[LADOK_USER]] and [[LADOK_PASS]], we try to read 
-the [[vars]] from the environment using [[LADOK_VARS]].
-<<fetch vars from environment>>=
-try:
-  vars_keys = os.environ["LADOK_VARS"]
-
-  vars = {}
-  for key in vars_keys.split(":"):
-    try:
-      value = os.environ[key]
-      if value:
-        vars[key] = value
-    except KeyError:
-      <<print warning about missing variable in [[LADOK_VARS]]>>
-
-  if institution and vars:
-    return institution, vars
-except:
-  pass
-@
-
-Unlike in the other cases, we don't just ignore the exception of the key not 
-existing.
-Since the user has explicitly specified the variable, we should warn them that 
-it doesn't exist.
-<<print warning about missing variable in [[LADOK_VARS]]>>=
-warn(f"Variable {key} not set, ignoring.")
-@
-
-If none of the above worked, the last resort is to try to read the 
-configuration file.
-We pop the institution from the configuration file (a dictionary), because then 
-the remaining entries will be used as [[vars]].
-<<fetch vars from config file>>=
-try:
-  with open(filename) as conf_file:
-    config = json.load(conf_file)
-
-  institution = config.pop("institution",
-                           "KTH Royal Institute of Technology")
-  return institution, config
 except:
   pass
 @
