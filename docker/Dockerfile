@@ -1,4 +1,4 @@
-FROM python:3
+FROM python:3.11
 
-RUN python3 -m pip install --no-cache-dir -U ladok3 && \
-  ln -f $(find / -name ladok.bash) /etc/bash_completion.d
+RUN  python3 -m pip install --no-cache-dir --no-build-isolation -U ladok3 \
+  && ln -f $(find / -name ladok.bash) /etc/bash_completion.d
