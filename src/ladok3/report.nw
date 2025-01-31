@@ -163,7 +163,7 @@ error message.
 try:
   course = student.courses(code=args.course_code)[0]
 except IndexError:
-  raise Exception("f{args.course_code}: No such course for {student}")
+  raise Exception(f"{args.course_code}: No such course for {student}")
 <<look up [[result]] from [[course]]>>=
 try:
   result = course.results(component=args.component_code)[0]
