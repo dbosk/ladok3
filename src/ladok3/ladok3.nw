@@ -923,6 +923,25 @@ for course in self.ladok.registrations_JSON(self.ladok_id):
 
 We also want to know if a student is suspended or not.
 We can get a list of suspensions for a student.
+This list looks like this:
+\begin{minted}{json}
+[
+  {"Anteckning": "VJ-2024-...",
+   "Giltighetsperiod": {"Slutdatum": "2024-12-03",
+                        "Startdatum": "2024-09-25", "link": []},
+   "LarosateID": 29,
+   "OrsakID": 101450,
+   "SenastAndradAv": "someone@kth.se",
+   "SenastSparad": "2024-09-24T16:45:56.941",
+   "StudentUID": "...",
+   "Uid": "...",
+   "link": [{"method": "GET",
+             "uri": "https://api.ladok.se:443/studentinformation/internal/avstangning/...", 
+             "mediaType": "application/vnd.ladok+xml",
+             "rel": "self"}]
+  }
+]
+\end{minted}
 However, since suspended students are rare, we haven't found a specimen to 
 study; so we simply don't know what the list contains.
 But we can return it nonetheless.
