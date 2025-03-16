@@ -247,7 +247,7 @@ def write_xlsx(file_name, df, sheet_name):
     writer = pd.ExcelWriter(file_name+'.xlsx', engine='xlsxwriter')
     df.to_excel(writer, sheet_name=sheet_name)
     # Close the Pandas Excel writer and output the Excel file.
-    writer.save()
+    writer.close()
 
 def course_id_from_assetString(card):
     global Verbose_Flag
@@ -446,9 +446,6 @@ def main():
     user_and_program_df=pd.json_normalize(user_and_program_list)
     output_file="users_programs-{}".format(course_id)
     write_xlsx(output_file, user_and_program_df, 'users_programs')
-
-    # to logout and close the session
-    status=ladok_session.logout()
 
 
 if __name__ == "__main__": main()
