@@ -439,7 +439,7 @@ def instance_info_uid(self, instance_uid):
 def studystructure_student_JSON(self, uid):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/studiedeltagande/studiestruktur/student/'+uid,
+      '/studiedeltagande/internal/studiestruktur/student/'+uid,
     headers=self.headers)
   if r.status_code == 200:
     return r.json()
@@ -3229,7 +3229,7 @@ def organisation_by_uid_JSON(self, organisationUid):
 def utbildningstyp_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/utbildningstyp',
+      '/kataloginformation/internal/grunddata/utbildningstyp',
     headers=self.headers).json()
   return r
 
