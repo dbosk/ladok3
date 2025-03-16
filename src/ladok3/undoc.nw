@@ -287,7 +287,7 @@ def all_grading_scale(self):
 def grading_rights(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/resultat/resultatrattighet/listaforinloggadanvandare',
+      '/resultat/resultatrattighet/listaforinloggadanvandare', # not sure about this one /CO
     headers=self.headers).json()
   return r['Resultatrattighet']
 @
@@ -306,7 +306,7 @@ def grading_rights(self):
 # RETURNERAR reponse to the request
 def change_locale(self, lang = 'sv'):
   r = self.session.get(
-    url=self.base_gui_url+'/services/i18n/changeLocale?lang='+lang,
+    url=self.base_gui_url+'/services/i18n/changeLocale?lang='+lang, # not sure about this one /CO
     headers=self.headers).json()
   return r
 @
@@ -330,8 +330,8 @@ def change_locale(self, lang = 'sv'):
 def course_instances_JSON(self, course_code, lang = 'sv'):
   # note that there seems to be a limit of 403 for the number of pages
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/resultat/kurstillfalle/filtrera?kurskod=' +
-      course_code + '&page=1&limit=100&skipCount=false&sprakkod=' + lang,
+    url=self.base_gui_proxy_url + '/resultat/internal/kurstillfalle/filtrera?kurskod=' +
+      course_code + '&page=1&limit=100&skipCount=false&sprakkod=' + lang, # not sure about this one /CO
     headers=self.headers).json()
   return r
 @
@@ -348,7 +348,7 @@ def course_instances_JSON(self, course_code, lang = 'sv'):
 # RETURNERAR en dictionary of organization information for the entire institution of the logged in user
 def organization_info_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/resultat/organisation/utanlankar',
+    url=self.base_gui_proxy_url + '/resultat/internal/organisation/utanlankar',
     headers=self.headers).json()
   return r
 @
@@ -365,7 +365,7 @@ def organization_info_JSON(self):
 # RETURNERAR JSON of /resultat/grunddata/period
 def period_info_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/resultat/grunddata/period',
+    url=self.base_gui_proxy_url + '/resultat/grunddata/period', # doesn't work, but also not after adding 'internal/' between 'resultat/' and 'grunddata' /CO
     headers=self.headers).json()
   return r
 @
@@ -459,7 +459,7 @@ def studystructure_student_JSON(self, uid):
 def larosatesinformation_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/larosatesinformation',
+      '/kataloginformation/internal/grunddata/larosatesinformation',
     headers=self.headers).json()
   return r
 
@@ -490,7 +490,7 @@ def larosatesinformation_JSON(self):
 def undervisningssprak_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/undervisningssprak',
+      '/kataloginformation/internal/grunddata/undervisningssprak',
     headers=self.headers).json()
   return r
 # {   'Undervisningssprak': [   {   'Benamning': {   'en': 'English',
@@ -627,7 +627,7 @@ def undervisningssprak_JSON(self):
 def i18n_translation_JSON(self, lang = 'sv'):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/i18n/oversattningar/sprakkod/' + lang,
+      '/kataloginformation/internal/i18n/oversattningar/sprakkod/' + lang,
     headers=self.headers).json()
   return r
 
@@ -666,7 +666,7 @@ def i18n_translation_JSON(self, lang = 'sv'):
 # RETURNERAR JSON of places in Sweden with their KommunID
 def svenskorter_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/svenskort',
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/svenskort',
     headers=self.headers).json()
   return r
 
@@ -695,7 +695,7 @@ def svenskorter_JSON(self):
 # RETURNERAR JSON of places in Sweden with their KommunID
 def kommuner_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/kommun',
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/kommun',
     headers=self.headers).json()
   return r
 
@@ -733,7 +733,7 @@ def kommuner_JSON(self):
 # RETURNERAR JSON of countries
 def lander_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/land',
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/land',
     headers=self.headers).json()
   return r
 
@@ -768,7 +768,7 @@ def lander_JSON(self):
 def undervisningstid_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/undervisningstid',
+      '/kataloginformation/internal/grunddata/undervisningstid',
     headers=self.headers).json()
   return r
 
@@ -839,7 +839,7 @@ def undervisningstid_JSON(self):
 def successivfordjupning_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/successivfordjupning',
+      '/kataloginformation/internal/grunddata/successivfordjupning',
     headers=self.headers).json()
   return r
 
@@ -892,7 +892,7 @@ def successivfordjupning_JSON(self):
 def undervisningsform_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/undervisningsform',
+      '/kataloginformation/internal/grunddata/undervisningsform',
     headers=self.headers).json()
   return r
 
@@ -971,7 +971,7 @@ def undervisningsform_JSON(self):
 # RETURNERAR JSON of local periods
 def LokalaPerioder_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/period',
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/period',
     headers=self.headers).json()
   return r
 
@@ -1034,7 +1034,7 @@ def LokalaPerioder_JSON(self):
 def nivainomstudieordning_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/nivainomstudieordning',
+      '/kataloginformation/internal/grunddata/nivainomstudieordning',
     headers=self.headers).json()
   return r
 
@@ -1098,7 +1098,7 @@ def nivainomstudieordning_JSON(self):
 # RETURNERAR JSON of subject area groups
 def amnesgrupp_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/amnesgrupp',
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/amnesgrupp',
     headers=self.headers).json()
   return r
 
@@ -1155,7 +1155,7 @@ def amnesgrupp_JSON(self):
 # RETURNERAR JSON of study tempos
 def studietakt_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/studietakt',
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/studietakt',
     headers=self.headers).json()
   return r
 
@@ -2178,7 +2178,7 @@ def studietakt_JSON(self):
 def finansieringsform_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/finansieringsform',
+      '/kataloginformation/internal/grunddata/finansieringsform',
     headers=self.headers).json()
   return r
 
@@ -2210,7 +2210,7 @@ def finansieringsform_JSON(self):
 def utbildningsomrade_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/utbildningsomrade',
+      '/kataloginformation/internal/grunddata/utbildningsomrade',
     headers=self.headers).json()
   return r
 
@@ -2290,7 +2290,7 @@ def utbildningsomrade_JSON(self):
 def kravpatidigarestudier_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/kravpatidigarestudier',
+      '/kataloginformation/internal/grunddata/kravpatidigarestudier',
     headers=self.headers).json()
   return r
 
@@ -2348,7 +2348,7 @@ def kravpatidigarestudier_JSON(self):
 def studieordning_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/studieordning',
+      '/kataloginformation/internal/grunddata/studieordning',
     headers=self.headers).json()
   return r
 
@@ -2618,7 +2618,7 @@ def studieordning_JSON(self):
 # RETURNERAR JSON of units
 def enhet_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/kataloginformation/grunddata/enhet',
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/enhet',
     headers=self.headers).json()
   return r
 
@@ -2729,7 +2729,7 @@ def enhet_JSON(self):
 def studielokalisering_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/studielokalisering',
+      '/kataloginformation/internal/grunddata/studielokalisering',
     headers=self.headers).json()
   return r
 
@@ -3146,7 +3146,7 @@ def studielokalisering_JSON(self):
 def antagningsomgang_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/antagningsomgang',
+      '/kataloginformation/internal/grunddata/antagningsomgang',
     headers=self.headers).json()
   return r
 
@@ -3343,7 +3343,7 @@ def utbildningstyp_JSON(self):
 def aktivitetstillfallestyp_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/aktivitetstillfallestyp',
+      '/kataloginformation/internal/grunddata/aktivitetstillfallestyp',
     headers=self.headers).json()
   return r
 
@@ -3428,7 +3428,7 @@ def catalog_service_index__JSON(self):
 def omradesbehorighet_JSON(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
-      '/kataloginformation/grunddata/omradesbehorighet',
+      '/kataloginformation/internal/grunddata/omradesbehorighet',
     headers=self.headers).json()
   return r
 @
