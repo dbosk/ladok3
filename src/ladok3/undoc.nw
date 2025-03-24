@@ -1,6 +1,8 @@
 \chapter{Baltatzis' and Maguire's original [[LadokSession]] methods}
 
 Below are the original [[LadokSession]] methods by Baltatzis and Maguire.
+These are merely kept for backwards compatibility.
+
 The one missing is the constructor, that has been replaced by the code above.
 Also, the code has been adapted to use [[self.session]] instead of 
 [[self.__session]] etc.
