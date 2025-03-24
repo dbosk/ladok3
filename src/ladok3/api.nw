@@ -1371,3 +1371,997 @@ print(json.dumps(results, indent=2, ensure_ascii=False))
 print(r"\end{minted}")
 \end{pycode}
 
+
+\chapter{Other API calls}
+
+The following API calls were explored and written by Chip Maguire.
+Bosk has merely added tests and generated example output, as well as minor 
+reformatting of the code.
+
+\section{[[grading_rights]]}
+
+We can get a list of our rights in LADOK.
+<<LadokSession data methods>>=
+# added by GQMJr
+def grading_rights(self):
+  """
+  Returns a list of dictionaries with the grading rights of the logged in user.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/internal/resultatrattighet/listaforinloggadanvandare',
+    headers=self.headers).json()
+  return r['Resultatrattighet']
+@
+
+Let's add a test.
+This should return a list of dictionaries.
+<<test functions>>=
+def test_grading_rights():
+  r = ladok.grading_rights()
+  assert type(r) == list
+  assert type(r[0]) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.grading_rights()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+    
+
+\section{[[course_instances_JSON]]}
+
+We can get a list of course instances for a given course code.
+<<LadokSession data methods>>=
+# added by GQMJr
+def course_instances_JSON(self, course_code, lang = 'sv'):
+  """
+  Returns a list of dictionaries with course instances for a given course code.
+  The course code is a string such as "II2202". The language code is 'en' or 
+  'sv'.
+
+  Note that there seems to be a limit of 403 for the number of pages.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/resultat/internal/kurstillfalle/filtrera?kurskod=' +
+      course_code + '&page=1&limit=100&skipCount=false&sprakkod=' + lang, # not sure about this one /CO
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a list of dictionaries.
+<<test functions>>=
+def test_course_instances_JSON():
+  r = ladok.course_instances_JSON('II2202')
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.course_instances_JSON('DD1310')),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[organization_info_JSON]]}
+
+We can get information about the organization.
+<<LadokSession data methods>>=
+# added by GQMJr
+def organization_info_JSON(self):
+  """
+  Returns a dictionary of organization information for the entire institution 
+  of the logged in user.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/resultat/internal/organisation/utanlankar',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_organization_info_JSON():
+  r = ladok.organization_info_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.organization_info_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[instance_info]]}
+
+This function gets a course instance by the combination of course code (\eg 
+DD1310) and the five digit round code (\eg 50429).
+<<LadokSession data methods>>=
+# added by GQMJr
+def instance_info(self, course_code, instance_code, lang = 'sv'):
+  """
+  Returns a dictionary of course instance information.
+
+  course_code        - course code, such as "II2202"
+  
+  instance_code      - instance of the course ('TillfallesKod')
+  
+  lang               - language code 'en' or 'sv', defaults to 'sv'
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/internal/kurstillfalle/filtrera?kurskod=' + course_code +
+        '&page=1&limit=25&skipCount=false&sprakkod=' + lang,
+    headers=self.headers)
+  if r.status_code == requests.codes.ok:
+    rj=r.json()
+    for course in rj['Resultat']:
+      if course['TillfallesKod'] == instance_code:
+        return course
+  return None
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_instance_info():
+  r = ladok.instance_info('DD1310', '50429')
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.instance_info('DD1310', '50429')),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[instance_info_uid]]}
+
+This function returns the same as above ([[instance_info]]) but uses the 
+course's LADOK ID.
+This ID can be found as the [[sis_course_id]] in Canvas.
+<<LadokSession data methods>>=
+# added by GQMJr
+def instance_info_uid(self, instance_uid):
+  """
+  Returns a dictionary of course instance information.
+  
+  instance_uid: course's Uid (from course_integration_id or
+                sis_course_id in Canvas)
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/internal/kurstillfalle/'+instance_uid,
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_instance_info_uid():
+  r = ladok.instance_info_uid('da99b691-8f70-11ee-b4f1-bdc8f0e04f23')
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(
+                  ladok.instance_info_uid('da99b691-8f70-11ee-b4f1-bdc8f0e04f23')),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[studystructure_student_JSON]]}
+
+We also want to get a student's study structure, that is programmes that they 
+are admitted to.
+<<LadokSession data methods>>=
+# added by GQMJr
+def studystructure_student_JSON(self, uid):
+  """
+  Returns a dictionary of student information. This contains programmes that 
+  the student is admitted to.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/studiedeltagande/internal/studiestruktur/student/'+uid,
+    headers=self.headers)
+  if r.status_code == 200:
+    return r.json()
+  return None
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_studystructure_student_JSON():
+  r = ladok.studystructure_student_JSON(student_uid)
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.studystructure_student_JSON(student_uid)),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[larosatesinformation_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def larosatesinformation_JSON(self):
+  """
+  Returns a dictionary of the university or college information.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/larosatesinformation',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_larosatesinformation_JSON():
+  r = ladok.larosatesinformation_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.larosatesinformation_JSON()),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[undervisningssprak_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def undervisningssprak_JSON(self):
+  """
+  Returns a dictionary of teaching languages.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/undervisningssprak',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_undervisningssprak_JSON():
+  r = ladok.undervisningssprak_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.undervisningssprak_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[i18n_translation_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def i18n_translation_JSON(self, lang = 'sv'):
+  """
+  Returns a dictionary of i18n translations used in Ladok3.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/i18n/oversattningar/sprakkod/' + lang,
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_i18n_translation_JSON():
+  r = ladok.i18n_translation_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.i18n_translation_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[svenskorter_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def svenskorter_JSON(self):
+  """
+  Returns a dictionary of Swedish places with their KommunID.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/svenskort',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_svenskorter_JSON():
+  r = ladok.svenskorter_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.svenskorter_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[kommuner_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def kommuner_JSON(self):
+  """
+  Returns a dictionary of Swedish municipalities.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/kommun',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_kommuner_JSON():
+  r = ladok.kommuner_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.kommuner_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[lander_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def lander_JSON(self):
+  """
+  Returns a dictionary of countries.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/land',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_lander_JSON():
+  r = ladok.lander_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.lander_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[undervisningstid_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def undervisningstid_JSON(self):
+  """
+  Returns a dictionary of teaching times.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/undervisningstid',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_undervisningstid_JSON():
+  r = ladok.undervisningstid_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.undervisningstid_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[successivfordjupning_JSON]]}
+
+<<LadokSession data methods>>=
+# RETURNERAR JSON of Successive Specializations
+def successivfordjupning_JSON(self):
+  """
+  Returns a dictionary of Successive Specializations.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/successivfordjupning',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_successivfordjupning_JSON():
+  r = ladok.successivfordjupning_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.successivfordjupning_JSON()),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[undervisningsform_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def undervisningsform_JSON(self):
+  """
+  Returns forms of education.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/undervisningsform',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_undervisningsform_JSON():
+  r = ladok.undervisningsform_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.undervisningsform_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[LokalaPerioder_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def LokalaPerioder_JSON(self):
+  """
+  Returns local periods.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/period',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_LokalaPerioder_JSON():
+  r = ladok.LokalaPerioder_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.LokalaPerioder_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[nivainomstudieordning_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def nivainomstudieordning_JSON(self):
+  """
+  Returns education levels.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/nivainomstudieordning',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_nivainomstudieordning_JSON():
+  r = ladok.nivainomstudieordning_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.nivainomstudieordning_JSON()),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[amnesgrupp_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def amnesgrupp_JSON(self):
+  """
+  Returns subject area groups.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/amnesgrupp',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_amnesgrupp_JSON():
+  r = ladok.amnesgrupp_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.amnesgrupp_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+
+\section{[[studietakt_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def studietakt_JSON(self):
+  """
+  Returns study paces.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/studietakt',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_studietakt_JSON():
+  r = ladok.studietakt_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.studietakt_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+
+\section{[[finansieringsform_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def finansieringsform_JSON(self):
+  """
+  Returns forms of financing.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/finansieringsform',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_finansieringsform_JSON():
+  r = ladok.finansieringsform_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.finansieringsform_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[utbildningsomrade_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def utbildningsomrade_JSON(self):
+  """
+  Returns subject areas.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/utbildningsomrade',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_utbildningsomrade_JSON():
+  r = ladok.utbildningsomrade_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.utbildningsomrade_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[kravpatidigarestudier_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def kravpatidigarestudier_JSON(self):
+  """
+  Returns requirements for earlier studies.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/kravpatidigarestudier',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_kravpatidigarestudier_JSON():
+  r = ladok.kravpatidigarestudier_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.kravpatidigarestudier_JSON()),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[studieordning_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def studieordning_JSON(self):
+  """
+  Returns study regulations.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/studieordning',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_studieordning_JSON():
+  r = ladok.studieordning_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.studieordning_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+
+\section{[[enhet_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def enhet_JSON(self):
+  """
+  Returns credit units.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/grunddata/enhet',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_enhet_JSON():
+  r = ladok.enhet_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.enhet_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[studielokalisering_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def studielokalisering_JSON(self):
+  """
+  Returns study locations.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/studielokalisering',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_studielokalisering_JSON():
+  r = ladok.studielokalisering_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.studielokalisering_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[antagningsomgang_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def antagningsomgang_JSON(self):
+  """
+  Returns the admission round.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/antagningsomgang',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_antagningsomgang_JSON():
+  r = ladok.antagningsomgang_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.antagningsomgang_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[utbildningstyp_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def utbildningstyp_JSON(self):
+  """
+  Returns types of education.
+
+  For information about these, see 
+
+    https://ladok.se/wp-content/uploads/2018/01/Funktionsbeskrivning_095.pdf
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/utbildningstyp',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_utbildningstyp_JSON():
+  r = ladok.utbildningstyp_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.utbildningstyp_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[aktivitetstillfallestyp_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def aktivitetstillfallestyp_JSON(self):
+  """
+  Returns the activity types.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/aktivitetstillfallestyp',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_aktivitetstillfallestyp_JSON():
+  r = ladok.aktivitetstillfallestyp_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.aktivitetstillfallestyp_JSON()),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[catalog_service_index_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def catalog_service_index_JSON(self):
+  """
+  Returns the catalog service index.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/kataloginformation/internal/service/index',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_catalog_service_index_JSON():
+  r = ladok.catalog_service_index_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.catalog_service_index_JSON()),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[omradesbehorighet_JSON]]}
+
+<<LadokSession data methods>>=
+# added by GQMJr
+def omradesbehorighet_JSON(self):
+  """
+  Returns områdesbehörighet. See
+
+    https://antagning.se/globalassets/omradesbehorigheter-hogskolan.pdf
+
+  for more information.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/kataloginformation/internal/grunddata/omradesbehorighet',
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_omradesbehorighet_JSON():
+  r = ladok.omradesbehorighet_JSON()
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.omradesbehorighet_JSON()), indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
