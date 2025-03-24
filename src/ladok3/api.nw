@@ -534,6 +534,43 @@ print(r"\end{minted}")
 \end{pycode}
 
 
+\section{[[studystructure_student_JSON]]}
+
+We also want to get a student's study structure, that is programmes that they 
+are admitted to.
+<<LadokSession data methods>>=
+# added by GQMJr
+def studystructure_student_JSON(self, uid):
+  """
+  Returns a dictionary of student information. This contains programmes that 
+  the student is admitted to.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/studiedeltagande/internal/studiestruktur/student/'+uid,
+    headers=self.headers)
+  if r.status_code == 200:
+    return r.json()
+  return None
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_studystructure_student_JSON():
+  r = ladok.studystructure_student_JSON(student_uid)
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.studystructure_student_JSON(student_uid)),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
 
 \chapter{Course-related API calls}
 
@@ -647,6 +684,130 @@ ladok3.clean_data(results)
 print(json.dumps(results, indent=2, ensure_ascii=False))
 print(r"\end{minted}")
 \end{pycode}
+
+
+\section{[[course_instances_JSON]]}
+
+We can get a list of course instances for a given course code.
+<<LadokSession data methods>>=
+# added by GQMJr
+def course_instances_JSON(self, course_code, lang = 'sv'):
+  """
+  Returns a list of dictionaries with course instances for a given course code.
+  The course code is a string such as "II2202". The language code is 'en' or 
+  'sv'.
+
+  Note that there seems to be a limit of 403 for the number of pages.
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url + '/resultat/internal/kurstillfalle/filtrera?kurskod=' +
+      course_code + '&page=1&limit=100&skipCount=false&sprakkod=' + lang, # not sure about this one /CO
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a list of dictionaries.
+<<test functions>>=
+def test_course_instances_JSON():
+  r = ladok.course_instances_JSON('II2202')
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.course_instances_JSON('DD1310')),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[instance_info]]}
+
+This function gets a course instance by the combination of course code (\eg 
+DD1310) and the five digit round code (\eg 50429).
+<<LadokSession data methods>>=
+# added by GQMJr
+def instance_info(self, course_code, instance_code, lang = 'sv'):
+  """
+  Returns a dictionary of course instance information.
+
+  course_code        - course code, such as "II2202"
+  
+  instance_code      - instance of the course ('TillfallesKod')
+  
+  lang               - language code 'en' or 'sv', defaults to 'sv'
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/internal/kurstillfalle/filtrera?kurskod=' + course_code +
+        '&page=1&limit=25&skipCount=false&sprakkod=' + lang,
+    headers=self.headers)
+  if r.status_code == requests.codes.ok:
+    rj=r.json()
+    for course in rj['Resultat']:
+      if course['TillfallesKod'] == instance_code:
+        return course
+  return None
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_instance_info():
+  r = ladok.instance_info('DD1310', '50429')
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(ladok.instance_info('DD1310', '50429')),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
+\section{[[instance_info_uid]]}
+
+This function returns the same as above ([[instance_info]]) but uses the 
+course's LADOK ID.
+This ID can be found as the [[sis_course_id]] in Canvas.
+<<LadokSession data methods>>=
+# added by GQMJr
+def instance_info_uid(self, instance_uid):
+  """
+  Returns a dictionary of course instance information.
+  
+  instance_uid: course's Uid (from course_integration_id or
+                sis_course_id in Canvas)
+  """
+  r = self.session.get(
+    url=self.base_gui_proxy_url +
+      '/resultat/internal/kurstillfalle/'+instance_uid,
+    headers=self.headers).json()
+  return r
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_instance_info_uid():
+  r = ladok.instance_info_uid('da99b691-8f70-11ee-b4f1-bdc8f0e04f23')
+  assert type(r) == dict
+@
+
+The output looks like this:
+\begin{pycode}[apitest]
+print(r"\begin{minted}{JSON}")
+print(json.dumps(ladok3.clean_data(
+                  ladok.instance_info_uid('da99b691-8f70-11ee-b4f1-bdc8f0e04f23')),
+                 indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+
 
 
 \section{Course components}
@@ -1411,43 +1572,6 @@ print(r"\end{minted}")
 \end{pycode}
     
 
-\section{[[course_instances_JSON]]}
-
-We can get a list of course instances for a given course code.
-<<LadokSession data methods>>=
-# added by GQMJr
-def course_instances_JSON(self, course_code, lang = 'sv'):
-  """
-  Returns a list of dictionaries with course instances for a given course code.
-  The course code is a string such as "II2202". The language code is 'en' or 
-  'sv'.
-
-  Note that there seems to be a limit of 403 for the number of pages.
-  """
-  r = self.session.get(
-    url=self.base_gui_proxy_url + '/resultat/internal/kurstillfalle/filtrera?kurskod=' +
-      course_code + '&page=1&limit=100&skipCount=false&sprakkod=' + lang, # not sure about this one /CO
-    headers=self.headers).json()
-  return r
-@
-
-Let's add a test.
-This should return a list of dictionaries.
-<<test functions>>=
-def test_course_instances_JSON():
-  r = ladok.course_instances_JSON('II2202')
-  assert type(r) == dict
-@
-
-The output looks like this:
-\begin{pycode}[apitest]
-print(r"\begin{minted}{JSON}")
-print(json.dumps(ladok3.clean_data(ladok.course_instances_JSON('DD1310')),
-                 indent=2))
-print(r"\end{minted}")
-\end{pycode}
-
-
 \section{[[organization_info_JSON]]}
 
 We can get information about the organization.
@@ -1476,129 +1600,6 @@ The output looks like this:
 \begin{pycode}[apitest]
 print(r"\begin{minted}{JSON}")
 print(json.dumps(ladok3.clean_data(ladok.organization_info_JSON()), indent=2))
-print(r"\end{minted}")
-\end{pycode}
-
-
-\section{[[instance_info]]}
-
-This function gets a course instance by the combination of course code (\eg 
-DD1310) and the five digit round code (\eg 50429).
-<<LadokSession data methods>>=
-# added by GQMJr
-def instance_info(self, course_code, instance_code, lang = 'sv'):
-  """
-  Returns a dictionary of course instance information.
-
-  course_code        - course code, such as "II2202"
-  
-  instance_code      - instance of the course ('TillfallesKod')
-  
-  lang               - language code 'en' or 'sv', defaults to 'sv'
-  """
-  r = self.session.get(
-    url=self.base_gui_proxy_url +
-      '/resultat/internal/kurstillfalle/filtrera?kurskod=' + course_code +
-        '&page=1&limit=25&skipCount=false&sprakkod=' + lang,
-    headers=self.headers)
-  if r.status_code == requests.codes.ok:
-    rj=r.json()
-    for course in rj['Resultat']:
-      if course['TillfallesKod'] == instance_code:
-        return course
-  return None
-@
-
-Let's add a test.
-This should return a dictionary.
-<<test functions>>=
-def test_instance_info():
-  r = ladok.instance_info('DD1310', '50429')
-  assert type(r) == dict
-@
-
-The output looks like this:
-\begin{pycode}[apitest]
-print(r"\begin{minted}{JSON}")
-print(json.dumps(ladok3.clean_data(ladok.instance_info('DD1310', '50429')),
-                 indent=2))
-print(r"\end{minted}")
-\end{pycode}
-
-
-\section{[[instance_info_uid]]}
-
-This function returns the same as above ([[instance_info]]) but uses the 
-course's LADOK ID.
-This ID can be found as the [[sis_course_id]] in Canvas.
-<<LadokSession data methods>>=
-# added by GQMJr
-def instance_info_uid(self, instance_uid):
-  """
-  Returns a dictionary of course instance information.
-  
-  instance_uid: course's Uid (from course_integration_id or
-                sis_course_id in Canvas)
-  """
-  r = self.session.get(
-    url=self.base_gui_proxy_url +
-      '/resultat/internal/kurstillfalle/'+instance_uid,
-    headers=self.headers).json()
-  return r
-@
-
-Let's add a test.
-This should return a dictionary.
-<<test functions>>=
-def test_instance_info_uid():
-  r = ladok.instance_info_uid('da99b691-8f70-11ee-b4f1-bdc8f0e04f23')
-  assert type(r) == dict
-@
-
-The output looks like this:
-\begin{pycode}[apitest]
-print(r"\begin{minted}{JSON}")
-print(json.dumps(ladok3.clean_data(
-                  ladok.instance_info_uid('da99b691-8f70-11ee-b4f1-bdc8f0e04f23')),
-                 indent=2))
-print(r"\end{minted}")
-\end{pycode}
-
-
-
-\section{[[studystructure_student_JSON]]}
-
-We also want to get a student's study structure, that is programmes that they 
-are admitted to.
-<<LadokSession data methods>>=
-# added by GQMJr
-def studystructure_student_JSON(self, uid):
-  """
-  Returns a dictionary of student information. This contains programmes that 
-  the student is admitted to.
-  """
-  r = self.session.get(
-    url=self.base_gui_proxy_url +
-      '/studiedeltagande/internal/studiestruktur/student/'+uid,
-    headers=self.headers)
-  if r.status_code == 200:
-    return r.json()
-  return None
-@
-
-Let's add a test.
-This should return a dictionary.
-<<test functions>>=
-def test_studystructure_student_JSON():
-  r = ladok.studystructure_student_JSON(student_uid)
-  assert type(r) == dict
-@
-
-The output looks like this:
-\begin{pycode}[apitest]
-print(r"\begin{minted}{JSON}")
-print(json.dumps(ladok3.clean_data(ladok.studystructure_student_JSON(student_uid)),
-                 indent=2))
 print(r"\end{minted}")
 \end{pycode}
 
