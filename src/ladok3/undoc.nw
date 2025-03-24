@@ -274,25 +274,6 @@ def all_grading_scale(self):
 @
 
 
-\section{[[grading_rights]]}
-
-<<LadokSession data methods>>=
-# added by GQMJr
-#####################################################################
-#
-# grading_rights
-#
-#
-# RETURNERAR en dictionary of the grading rights (of the logged in user)
-def grading_rights(self):
-  r = self.session.get(
-    url=self.base_gui_proxy_url +
-      '/resultat/resultatrattighet/listaforinloggadanvandare', # not sure about this one /CO
-    headers=self.headers).json()
-  return r['Resultatrattighet']
-@
-    
-
 \section{[[change_locale]]}
 
 <<LadokSession data methods>>=
@@ -312,50 +293,9 @@ def change_locale(self, lang = 'sv'):
 @
 
 
-\section{[[course_instances_JSON]]}
-
-<<LadokSession data methods>>=
-# added by GQMJr
-#####################################################################
-#
-# course_instances_JSON
-#
-# course_code        - course code, such as "II2202"
-#
-# lang               - language code 'en' or 'sv', defaults to 'sv'
-#
-# RETURNERAR JSON of resultat/kurstillfalle
-#
-# Example: ladok_session.course_instances('II2202', 'en')
-def course_instances_JSON(self, course_code, lang = 'sv'):
-  # note that there seems to be a limit of 403 for the number of pages
-  r = self.session.get(
-    url=self.base_gui_proxy_url + '/resultat/internal/kurstillfalle/filtrera?kurskod=' +
-      course_code + '&page=1&limit=100&skipCount=false&sprakkod=' + lang, # not sure about this one /CO
-    headers=self.headers).json()
-  return r
-@
-
-
-\section{[[organization_info_JSON]]}
-
-<<LadokSession data methods>>=
-# added by GQMJr
-#####################################################################
-#
-# organization_info_JSON
-#
-# RETURNERAR en dictionary of organization information for the entire institution of the logged in user
-def organization_info_JSON(self):
-  r = self.session.get(
-    url=self.base_gui_proxy_url + '/resultat/internal/organisation/utanlankar',
-    headers=self.headers).json()
-  return r
-@
-
-
 \section{[[period_info_JSON]]}
 
+This no longer works.
 <<LadokSession data methods>>=
 # added by GQMJr
 #####################################################################
@@ -365,85 +305,11 @@ def organization_info_JSON(self):
 # RETURNERAR JSON of /resultat/grunddata/period
 def period_info_JSON(self):
   r = self.session.get(
-    url=self.base_gui_proxy_url + '/resultat/grunddata/period', # doesn't work, but also not after adding 'internal/' between 'resultat/' and 'grunddata' /CO
+    url=self.base_gui_proxy_url + '/resultat/internal/grunddata/period',
+    # doesn't work, but also not after adding 'internal/' between 'resultat/' 
+    # and 'grunddata' /CO
     headers=self.headers).json()
   return r
-@
-
-
-\section{[[instance_info]]}
-
-<<LadokSession data methods>>=
-# added by GQMJr
-#####################################################################
-#
-# instance_info
-#
-# course_code        - course code, such as "II2202"
-#
-# instance_code      - instance of the course ('TillfallesKod')
-# 
-# lang               - language code 'en' or 'sv', defaults to 'sv'
-#
-# RETURNERAR en dictionary of course instance information
-#
-# Example: ii=ladok_session.instance_info('II2202', instance_code, 'en')
-def instance_info(self, course_code, instance_code, lang = 'sv'):
-  r = self.session.get(
-    url=self.base_gui_proxy_url +
-      '/resultat/kurstillfalle/filtrera?kurskod=' + course_code +
-        '&page=1&limit=25&skipCount=false&sprakkod=' + lang,
-    headers=self.headers)
-  if r.status_code == requests.codes.ok:
-    rj=r.json()
-    for course in rj['Resultat']:
-      if course['TillfallesKod'] == instance_code:
-        return course
-  return None
-@
-
-
-\section{[[instance_info_uid]]}
-
-<<LadokSession data methods>>=
-# added by GQMJr
-#####################################################################
-#
-# instance_info_uid
-#
-# instance_uid       -- course's Uid (from course_integration_id)
-# 
-# RETURNERAR en dictionary of course instance information
-#
-# Example: ii=ladok_session.instance_info_uid(instance_uid)
-def instance_info_uid(self, instance_uid):
-  r = self.session.get(
-    url=self.base_gui_proxy_url + '/resultat/kurstillfalle/'+instance_uid,
-    headers=self.headers).json()
-  return r
-@
-
-
-
-\section{[[studystructure_student_JSON]]}
-
-<<LadokSession data methods>>=
-# added by GQMJr
-#####################################################################
-#
-# studystructure_student_JSON
-#
-# uid                -  uid of a student
-#
-# RETURNERAR en dictionary of student information
-def studystructure_student_JSON(self, uid):
-  r = self.session.get(
-    url=self.base_gui_proxy_url +
-      '/studiedeltagande/internal/studiestruktur/student/'+uid,
-    headers=self.headers)
-  if r.status_code == 200:
-    return r.json()
-  return None
 @
 
 
@@ -475,6 +341,14 @@ def larosatesinformation_JSON(self):
 #                                     'OrtID': 18,
 #                                     'link': []}],
 #     'link': []}
+@
+
+Let's add a test.
+This should return a dictionary.
+<<test functions>>=
+def test_larosatesinformation_JSON():
+  r = ladok.larosatesinformation_JSON()
+  assert type(r) == dict
 @
 
 
