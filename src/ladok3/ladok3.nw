@@ -57,6 +57,17 @@ ladok = ladok3.LadokSession("KTH Royal Institute of Technology",
                             test_environment=True) # for experiments
 \end{minted}
 
+Yet another way is to use the [[ladok]] command's own credential store.
+\begin{minted}[linenos]{python}
+import ladok3
+import ladok3.cli
+
+ladok = ladok3.LadokSession(*ladok3.cli.load_credentials(),
+                            test_environment=True) # for experiments
+\end{minted}
+Just note that unpacking [[*]] to unpack the tuple that [[load_credentials]] 
+returns.
+
 This chapter covers how the [[LadokSession]] class work.
 The remaining chapters cover what the [[ladok]] object can be used for.
 \Cref{StudentClasses} covers how we can work with student data.

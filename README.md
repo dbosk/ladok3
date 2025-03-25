@@ -87,6 +87,33 @@ component_result.set_grade("P", "2021-03-15")
 component_result.finalize()
 ```
 
+A better way is to use the `load_credentials` function of the CLI.
+```python
+import ladok3
+import ladok3.cli
+
+ls = ladok3.LadokSession(*ladok3.cli.load_credentials())
+
+student = ls.get_student("123456-1234")
+# ...
+```
+
+An even better way is to reuse the stored session to use the already built 
+cache.
+```python
+import ladok3
+import ladok3.cli
+
+_, credentials = ladok3.cli.load_credentials()
+
+ls = ladok3.cli.restore_ladok_session(credentials)
+
+student = ls.get_student("123456-1234")
+# ...
+
+ladok3.cli.store_ladok_session(ls, credentials)
+```
+
 ## More documentation
 
 There are more detailed usage examples in the details documentation that can be 

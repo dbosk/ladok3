@@ -25,6 +25,8 @@ ladok3.pdf: ../examples/example_Student.py
 ladok3.pdf: ../examples/example_Course.py
 ladok3.pdf: ../examples/canvas2ladok.tex
 
+ladok3.pdf: didactic.sty
+
 ../%::
 	${MAKE} -C $(dir $@) $(notdir $@)
 
@@ -44,3 +46,5 @@ distclean:
 
 INCLUDE_MAKEFILES=../makefiles
 include ${INCLUDE_MAKEFILES}/tex.mk
+INCLUDE_DIDACTIC=./didactic
+include ${INCLUDE_DIDACTIC}/didactic.mk
