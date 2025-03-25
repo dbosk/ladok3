@@ -16,13 +16,11 @@ We will use the following to test the API methods.
 <<test api.py>>=
 import json
 import ladok3
+import ladok3.cli
 import os
 
-ladok = ladok3.LadokSession(
-            os.environ["LADOK_INST"],
-            vars={"username": os.environ["LADOK_USER"],
-                  "password": os.environ["LADOK_PASS"]},
-            test_environment=True) # for experiments
+ladok = ladok3.LadokSession(*ladok3.cli.load_credentials(),
+                            test_environment=True) # for experiments
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
@@ -41,13 +39,11 @@ This is useful for development and when LADOK changes anything in the API.
 \begin{pycode}[apitest]
 import json
 import ladok3
+import ladok3.cli
 import os
 
-ladok = ladok3.LadokSession(
-            os.environ["LADOK_INST"],
-            vars={"username": os.environ["LADOK_USER"],
-                  "password": os.environ["LADOK_PASS"]},
-            test_environment=True) # for experiments
+ladok = ladok3.LadokSession(*ladok3.cli.load_credentials(),
+                            test_environment=True) # for experiments
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
