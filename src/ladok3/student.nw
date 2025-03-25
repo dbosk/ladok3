@@ -106,8 +106,27 @@ def print_student_data(student):
   print(f"Personnummer: {student.personnummer}")
   print(f"LADOK ID:     {student.ladok_id}")
   print(f"Alive:        {student.alive}")
-  print(f"Suspended:    {student.suspensions}")
+  <<print info about suspensions for [[student]]>>
 @
+
+We want to print whether the student is currently suspended or not.
+We want to make this really clear.
+<<print info about suspensions for [[student]]>>=
+print(f"Suspended:    ", end="")
+if any(map(lambda x: x.is_current, student.suspensions)):
+  print("YES")
+else:
+  print("no")
+@ Then we also want to print all the times the student has been suspended.
+We only want to print this if the student has been suspended at least once.
+<<print info about suspensions for [[student]]>>=
+if student.suspensions:
+  print(f"Suspenions:   ", end="")
+  for suspension in student.suspensions:
+    print(f"{suspension}", end="\n              ")
+  print()
+@
+
 
 \subsection{Printing student's course data}
 

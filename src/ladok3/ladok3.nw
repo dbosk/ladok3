@@ -953,9 +953,43 @@ This list looks like this:
   }
 ]
 \end{minted}
-However, since suspended students are rare, we haven't found a specimen to 
-study; so we simply don't know what the list contains.
-But we can return it nonetheless.
+Let's make a class for this.
+<<classes>>=
+class Suspension(LadokData):
+  """A suspension"""
+  def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
+    self.__note = kwargs.pop("Anteckning")
+    self.__validity = (
+      datetime.date.fromisoformat(kwargs["Giltighetsperiod"]["Startdatum"]),
+      datetime.date.fromisoformat(kwargs["Giltighetsperiod"]["Slutdatum"])
+    )
+
+  @property
+  def note(self):
+    """
+    The note of the suspension. This is usually a case number.
+    """
+    return self.__note
+
+  @property
+  def validity(self):
+    """
+    A tuple (start, end) of the validity period of the suspension.
+    """
+    return self.__validity
+
+  @property
+  def is_current(self):
+    """
+    Is True if the suspension is currently valid.
+    """
+    return self.validity[0] <= datetime.date.today() <= self.validity[1]
+
+  def __str__(self):
+    return f"{self.validity[0]}--{self.validity[1]}"
+@
+
 We never cache this result since we always want the most up-to-date version.
 <<student attribute methods>>=
 @property
@@ -963,7 +997,9 @@ def suspensions(self):
   """
   The list of the students' suspensions.
   """
-  return self.ladok.get_student_suspensions_JSON(self.ladok_id)["Avstangning"]
+  suspensions = self.ladok.get_student_suspensions_JSON(
+                                            self.ladok_id)["Avstangning"]
+  return [Suspension(**suspension) for suspension in suspensions]
 @
 
 
