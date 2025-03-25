@@ -934,9 +934,62 @@ for course in self.ladok.registrations_JSON(self.ladok_id):
 
 We also want to know if a student is suspended or not.
 We can get a list of suspensions for a student.
-However, since suspended students are rare, we haven't found a specimen to 
-study; so we simply don't know what the list contains.
-But we can return it nonetheless.
+This list looks like this:
+\begin{minted}{json}
+[
+  {"Anteckning": "VJ-2024-...",
+   "Giltighetsperiod": {"Slutdatum": "2024-12-03",
+                        "Startdatum": "2024-09-25", "link": []},
+   "LarosateID": 29,
+   "OrsakID": 101450,
+   "SenastAndradAv": "someone@kth.se",
+   "SenastSparad": "2024-09-24T16:45:56.941",
+   "StudentUID": "...",
+   "Uid": "...",
+   "link": [{"method": "GET",
+             "uri": "https://api.ladok.se:443/studentinformation/internal/avstangning/...", 
+             "mediaType": "application/vnd.ladok+xml",
+             "rel": "self"}]
+  }
+]
+\end{minted}
+Let's make a class for this.
+<<classes>>=
+class Suspension(LadokData):
+  """A suspension"""
+  def __init__(self, /, **kwargs):
+    super().__init__(**kwargs)
+    self.__note = kwargs.pop("Anteckning")
+    self.__validity = (
+      datetime.date.fromisoformat(kwargs["Giltighetsperiod"]["Startdatum"]),
+      datetime.date.fromisoformat(kwargs["Giltighetsperiod"]["Slutdatum"])
+    )
+
+  @property
+  def note(self):
+    """
+    The note of the suspension. This is usually a case number.
+    """
+    return self.__note
+
+  @property
+  def validity(self):
+    """
+    A tuple (start, end) of the validity period of the suspension.
+    """
+    return self.__validity
+
+  @property
+  def is_current(self):
+    """
+    Is True if the suspension is currently valid.
+    """
+    return self.validity[0] <= datetime.date.today() <= self.validity[1]
+
+  def __str__(self):
+    return f"{self.validity[0]}--{self.validity[1]}"
+@
+
 We never cache this result since we always want the most up-to-date version.
 <<student attribute methods>>=
 @property
@@ -944,7 +997,9 @@ def suspensions(self):
   """
   The list of the students' suspensions.
   """
-  return self.ladok.get_student_suspensions_JSON(self.ladok_id)["Avstangning"]
+  suspensions = self.ladok.get_student_suspensions_JSON(
+                                            self.ladok_id)["Avstangning"]
+  return [Suspension(**suspension) for suspension in suspensions]
 @
 
 
