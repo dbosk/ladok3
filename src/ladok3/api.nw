@@ -690,7 +690,7 @@ We can get a list of course instances for a given course code.
 def course_instances_JSON(self, course_code, lang = 'sv'):
   """
   Returns a list of dictionaries with course instances for a given course code.
-  The course code is a string such as "II2202". The language code is 'en' or 
+  The course code is a string such as "DD1310". The language code is 'en' or 
   'sv'.
 
   Note that there seems to be a limit of 403 for the number of pages.
@@ -706,14 +706,14 @@ Let's add a test.
 This should return a list of dictionaries.
 <<test functions>>=
 def test_course_instances_JSON():
-  r = ladok.course_instances_JSON('II2202')
+  r = ladok.course_instances_JSON('DD2395')
   assert type(r) == dict
 @
 
 The output looks like this:
 \begin{pycode}[apitest]
 print(r"\begin{minted}{JSON}")
-print(json.dumps(ladok3.clean_data(ladok.course_instances_JSON('DD1310')),
+print(json.dumps(ladok3.clean_data(ladok.course_instances_JSON('DD2395')),
                  indent=2))
 print(r"\end{minted}")
 \end{pycode}
@@ -729,7 +729,7 @@ def instance_info(self, course_code, instance_code, lang = 'sv'):
   """
   Returns a dictionary of course instance information.
 
-  course_code        - course code, such as "II2202"
+  course_code        - course code, such as "DD1310"
   
   instance_code      - instance of the course ('TillfallesKod')
   
@@ -798,7 +798,7 @@ The output looks like this:
 \begin{pycode}[apitest]
 print(r"\begin{minted}{JSON}")
 print(json.dumps(ladok3.clean_data(
-                  ladok.instance_info_uid('da99b691-8f70-11ee-b4f1-bdc8f0e04f23')),
+                  ladok.instance_info_uid(dasak_instance_id)),
                  indent=2))
 print(r"\end{minted}")
 \end{pycode}
