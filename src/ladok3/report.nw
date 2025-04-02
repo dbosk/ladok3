@@ -99,7 +99,7 @@ many_parser.add_argument("-d", "--delimiter",
     "use `-d,` or `-d ,` to get comma-separated values.")
 @
 
-We also want to handle errors and confirmations differently.
+We also want to handle errors and confirmations.
 When reporting in bulk, we don't want unnecessary errors.
 We also want to have a summary of the changes.
 <<add many results group arguments>>=
@@ -109,9 +109,7 @@ many_parser.add_argument("-v", "--verbose",
     "were reported to standard out. Otherwise only errors are printed.")
 @
 
-When we actually report a result, this is similar to how we did it above.
-The difference is that we've read the variables from the CSV data in [[stdin]] 
-instead of from [[args]].
+Then we can actually report the result using the values read from [[stdin]].
 <<report a result read from stdin>>=
 try:
   set_grade(ladok, args,
@@ -132,6 +130,8 @@ If it's different, we output this.
 If it's the same, we silently ignore it.
 This is best for bulk reporting, because then we can always try to report for 
 all students.
+
+We want to report errors as exceptions.
 <<functions>>=
 def set_grade(ladok, args,
               student_id, course_code, component_code, grade, date, graders):
@@ -169,7 +169,7 @@ except IndexError:
   raise Exception(f"{component_code}: no such component for {course_code}")
 @
 
-Now, we want to ensure the date is correct.
+Finally, we want to ensure the date is correct.
 The date must be at the earliest the start of the course.
 The student can't finish any results before the course has started.
 LADOK will not accept that.
@@ -212,8 +212,9 @@ one_parser.add_argument("student_id", nargs="?",
 one_parser.add_argument("grade", nargs="?",
   help="The grade (e.g. A or P)."
 )
-@ We must make them optional like this to make it work with out second 
-alternative, so we must check ourselves that we got the arguments.
+@ We must make them optional like this to make it work with our second 
+alternative (bulk reporting through [[stdin]]), so we must check ourselves that 
+we got the arguments.
 <<check that we got all positional arguments>>=
 if not (args.course_code and args.component_code and
   args.student_id and args.grade):
