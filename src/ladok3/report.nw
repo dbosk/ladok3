@@ -83,99 +83,6 @@ report_parser.add_argument("-f", "--finalize",
 @
 
 
-\section{Report a result given on command line}
-
-If we've chosen to give one result on the command line, then we'll need the 
-following arguments.
-
-We start with the course, component code, the student's ID and grade.
-<<add one result group arguments>>=
-one_parser.add_argument("course_code", nargs="?",
-  help="The course code (e.g. DD1315) for which the grade is for."
-)
-
-one_parser.add_argument("component_code", nargs="?",
-  help="The component code (e.g. LAB1) for which the grade is for. "
-       "This can be set to the course code (e.g. DD1315) to set the "
-       "final grade for the course. But all components must be "
-       "certified (attested) before the course grade can be set."
-)
-
-one_parser.add_argument("student_id", nargs="?",
-  help="Student identifier (personnummer or LADOK ID)."
-)
-
-one_parser.add_argument("grade", nargs="?",
-  help="The grade (e.g. A or P)."
-)
-@ We must make them optional like this to make it work with out second 
-alternative, so we must check ourselves that we got the arguments.
-<<check that we got all positional arguments>>=
-if not (args.course_code and args.component_code and
-  args.student_id and args.grade):
-  print(f"{sys.argv[0]} report: "
-    "not all positional args given: course_code, component, student, grade",
-    file=sys.stderr)
-  sys.exit(1)
-@
-
-Next, we have the date.
-To ensure it's a valid date we'll make [[argparse]] convert it to [[datetime]] 
-format.
-If it's not provided, we let [[argparse]] set it to today's date.
-<<add one result group arguments>>=
-one_parser.add_argument("date", nargs="?",
-  help="Date on ISO format (e.g. 2021-03-18), "
-      f"defaults to today's date ({datetime.date.today()}).",
-  type=datetime.date.fromisoformat,
-  default=datetime.date.today()
-)
-@
-
-Finally, we have the list of graders.
-<<add one result group arguments>>=
-one_parser.add_argument("graders", nargs="*",
-  help="Space separated list of who did the grading, "
-       "give each grader as 'First Last <email@institution.se>'.")
-@
-
-Now that we have the arguments, we can just execute the following code using 
-them.
-<<report results given in args>>=
-<<check that we got all positional arguments>>
-try:
-  student = ladok.get_student(args.student_id)
-  <<look up [[course]] from [[student]]>>
-  <<look up [[result]] from [[course]]>>
-  result.set_grade(args.grade, args.date)
-  if args.finalize:
-    result.finalize(args.graders)
-except Exception as err:
-  try:
-    print(f"{student}: {err}")
-  except ValueError as verr:
-    print(f"{verr}: {args.student_id}: {err}")
-@ The option [[args.finalize]] is already set above, so we don't need to add 
-that one here.
-
-Both looking up the course and the component can yield index errors.
-We'd like to distinguish these.
-We will catch the exception, the reraise the same exception but with a better 
-error message.
-<<look up [[course]] from [[student]]>>=
-try:
-  course = student.courses(code=args.course_code)[0]
-except IndexError:
-  raise Exception(f"{args.course_code}: No such course for {student}")
-<<look up [[result]] from [[course]]>>=
-try:
-  result = course.results(component=args.component_code)[0]
-except IndexError:
-  raise Exception(f"{args.component_code}: "
-                  f"No such component for {args.course_code}")
-@
-
-
 \section{Report many results given in standard input}
 
 We want to read CSV data from standard input.
@@ -207,30 +114,15 @@ The difference is that we've read the variables from the CSV data in [[stdin]]
 instead of from [[args]].
 <<report a result read from stdin>>=
 try:
-  student = ladok.get_student(student_id)
-
-  try:
-    course = student.courses(code=course_code)[0]
-  except IndexError:
-    raise Exception(f"{course_code}: No such course for {student}")
-
-  try:
-    component = course.results(component=component_code)[0]
-  except IndexError:
-    raise Exception(f"{component_code}: no such component for {course_code}")
-
-  <<set [[grade]] to [[component]], output if verbose>>
+  set_grade(ladok, args,
+            student_id, course_code, component_code, grade, date, graders)
 except Exception as err:
-  try:
-    print(f"{course_code} {component_code}={grade} ({date}) {student}: {err}",
-      file=sys.stderr)
-  except ValueError as verr:
-    print(f"{verr}: "
-      f"{course_code} {component_code}={grade} ({date}) {student_id}: {err}",
-      file=sys.stderr)
+  print(f"{course_code} {component_code}={grade} ({date}) {student_id}: "
+        f"{err}",
+        file=sys.stderr)
 @
 
-Now, when we set the grade, there are a few cases that should be handled.
+When we set the grade, there are a few cases that should be handled.
 If the grade isn't attested, we try to change it.
 (This might still fail if the grade is finalized but not attested.)
 If we've selected the verbose option, then we print what we have reported.
@@ -240,19 +132,130 @@ If it's different, we output this.
 If it's the same, we silently ignore it.
 This is best for bulk reporting, because then we can always try to report for 
 all students.
-<<set [[grade]] to [[component]], output if verbose>>=
-if not component.attested and component.grade != grade:
-  component.set_grade(grade, date)
-  if args.finalize:
-    component.finalize(graders)
-  if args.verbose:
-    print(f"{course_code} {student}: reported "
-          f"{component.component} = {component.grade} ({date}) "
-          f"by {', '.join(graders)}.")
-elif component.grade != grade:
-  print(f"{course_code} {student}: attested {component.component} "
-    f"result {component.grade} ({component.date}) "
-    f"is different from {grade} ({date}).")
+<<functions>>=
+def set_grade(ladok, args,
+              student_id, course_code, component_code, grade, date, graders):
+  student = ladok.get_student(student_id)
+  <<get [[course]] from [[student]] and [[course_code]]>>
+  <<get [[component]] from [[course]] and [[component_code]]>>
+
+  if not component.attested and component.grade != grade:
+    <<ensure [[date]] is a valid date for [[course]]>>
+    component.set_grade(grade, date)
+    if args.finalize:
+      component.finalize(graders)
+    if args.verbose:
+      print(f"{course_code} {student}: reported "
+            f"{component.component} = {component.grade} ({date}) "
+            f"by {', '.join(graders)}.")
+  elif component.grade != grade:
+    raise Exception(f"attested {component.component} "
+                    f"result {component.grade} ({component.date}) "
+                    f"is different from {grade} ({date}).")
+@
+
+Now we simply want to set those objects up.
+We want to throw exceptions that explain what the problem is if these don't 
+exist.
+<<get [[course]] from [[student]] and [[course_code]]>>=
+try:
+  course = student.courses(code=course_code)[0]
+except IndexError:
+  raise Exception(f"{course_code}: No such course for {student}")
+<<get [[component]] from [[course]] and [[component_code]]>>=
+try:
+  component = course.results(component=component_code)[0]
+except IndexError:
+  raise Exception(f"{component_code}: no such component for {course_code}")
+@
+
+Now, we want to ensure the date is correct.
+The date must be at the earliest the start of the course.
+The student can't finish any results before the course has started.
+LADOK will not accept that.
+<<ensure [[date]] is a valid date for [[course]]>>=
+if not isinstance(date, datetime.date):
+  date = datetime.date.fromisoformat(date)
+
+if date < course.start:
+  print(f"{course_code} {component_code}={grade} "
+        f"({date}) {student}: "
+        f"Grade date ({date}) is before "
+        f"course start date ({course.start}), "
+        f"using course start date instead.")
+  date = course.start
+@
+
+
+\section{Report a result given on command line}
+
+If we've chosen to give one result on the command line, then we'll need the 
+following arguments.
+
+We start with the course, component code, the student's ID and grade.
+<<add one result group arguments>>=
+one_parser.add_argument("course_code", nargs="?",
+  help="The course code (e.g. DD1315) for which the grade is for."
+)
+
+one_parser.add_argument("component_code", nargs="?",
+  help="The component code (e.g. LAB1) for which the grade is for. "
+       "This can be set to the course code (e.g. DD1315) to set the "
+       "final grade for the course. But all components must be "
+       "certified (attested) before the course grade can be set."
+)
+
+one_parser.add_argument("student_id", nargs="?",
+  help="Student identifier (personnummer or LADOK ID)."
+)
+
+one_parser.add_argument("grade", nargs="?",
+  help="The grade (e.g. A or P)."
+)
+@ We must make them optional like this to make it work with out second 
+alternative, so we must check ourselves that we got the arguments.
+<<check that we got all positional arguments>>=
+if not (args.course_code and args.component_code and
+  args.student_id and args.grade):
+  print(f"{sys.argv[0]} report: "
+        "not all positional args given: "
+        "course_code, component, student, grade",
+        file=sys.stderr)
+  sys.exit(1)
+@
+
+Next, we have the date.
+To ensure it's a valid date we'll make [[argparse]] convert it to [[datetime]] 
+format.
+If it's not provided, we let [[argparse]] set it to today's date.
+<<add one result group arguments>>=
+one_parser.add_argument("date", nargs="?",
+  help="Date on ISO format (e.g. 2021-03-18), "
+      f"defaults to today's date ({datetime.date.today()}).",
+  type=datetime.date.fromisoformat,
+  default=datetime.date.today()
+)
+@
+
+Finally, we have the list of graders.
+<<add one result group arguments>>=
+one_parser.add_argument("graders", nargs="*",
+  help="Space separated list of who did the grading, "
+       "give each grader as 'First Last <email@institution.se>'.")
+@
+
+Now that we have the arguments, we can just execute the following code using 
+them.
+<<report results given in args>>=
+<<check that we got all positional arguments>>
+try:
+  set_grade(ladok, args,
+            args.student_id, args.course_code, args.component_code,
+            args.grade, args.date, args.graders)
+except Exception as err:
+  print(f"{args.course_code} {args.component_code}={args.grade} ({args.date}) "
+        f"{args.student_id}: {err}",
+        file=sys.stderr)
 @
 
 
