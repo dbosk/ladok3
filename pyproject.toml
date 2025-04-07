@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ladok3"
-version = "4.19"
+version = "4.20"
 description = "Python wrapper and CLI for the LADOK3 REST API."
 authors = [
   "Daniel Bosk <dbosk@kth.se>",
