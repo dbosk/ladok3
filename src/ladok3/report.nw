@@ -115,9 +115,22 @@ try:
   set_grade(ladok, args,
             student_id, course_code, component_code, grade, date, graders)
 except Exception as err:
-  print(f"{course_code} {component_code}={grade} ({date}) {student_id}: "
+  <<try to resolve [[student]] from [[ladok]] using [[student_id]]>>
+  print(f"{course_code} {component_code}={grade} ({date}) {student}: "
         f"{err}",
         file=sys.stderr)
+@
+
+The reason we want to resolve the student from LADOK is that the [[student_id]] 
+might be a personnummer or a LADOK ID---if the latter, it's not particularly 
+readable for a human and we can't use the LADOK ID in the LADOK web interface 
+when we want to deal with the errors manually.
+But if we resolve the student, then we get a readable name.
+<<try to resolve [[student]] from [[ladok]] using [[student_id]]>>=
+try:
+  student = ladok.get_student(student_id)
+except Exception:
+  student = student_id
 @
 
 When we set the grade, there are a few cases that should be handled.
@@ -254,8 +267,10 @@ try:
             args.student_id, args.course_code, args.component_code,
             args.grade, args.date, args.graders)
 except Exception as err:
+  student_id = args.student_id
+  <<try to resolve [[student]] from [[ladok]] using [[student_id]]>>
   print(f"{args.course_code} {args.component_code}={args.grade} ({args.date}) "
-        f"{args.student_id}: {err}",
+        f"{student}: {err}",
         file=sys.stderr)
 @
 
