@@ -26,7 +26,7 @@ The data is formated like this:
 \item component,
 \item student (pseudonym),
 \item grade,
-\item normalized time.
+\item either absolute date or normalized to the course start and finish.
 \end{itemize}
 
 
@@ -79,9 +79,10 @@ course_rounds = filter_rounds(
   ladok.search_course_rounds(code=args.course_code),
   args.rounds)
 
-data_writer.writerow([
-  "Course", "Round", "Component", "Student", "Grade", "Time"
-])
+if args.header:
+  data_writer.writerow([
+    "Course", "Round", "Component", "Student", "Grade", "Time"
+  ])
 for course_round in course_rounds:
   data = extract_data_for_round(ladok, course_round, args)
 
@@ -91,6 +92,7 @@ for course_round in course_rounds:
         student, grade, time]
     )
 @ We must take a course code and a delimiter as arguments.
+We also want to know if we want a header or not.
 <<add data command arguments to data parser>>=
 data_parser.add_argument("course_code",
   help="The course code of the course for which to export data")
@@ -100,6 +102,9 @@ data_parser.add_argument("-d", "--delimiter",
   help="The delimiter for the CSV output; "
     "default is a tab character to be compatible with POSIX commands, "
     "use `-d,` or `-d ,` to get comma-separated values.")
+
+data_parser.add_argument("-H", "--header", action="store_true",
+                         help="Print a header line with the column names.")
 @
 
 We filter the rounds.
@@ -154,7 +159,20 @@ def extract_data_for_round(ladok, course_round, args):
       else:
         <<extract grade and normalized date from result data>>
 
-      yield student, component, grade, normalized_date
+      <<yield [[student, component, grade]] and date>>
+@
+
+We want to yield the data in CSV form, so we simply yield a tuple.
+The date is either the normalized date or the date from the result data.
+<<yield [[student, component, grade]] and date>>=
+if args.normalize_date:
+  yield student, component, grade, normalized_date
+elif result_data:
+  yield student, component, grade, result_data["Examinationsdatum"]
+<<add data command arguments to data parser>>=
+data_parser.add_argument("-n", "--normalize-date", action="store_true",
+                         help="Normalize the date to the start of the course, "
+                              "otherwise the date is printed as is.")
 @
 
 \subsection{Get round data}
