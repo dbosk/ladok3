@@ -46,10 +46,10 @@ higher education in Sweden.
 This is the documented source code of \texttt{ladok3}, a LADOK3 API wrapper for 
 Python.
 
-The \texttt{ladok3} library provides a non-GUI application that, similar to 
-access via a web browser, only provides the user with access to the LADOK data 
-and functionality that they would actually have based on their specific user 
-permissions in LADOK.
+The \texttt{ladok3} library provides a non-GUI application (a command-line 
+interface, CLI) that, similar to access via a web browser, only provides the 
+user with access to the LADOK data and functionality that they would actually 
+have based on their specific user permissions in LADOK.
 It can be seem as a very streamlined web browser just for LADOK's web 
 interface.
 While the library exploits caching to reduce the load on the LADOK server, this 
@@ -61,12 +61,23 @@ You can install the \texttt{ladok3} package by running
 pip3 install ladok3
 \end{minted}
 in the terminal.
-You can find a quick reference by running
-\begin{minted}[firstnumber=last]{bash}
-pydoc ladok3
-\end{minted}
 
-We provide the main class \texttt{LadokSession} (\cref{LadokSession}).
+Then you can use the CLI by running \mintinline{bash}{ladok} in the terminal.
+The command has built-in help, simply run \mintinline{bash}{ladok -h} to see 
+the available commands.
+However, the first thing you want to run after installing the package is
+\begin{minted}[firstnumber=last]{bash}
+ladok login
+\end{minted}
+This will set up your credentials for the CLI.
+However, if you want to use the library in a script, you can read
+\begin{minted}[firstnumber=last]{bash}
+ladok login -h
+\end{minted}
+for alternative ways of providing your credentials.
+
+For use in Python scripts,
+we provide the main class \texttt{LadokSession} (\cref{LadokSession}).
 The \texttt{LadokSession} class acts like \enquote{factories} and will return 
 objects representing various LADOK data.
 These data objects' classes inherit the \texttt{LadokData} (\cref{LadokData}) 
@@ -83,17 +94,10 @@ We do this by caching all factory methods of any \texttt{LadokSession}.
 The \texttt{LadokSession} itself is also designed to be cacheable: if the session to 
 LADOK expires, it will automatically reauthenticate to establish a new session.
 
-
-
-\part{The library}
-
-\input{../src/ladok3/ladok3.tex}
-
-
-\part{API calls}
-
-\input{../src/ladok3/api.tex}
-\input{../src/ladok3/undoc.tex}
+You can find a quick reference by running
+\begin{minted}[firstnumber=last]{bash}
+pydoc ladok3
+\end{minted}
 
 
 
@@ -119,17 +123,50 @@ LADOK expires, it will automatically reauthenticate to establish a new session.
 
 \part{Other example applications}
 
-\chapter{Transfer results from KTH Canvas to LADOK}
+\chapter{Transfer results from Canvas to LADOK}
 
 Here we provide an example program~\texttt{canvas2ladok.py} which exports 
-results from KTH Canvas to LADOK for the introductory programming course~prgi 
+results from Canvas to LADOK for the introductory programming course~prgi 
 (DD1315).
-You can find an up-to-date version of this chapter at
-\begin{center}
-  \url{https://github.com/dbosk/intropy/tree/master/adm/reporting}.
-\end{center}
+
+However, a better way to do this is by using the CLI:
+\begin{minted}{bash}
+#!/bin/bash
+
+. ${HOME}/.profile
+
+year=22
+courses="DD13(10HT${year}|17HT${year})"
+components="(LAB[123]|MAT1|KAL1)"
+
+canvaslms results -c "$courses" -A "$components" \
+| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \
+| ladok report -fv
+\end{minted}
+The advantage to using this command is that it will automatically report the 
+correct dates and everyone who has participated in the grading of each 
+student---as required by regulation.
+The official tools, like KTH Transfer to Ladok or SUNET's version of the same, 
+don't do this---they don't set the dates correctly of each individual, but one 
+for all, and they don't register the graders in LADOK.
+
+But now we'll have a look at how we can do this (well, a simpler version) in 
+Python.
+
 
 \input{../examples/canvas2ladok.tex}
+
+
+\part{The library}
+
+\input{../src/ladok3/ladok3.tex}
+
+
+\part{API calls}
+
+\input{../src/ladok3/api.tex}
+\input{../src/ladok3/undoc.tex}
+
 
 
 \backmatter
