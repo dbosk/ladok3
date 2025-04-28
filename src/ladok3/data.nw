@@ -16,7 +16,7 @@ from LADOK (\cref{DataCommand}).
 This is a subcommand for the [[ladok]] command-line interface.
 It can be used like this:
 \begin{minted}{bash}
-ladok data DD1315 > DD1315.csv
+ladok course DD1315 > DD1315.csv
 \end{minted}
 This program will produce CSV-formated data to answer the questions above.
 The data is formated like this:
@@ -30,7 +30,7 @@ The data is formated like this:
 \end{itemize}
 
 
-\section{The [[data]] subcommand}\label{DataCommand}
+\section{The [[course]] subcommand}\label{DataCommand}
 
 This is a subcommand run as part of the [[ladok3.cli]] module.
 We provide a function [[add_command_options]] that adds the subcommand options 
@@ -59,7 +59,7 @@ def command(ladok, args):
 We add a subparser.
 We set it up to use the function [[command]].
 <<add data parser to parser>>=
-data_parser = parser.add_parser("data",
+data_parser = parser.add_parser("course",
   help="Returns course results data in CSV form",
   description="""
 Returns the results in CSV form for all first-time registered students.
