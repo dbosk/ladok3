@@ -3,16 +3,14 @@ LADOK.
 These scripts are run as cronjobs.
 This means that they only produce output when they need attention.
 
-We'll have a script [[<<ladok.sh>>]] that reports the results of all courses 
-(all years).
-So we need a regex for all courses that we are examiner (or at least course 
-respondible) for.
+We want to report results for courses that are titled \enquote{DD2520 VT25}, 
+\enquote{DD1310 HT24}, \enquote{DD1317 HT24}, and similar in Canvas.
+
+We'll have a script [[<<ladok.sh>>]] that is run by [[cron]].
+It's useful to load our profile, so that we have our normal environment.
 <<ladok.sh>>=
 #!/bin/bash
-
 . ${HOME}/.profile
-
-COURSES_REGEX="(DD131[057]|DD2520|DA2215)"
 @
 
 We also want some helper functions and a main function that is only run when 
@@ -20,6 +18,7 @@ the script is run.
 If the script is sourced, the main function is not run.
 This way we can use the helper functions in our terminal.
 <<ladok.sh>>=
+<<constants>>
 <<helper functions>>
 
 main() {
@@ -33,19 +32,131 @@ fi
 @
 
 \section{Reporting results on course components}
-\begin{minted}{bash}
-#!/bin/bash
 
-. ${HOME}/.profile
+We want a script that reports the results for all courses, including all 
+previous years, to LADOK.
+We want to do this for previous years as sometimes they finish assignments 
+years after the course ended\footnote{%
+  And students have a right to do this without having to reregister on a later 
+  course round.
+}.
 
-year=22
-courses="DD13(10HT${year}|17HT${year})"
-components="(LAB[123]|MAT1|KAL1)"
+We'll add a function that takes a course regex and a component regex and 
+reports the results to LADOK.
+To report the modules, we sometimes need to override the default summary 
+function of [[canvaslms]].
+We want something like this:
+<<main script>>=
+report_components "DD1301" "LAB1"
+report_components "DD131[057]" "(LAB|MAT|KAL)[1-3]"
+report_components "DA2215" "INL1"
 
-canvaslms results -c "$courses" -A "$components" \
-| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \
-| ladok report -fv
-\end{minted}
+report_components DD2520 "INL1"
+report_components DD2520 "LAB1" canvaslms.grades.tilkryLAB1
+<<helper functions>>=
+report_components() {
+  local course="$1"
+  local component="$2"
+  local summary_module="$3"
+
+  local summary_opt=""
+  if [[ -n "$summary_module" ]]; then
+    summary_opt="-S $summary_module"
+  fi
+
+  # Get the course results from Canvas.
+  canvaslms results -c "$course" -A "$component" $summary_opt \
+  | sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \
+  | <<[[tee]] the component results to use for course grades>> \
+  | ladok report -fv # Report them to LADOK.
+}
+@
 
 
 \section{Reporting course grade}
+
+Now we can set the course grades based on the reported components.
+We'll have to report one course at a time since the course grade is based on 
+different components in different courses.
+<<main script>>=
+report_course "DD131[07]" LAB3
+report_course DD2520 LAB1
+@ We don't need to report the course grade for the other courses since they 
+have only one component.
+For courses with only one component, LADOK will automatically set the course 
+grade based on the grade of the single component.
+
+Setting the course grade can be done in several ways.
+The first option is to look at what results are already attested in LADOK.
+Unfortunately, this requires the round code---which we don't have access 
+to\footnote{%
+  For a brief period, IT included the round code in the course title in Canvas 
+  at KTH.
+  That was beneficial in many ways, but unfortunately it faced a backlash from 
+  teachers and it was undone.
+}.
+However, we can get this data from the [[canvaslms results]] line in 
+[[report_components]].
+That's why we want to [[tee]] that data out of that pipeline.
+
+When we [[tee]] the data out, we want to use the [[-a]] option to append if the 
+file already exists.
+The reason for this is that we want all results for the course in one file.
+But sometimes we might have to run the script several times---once for each 
+component.
+<<[[tee]] the component results to use for course grades>>=
+tee -a "${DATA_DIR}/${course}-results.csv"
+<<constants>>=
+DATA_DIR=`mktemp -d`
+@ The data we get here has the following columns (tab separated):
+\begin{minted}{text}
+course    component   student   grade   date   graders
+\end{minted}
+
+Now we can use this file when reporting the course grades.
+If the file doesn't exist, we simply run [[report_components]].
+If the results are not yet attested (certified), the [[ladok report]] command 
+will simply give an error that all components of the course are not yet 
+attested.
+
+Now it's just to sort out the students and then for each student get the grade 
+of the component, get the latest grade date of all components and finally 
+report to LADOK.
+<<helper functions>>=
+report_course() {
+  local course="$1"
+  local component="$2"
+  local grades="${DATA_DIR}/${course}-results.csv"
+
+  if [[ ! -f "$grades" ]]; then
+    report_components "$course" "$component"
+  fi
+
+  for student in $(cat "$grades" \
+                   | cut -f 3)
+  do
+    local grade=$(cat "$grades" \
+                  | grep "$student" \
+                  | grep "$component" \
+                  | cut -f 4)
+    local grade_date=$(cat "$grades" \
+                       | grep "$student" \
+                       | cut -f 5 \
+                       | sort \
+                       | tail -n 1)
+
+    if [ "$grade" = "" ]; then
+      continue
+    fi
+
+    local course_code=$(cat "$grades" \
+                        | grep "$student" \
+                        | grep "$component" \
+                        | cut -f 1 \
+                        | sort -u)
+
+    # `component code = course code` yields final grade on course.
+    ladok report -fv "$course_code" "$course_code" \
+                     "$student" "$grade" "$grade_date"
+  done
+}
