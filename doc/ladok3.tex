@@ -121,15 +121,20 @@ pydoc ladok3
 
 
 
-\part{Other example applications}
+\part{Example applications}
 
-\chapter{Transfer results from Canvas to LADOK}
+\chapter{Transfer results from Canvas to LADOK}\label{SomeScripts}
+
+\input{../src/ladok3/scripts.tex}
+
+\chapter{Transfer results from Canvas to LADOK in Python}
 
 Here we provide an example program~\texttt{canvas2ladok.py} which exports 
 results from Canvas to LADOK for the introductory programming course~prgi 
 (DD1315).
 
-However, a better way to do this is by using the CLI:
+However, a better way to do this is by using the CLI
+(see \cref{SomeScripts} for details):
 \begin{minted}{bash}
 #!/bin/bash
 

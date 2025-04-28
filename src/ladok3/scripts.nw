@@ -1,0 +1,51 @@
+In this chapter we'll see some scripts for reporting results from Canvas to 
+LADOK.
+These scripts are run as cronjobs.
+This means that they only produce output when they need attention.
+
+We'll have a script [[<<ladok.sh>>]] that reports the results of all courses 
+(all years).
+So we need a regex for all courses that we are examiner (or at least course 
+respondible) for.
+<<ladok.sh>>=
+#!/bin/bash
+
+. ${HOME}/.profile
+
+COURSES_REGEX="(DD131[057]|DD2520|DA2215)"
+@
+
+We also want some helper functions and a main function that is only run when 
+the script is run.
+If the script is sourced, the main function is not run.
+This way we can use the helper functions in our terminal.
+<<ladok.sh>>=
+<<helper functions>>
+
+main() {
+  <<main script>>
+}
+
+# Only run if this is the main script
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
+@
+
+\section{Reporting results on course components}
+\begin{minted}{bash}
+#!/bin/bash
+
+. ${HOME}/.profile
+
+year=22
+courses="DD13(10HT${year}|17HT${year})"
+components="(LAB[123]|MAT1|KAL1)"
+
+canvaslms results -c "$courses" -A "$components" \
+| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \
+| ladok report -fv
+\end{minted}
+
+
+\section{Reporting course grade}
