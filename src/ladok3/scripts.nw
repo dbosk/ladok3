@@ -31,6 +31,28 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 fi
 @
 
+We need to report more than once for a course.
+All students might not be done by the time of reporting.
+When they're done, we want to report the results again.
+Sometimes a student finishes a course years after it ended.
+To speed up execution it's better to report results for a sliding window of 
+courses, instead of all courses.
+For those rare cases when a student finishes a course years after it ended, we 
+can report the results manually for that course again---by importing and 
+invoking the functions below in the terminal.
+
+We'll let [[YEARS]] be a regex for the years that we're interested in reporting 
+for.
+We'll use the current year and the previous year.
+The advantage of this window is that when we pass new year's eve, the autumn 
+courses are still current for a few weeks---but the year is the wrong one.
+As a side effect, during autumn we report results for any late results for the 
+previous year too.
+<<constants>>=
+YEAR=$(date +%y)
+YEARS=$(echo "("; seq $((YEAR - 1)) $YEAR | sed -E "s/ /|/g"; echo ")")
+@
+
 \section{Reporting results on course components}
 
 We want a script that reports the results for all courses, including all 
@@ -44,15 +66,27 @@ years after the course ended\footnote{%
 We'll add a function that takes a course regex and a component regex and 
 reports the results to LADOK.
 To report the modules, we sometimes need to override the default summary 
-function of [[canvaslms]].
+function of [[canvaslms]]\footnote{%
+  For details on [[canvaslms results]], see Chapters 10 and 11 in its 
+  documentation, found on
+  \url{https://github.com/dbosk/canvaslms/releases/tag/v4.7}.
+  Particularly Chapter 11 discusses the summary modules.
+  You can also read [[pydoc canvaslms.grades]] for a more brief summary.
+}.
 We want something like this:
 <<main script>>=
-report_components "DD1301" "LAB1"
-report_components "DD131[057]" "(LAB|MAT|KAL)[1-3]"
-report_components "DA2215" "INL1"
+report_components "DD1301 HT${YEARS}" \
+                  LAB1
+report_components "DD131[057] HT${YEARS}" \
+                  "(LAB|MAT|KAL)[1-3]"
+report_components "DA2215 [HV]T${YEARS}" \
+                  INL1
 
-report_components DD2520 "INL1"
-report_components DD2520 "LAB1" canvaslms.grades.tilkryLAB1
+report_components "DD2520 VT${YEARS}" \
+                  INL1
+report_components "DD2520 VT${YEARS}" \
+                  LAB1 \
+                  canvaslms.grades.tilkryLAB1
 <<helper functions>>=
 report_components() {
   local course="$1"
@@ -79,8 +113,10 @@ Now we can set the course grades based on the reported components.
 We'll have to report one course at a time since the course grade is based on 
 different components in different courses.
 <<main script>>=
-report_course "DD131[07]" LAB3
-report_course DD2520 LAB1
+report_course "DD131[07] HT${YEARS}" \
+              LAB3
+report_course "DD2520 VT${YEARS}" \
+              LAB1
 @ We don't need to report the course grade for the other courses since they 
 have only one component.
 For courses with only one component, LADOK will automatically set the course 
