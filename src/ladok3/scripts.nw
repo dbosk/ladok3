@@ -1,10 +1,21 @@
 In this chapter we'll see some scripts for reporting results from Canvas to 
 LADOK.
 These scripts are run as cronjobs.
-This means that they only produce output when they need attention.
+This means that they run unattended and only produce output when they need 
+attention.
 
 We want to report results for courses that are titled \enquote{DD2520 VT25}, 
 \enquote{DD1310 HT24}, \enquote{DD1317 HT24}, and similar in Canvas.
+The advantage to using this command is that it will automatically report the 
+correct dates and everyone who has participated in the grading of each 
+student---as required by regulation.
+The official tools, like KTH Transfer to Ladok or SUNET's version of the same, 
+don't do this.
+They don't set the dates correctly, meaning that each individual should have a 
+separate date (date of submission).
+They also don't register the graders in LADOK.
+For each results, everyone who participated in the grading process should be 
+registered in LADOK.
 
 We'll have a script [[<<ladok.sh>>]] that is run by [[cron]].
 It's useful to load our profile, so that we have our normal environment.
@@ -33,7 +44,10 @@ fi
 
 We need to report more than once for a course.
 All students might not be done by the time of reporting.
-When they're done, we want to report the results again.
+When they're done, we must report the results again\footnote{%
+  And students have a right to do this without having to reregister on a later 
+  course round.
+}.
 Sometimes a student finishes a course years after it ended.
 To speed up execution it's better to report results for a sliding window of 
 courses, instead of all courses.
@@ -58,15 +72,12 @@ YEARS=$(echo "("; seq $((YEAR - 1)) $YEAR | sed -E "s/ /|/g"; echo ")")
 We want a script that reports the results for all courses, including all 
 previous years, to LADOK.
 We want to do this for previous years as sometimes they finish assignments 
-years after the course ended\footnote{%
-  And students have a right to do this without having to reregister on a later 
-  course round.
-}.
+years after the course ended.
 
 We'll add a function that takes a course regex and a component regex and 
 reports the results to LADOK.
 To report the modules, we sometimes need to override the default summary 
-function of [[canvaslms]]\footnote{%
+function of [[canvaslms]]\footnote{\label{canvaslms-doc}%
   For details on [[canvaslms results]], see Chapters 10 and 11 in its 
   documentation, found on
   \url{https://github.com/dbosk/canvaslms/releases/tag/v4.7}.
@@ -87,6 +98,22 @@ report_components "DD2520 VT${YEARS}" \
 report_components "DD2520 VT${YEARS}" \
                   LAB1 \
                   canvaslms.grades.tilkryLAB1
+@ Note that the line reporting for DD1310 reports for \emph{all} instances as 
+well---that course is given five times in parallel.
+But the assessment should be the same so it is sufficient that one of the 
+examiners run this script to report all the results.
+
+To get the results out of Canvas we'll use the [[canvaslms results]] command.
+We must install the [[canvaslms]] tool.
+We can do this by running:
+\begin{minted}{bash}
+python3 -m pip install canvaslms # to use it with Python, or
+pipx install canvaslms           # to only use the CLI
+canvaslms login                  # or read `canvaslms login --help`
+\end{minted}
+For details on how to extract the results, read
+\mintinline{bash}{canvaslms results --help}
+(also read \cref{canvaslms-doc} on page~\pageref{canvaslms-doc}).
 <<helper functions>>=
 report_components() {
   local course="$1"
@@ -144,6 +171,26 @@ component.
 tee -a "${DATA_DIR}/${course}-results.csv"
 <<constants>>=
 DATA_DIR=`mktemp -d`
+@
+
+We'll provide a function that takes a course and a component and returns the 
+results for that course and component.
+If no component is given, we use all components.
+If we don't have results from before, we report those components to get the 
+data.
+<<helper functions>>=
+component_grades() {
+  local course="$1"
+  local component="${2:-[A-Z]{3}[0-9]+}"
+  local grades="${DATA_DIR}/${course}-results.csv"
+
+  if [[ ! -f "$grades" ]]; then
+    report_components "$course" "$component"
+  fi
+  cat "$grades" \
+  | grep -E "\s${component}\s" \
+  | sort -u
+}
 @ The data we get here has the following columns (tab separated):
 \begin{minted}{text}
 course    component   student   grade   date   graders
@@ -162,20 +209,14 @@ report to LADOK.
 report_course() {
   local course="$1"
   local component="$2"
-  local grades="${DATA_DIR}/${course}-results.csv"
 
-  if [[ ! -f "$grades" ]]; then
-    report_components "$course" "$component"
-  fi
-
-  for student in $(cat "$grades" \
+  for student in $(component_grades "$course" \
                    | cut -f 3)
   do
-    local grade=$(cat "$grades" \
+    local grade=$(component_grades "$course" "$component" \
                   | grep "$student" \
-                  | grep "$component" \
                   | cut -f 4)
-    local grade_date=$(cat "$grades" \
+    local grade_date=$(component_grades "$course" \
                        | grep "$student" \
                        | cut -f 5 \
                        | sort \
@@ -185,9 +226,8 @@ report_course() {
       continue
     fi
 
-    local course_code=$(cat "$grades" \
+    local course_code=$(component_grades "$course" "$component" \
                         | grep "$student" \
-                        | grep "$component" \
                         | cut -f 1 \
                         | sort -u)
 
