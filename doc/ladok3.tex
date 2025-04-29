@@ -58,7 +58,8 @@ LADOK's web GUI export functions.
 
 You can install the \texttt{ladok3} package by running
 \begin{minted}{bash}
-pip3 install ladok3
+python3 -m pip install ladok3 # to use it in Python, or
+pipx install ladok3           # to just use the CLI
 \end{minted}
 in the terminal.
 
@@ -96,7 +97,7 @@ LADOK expires, it will automatically reauthenticate to establish a new session.
 
 You can find a quick reference by running
 \begin{minted}[firstnumber=last]{bash}
-pydoc ladok3
+pydoc ladok3 # doesn't work if installed with pipx
 \end{minted}
 
 
