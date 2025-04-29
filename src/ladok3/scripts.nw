@@ -62,6 +62,9 @@ The advantage of this window is that when we pass new year's eve, the autumn
 courses are still current for a few weeks---but the year is the wrong one.
 As a side effect, during autumn we report results for any late results for the 
 previous year too.
+
+To construct the regex for years, we simply take a sequence of years
+([[24 25]]) and make a regex ([[(24|25)]]) out of it.
 <<constants>>=
 YEAR=$(date +%y)
 YEARS=$(echo -n "("; \
