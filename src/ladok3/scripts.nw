@@ -64,7 +64,10 @@ As a side effect, during autumn we report results for any late results for the
 previous year too.
 <<constants>>=
 YEAR=$(date +%y)
-YEARS=$(echo "("; seq $((YEAR - 1)) $YEAR | sed -E "s/ /|/g"; echo ")")
+YEARS=$(echo -n "("; \
+        seq $((YEAR - 1)) $YEAR \
+        | sed -zE "s/\s/|/g" \
+        | sed "s/|$/)/")
 @
 
 \section{Reporting results on course components}
