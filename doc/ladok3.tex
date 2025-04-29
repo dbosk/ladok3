@@ -58,7 +58,8 @@ LADOK's web GUI export functions.
 
 You can install the \texttt{ladok3} package by running
 \begin{minted}{bash}
-pip3 install ladok3
+python3 -m pip install ladok3 # to use it in Python, or
+pipx install ladok3           # to just use the CLI
 \end{minted}
 in the terminal.
 
@@ -96,12 +97,47 @@ LADOK expires, it will automatically reauthenticate to establish a new session.
 
 You can find a quick reference by running
 \begin{minted}[firstnumber=last]{bash}
-pydoc ladok3
+pydoc ladok3 # doesn't work if installed with pipx
 \end{minted}
 
 
 
-\part{A command-line interface}
+\part{Example applications}
+
+\chapter{Transfer results from Canvas to LADOK}\label{SomeScripts}
+
+\input{../src/ladok3/scripts.tex}
+
+\chapter{Transfer results from Canvas to LADOK in Python}
+
+Here we provide an example program~\texttt{canvas2ladok.py} which exports 
+results from Canvas to LADOK for the introductory programming course~prgi 
+(DD1315).
+
+However, a better way to do this is by using the CLI
+(see \cref{SomeScripts} for an even better version):
+\begin{minted}{bash}
+#!/bin/bash
+
+. ${HOME}/.profile
+
+year=22
+courses="DD13(10HT${year}|17HT${year})"
+components="(LAB[123]|MAT1|KAL1)"
+
+canvaslms results -c "$courses" -A "$components" \
+| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \
+| ladok report -fv
+\end{minted}
+
+But now we'll have a look at how we can do this (well, a simpler version) in 
+Python.
+
+
+\input{../examples/canvas2ladok.tex}
+
+
+\part{The command-line interface}
 
 \chapter{The base interface}
 
@@ -121,43 +157,7 @@ pydoc ladok3
 
 
 
-\part{Other example applications}
-
-\chapter{Transfer results from Canvas to LADOK}
-
-Here we provide an example program~\texttt{canvas2ladok.py} which exports 
-results from Canvas to LADOK for the introductory programming course~prgi 
-(DD1315).
-
-However, a better way to do this is by using the CLI:
-\begin{minted}{bash}
-#!/bin/bash
-
-. ${HOME}/.profile
-
-year=22
-courses="DD13(10HT${year}|17HT${year})"
-components="(LAB[123]|MAT1|KAL1)"
-
-canvaslms results -c "$courses" -A "$components" \
-| sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \
-| ladok report -fv
-\end{minted}
-The advantage to using this command is that it will automatically report the 
-correct dates and everyone who has participated in the grading of each 
-student---as required by regulation.
-The official tools, like KTH Transfer to Ladok or SUNET's version of the same, 
-don't do this---they don't set the dates correctly of each individual, but one 
-for all, and they don't register the graders in LADOK.
-
-But now we'll have a look at how we can do this (well, a simpler version) in 
-Python.
-
-
-\input{../examples/canvas2ladok.tex}
-
-
-\part{The library}
+\part{The Python library}
 
 \input{../src/ladok3/ladok3.tex}
 
