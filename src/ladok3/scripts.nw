@@ -146,7 +146,7 @@ Now we can set the course grades based on the reported components.
 We'll have to report one course at a time since the course grade is based on 
 different components in different courses.
 <<main script>>=
-report_course "DD131[07] HT${YEARS}" \
+report_course "DD131[057] HT${YEARS}" \
               LAB3
 report_course "DD2520 VT${YEARS}" \
               LAB1
