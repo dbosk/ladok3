@@ -76,8 +76,8 @@ This way the user can deal with how to store the data.
 <<produce data about course specified in args>>=
 data_writer = csv.writer(sys.stdout, delimiter=args.delimiter)
 course_rounds = filter_rounds(
-  ladok.search_course_rounds(code=args.course_code),
-  args.rounds)
+                        ladok.search_course_rounds(code=args.course_code),
+                        args.rounds)
 
 if args.header:
   data_writer.writerow([
@@ -137,21 +137,24 @@ def extract_data_for_round(ladok, course_round, args):
   <<compute start and length of the course>>
   <<get the results for the course round>>
 
-  students = filter_students(course_round.participants(), args.students)
+  students = filter_students(course_round.participants(),
+                             args.students)
 
   for student in students:
-    student_results = filter_student_results(student, results)
+    student_results = filter_student_results(student,
+                                             results)
 
     <<determine if student should be included>>
 
-    components = filter_components(course_round.components(), args.components)
+    components = filter_components(course_round.components(),
+                                   args.components)
 
     for component in components:
       if len(student_results) < 1:
         result_data = None
       else:
-        result_data = filter_component_result(
-          component, student_results[0]["ResultatPaUtbildningar"])
+        result_data = filter_component_result(component,
+                                student_results[0]["ResultatPaUtbildningar"])
 
       if not result_data:
         grade = "-"
@@ -164,12 +167,21 @@ def extract_data_for_round(ladok, course_round, args):
 
 We want to yield the data in CSV form, so we simply yield a tuple.
 The date is either the normalized date or the date from the result data.
+The student's identifier will be either the LADOK ID or the student name and 
+personnummer, depending on the command line arguments.
 <<yield [[student, component, grade]] and date>>=
-if args.normalize_date:
-  yield student, component, grade, normalized_date
-elif result_data:
-  yield student, component, grade, result_data["Examinationsdatum"]
+yield student.ladok_id if args.ladok_id \
+                       else student, \
+      component, \
+      grade, \
+      normalized_date if args.normalize_date \
+                      else result_data["Examinationsdatum"] if result_data \
+                                                            else None
 <<add data command arguments to data parser>>=
+data_parser.add_argument("-l", "--ladok-id", action="store_true",
+                         help="Use the LADOK ID for the student, "
+                              "otherwise the student name and personnummer "
+                              "will be used.")
 data_parser.add_argument("-n", "--normalize-date", action="store_true",
                          help="Normalize the date to the start of the course, "
                               "otherwise the date is printed as is.")
