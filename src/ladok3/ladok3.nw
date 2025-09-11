@@ -868,6 +868,8 @@ def alive(self):
   except:
     self.__get_personal_attributes()
   return self.__alive
+
+<<student contact attribute methods>>
 @
 
 Then we can call that method to update all attributes.
@@ -893,6 +895,89 @@ self.__personnummer = record['Personnummer'] # twelve digits only
 self.__first_name = record['Fornamn']
 self.__last_name = record['Efternamn']
 self.__alive = not record['Avliden']
+@
+
+
+\section{Students' contact attributes}
+
+The contact attributes include email, phone number, and postal address information.
+We use the [[__get_contact_attributes]] helper method to populate these attributes
+from a separate LADOK API call.
+
+<<student contact attribute methods>>=
+@property
+def email(self):
+  """Return the student's email address"""
+  try:
+    return self.__email
+  except:
+    self.__get_contact_attributes()
+  return self.__email
+
+@property
+def phone(self):
+  """Return the student's phone number"""
+  try:
+    return self.__phone
+  except:
+    self.__get_contact_attributes()
+  return self.__phone
+
+@property
+def address(self):
+  """Return the student's postal address as a list of lines"""
+  try:
+    return self.__address
+  except:
+    self.__get_contact_attributes()
+  return self.__address
+
+def __get_contact_attributes(self):
+  """Helper method that fetches contact attributes"""
+  <<pull student contact attributes from LADOK>>
+@
+<<pull student contact attributes from LADOK>>=
+try:
+  contact_data = self.ladok.get_student_contact_data_JSON(self.ladok_id)
+  
+  # Extract email address
+  self.__email = None
+  if 'Epost' in contact_data and contact_data['Epost']:
+    for email in contact_data['Epost']:
+      if 'Adress' in email:
+        self.__email = email['Adress']
+        break
+  
+  # Extract phone number
+  self.__phone = None
+  if 'Telefon' in contact_data and contact_data['Telefon']:
+    for phone in contact_data['Telefon']:
+      if 'Nummer' in phone:
+        self.__phone = phone['Nummer']
+        break
+  
+  # Extract postal address
+  self.__address = []
+  if 'Postadress' in contact_data and contact_data['Postadress']:
+    addr = contact_data['Postadress']
+    if isinstance(addr, list) and len(addr) > 0:
+      addr = addr[0]
+    if isinstance(addr, dict):
+      for field in ['Adressrad1', 'Adressrad2', 'Adressrad3']:
+        if field in addr and addr[field]:
+          self.__address.append(addr[field])
+      if 'Postnummer' in addr and addr['Postnummer'] and 'Postort' in addr and addr['Postort']:
+        self.__address.append(f"{addr['Postnummer']} {addr['Postort']}")
+
+except Exception:
+  # If contact data can't be retrieved, set default empty values
+  self.__email = None
+  self.__phone = None
+  self.__address = []
+@
+
+<<student attribute methods>>=
+<<student contact attribute methods>>
 @
 
 
