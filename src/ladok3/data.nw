@@ -47,10 +47,24 @@ import sys
 <<functions>>
 
 def add_command_options(parser):
+  """Add the 'course' subcommand options to the argument parser.
+  
+  Creates a subparser for the course data extraction command with all
+  necessary arguments for filtering and output formatting.
+  
+  Args:
+      parser (ArgumentParser): The parent parser to add the subcommand to.
+  """
   <<add data parser to parser>>
   <<add data command arguments to data parser>>
 
 def command(ladok, args):
+  """Execute the course data extraction command.
+  
+  Args:
+      ladok (LadokSession): The LADOK session for data access.
+      args: Parsed command line arguments containing course and filter options.
+  """
   <<produce data about course specified in args>>
 @
 
@@ -134,6 +148,19 @@ We also need the course round through the [[course_round]] object of type
 [[CourseRound]].
 <<functions>>=
 def extract_data_for_round(ladok, course_round, args):
+  """Extract student result data for a specific course round.
+  
+  Processes a course round to extract student results data in CSV format,
+  filtering by students and components as specified in args.
+  
+  Args:
+      ladok (LadokSession): The LADOK session for data access.
+      course_round: The course round object to extract data from.
+      args: Command line arguments containing filter options.
+  
+  Returns:
+      list: List of result data dictionaries for CSV output.
+  """
   <<compute start and length of the course>>
   <<get the results for the course round>>
 
@@ -215,6 +242,15 @@ Then we must search for a student's result in the batch of results we received
 from LADOK.
 <<functions>>=
 def filter_student_results(student, results):
+  """Filter results for a specific student.
+  
+  Args:
+      student: Student object with ladok_id attribute.
+      results (list): List of result dictionaries from LADOK.
+  
+  Returns:
+      list: Filtered list containing only results for the specified student.
+  """
   return list(filter(
     lambda x: x["Student"]["Uid"] == student.ladok_id,
     results))
@@ -223,6 +259,17 @@ def filter_student_results(student, results):
 Similarly, we want to find the result for a particular component.
 <<functions>>=
 def filter_component_result(component, results):
+  """Find the result data for a specific course component.
+  
+  Searches through results to find the entry matching the given component.
+  
+  Args:
+      component: Course component object to search for.
+      results (list): List of result dictionaries to search through.
+  
+  Returns:
+      dict or None: Result data for the component, or None if not found.
+  """
   for component_result in results:
     <<get the component result data>>
     <<check component code in result data>>

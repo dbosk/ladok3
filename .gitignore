@@ -18,3 +18,12 @@ z*
 
 # ignore python files
 __pycache__
+
+# IDE and editor files (keep .vscode settings for team)
+.vscode/launch.json
+.vscode/tasks.json
+*.swp
+*.swo
+
+# Copilot personal settings
+.copilot/
