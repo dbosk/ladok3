@@ -16,7 +16,8 @@ This is a Python package that provides a wrapper for the LADOK3 REST API. LADOK3
 
 ### Source Files
 - `src/ladok3/*.nw` - Literate programming source files (noweb format)
-- Generated Python files are built from these .nw files
+- **Generated Python (.py) and LaTeX (.tex) files are built from these .nw files**
+- **⚠️ IMPORTANT: Never commit .py or .tex files as they are auto-generated**
 - `examples/` - Example scripts showing usage patterns
 
 ### Main Classes
@@ -60,6 +61,12 @@ This is a Python package that provides a wrapper for the LADOK3 REST API. LADOK3
 - Source code is in .nw files with embedded documentation
 - Examples should be practical and educational
 - Document Swedish education system specifics
+
+### File Management
+- **Source files**: Only `.nw` files should be edited and committed
+- **Generated files**: `.py` and `.tex` files are auto-generated from `.nw` files
+- **Never commit generated files**: They are ignored by `.gitignore` for good reason
+- **Build process**: Use `make` commands to generate Python/LaTeX from noweb sources
 
 ## Common Patterns
 
@@ -118,3 +125,4 @@ ls = ladok3.LadokSession(*ladok3.cli.load_credentials())
 4. Include docstrings that explain LADOK3/Swedish education context
 5. Consider both CLI and library usage patterns
 6. Respect the literate programming style when editing .nw files
+7. **NEVER suggest committing .py or .tex files - they are auto-generated**

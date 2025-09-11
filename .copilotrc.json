@@ -8,10 +8,11 @@
   "buildTool": "poetry",
   "literateSource": true,
   "filePatterns": {
-    "source": ["src/**/*.nw", "src/**/*.py"],
+    "source": ["src/**/*.nw"],
+    "generated": ["src/**/*.py", "doc/**/*.tex"],
     "tests": ["tests/**/*.py"],
     "examples": ["examples/**/*.py"],
-    "docs": ["doc/**/*.tex", "README.md"],
+    "docs": ["README.md"],
     "config": ["pyproject.toml", "Makefile", "makefiles/**/*.mk"]
   },
   "keywords": [
