@@ -856,36 +856,7 @@ def alive(self):
     self.__get_personal_attributes()
   return self.__alive
 
-@property
-def email(self):
-  """Return the student's email address"""
-  try:
-    return self.__email
-  except:
-    self.__get_contact_attributes()
-  return self.__email
-
-@property
-def phone(self):
-  """Return the student's phone number"""
-  try:
-    return self.__phone
-  except:
-    self.__get_contact_attributes()
-  return self.__phone
-
-@property
-def address(self):
-  """Return the student's postal address as a list of lines"""
-  try:
-    return self.__address
-  except:
-    self.__get_contact_attributes()
-  return self.__address
-
-def __get_contact_attributes(self):
-  """Helper method that fetches contact attributes"""
-  <<pull student contact attributes from LADOK>>
+<<student contact attribute methods>>
 @
 
 Then we can call that method to update all attributes.
@@ -919,6 +890,39 @@ self.__alive = not record['Avliden']
 The contact attributes include email, phone number, and postal address information.
 We use the [[__get_contact_attributes]] helper method to populate these attributes
 from a separate LADOK API call.
+
+<<student contact attribute methods>>=
+@property
+def email(self):
+  """Return the student's email address"""
+  try:
+    return self.__email
+  except:
+    self.__get_contact_attributes()
+  return self.__email
+
+@property
+def phone(self):
+  """Return the student's phone number"""
+  try:
+    return self.__phone
+  except:
+    self.__get_contact_attributes()
+  return self.__phone
+
+@property
+def address(self):
+  """Return the student's postal address as a list of lines"""
+  try:
+    return self.__address
+  except:
+    self.__get_contact_attributes()
+  return self.__address
+
+def __get_contact_attributes(self):
+  """Helper method that fetches contact attributes"""
+  <<pull student contact attributes from LADOK>>
+@
 <<pull student contact attributes from LADOK>>=
 try:
   contact_data = self.ladok.get_student_contact_data_JSON(self.ladok_id)
@@ -957,6 +961,10 @@ except Exception:
   self.__email = None
   self.__phone = None
   self.__address = []
+@
+
+<<student attribute methods>>=
+<<student contact attribute methods>>
 @
 
 
