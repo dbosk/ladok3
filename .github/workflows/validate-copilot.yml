@@ -1,0 +1,57 @@
+name: Validate Copilot Configuration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths: 
+      - '.github/copilot-instructions.md'
+      - '.copilotrc.json'
+      - '.vscode/settings.json'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '.github/copilot-instructions.md'
+      - '.copilotrc.json'
+      - '.vscode/settings.json'
+
+jobs:
+  validate-copilot-config:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Install dependencies
+      run: |
+        poetry install --only main
+      
+    - name: Validate copilot configuration files exist
+      run: |
+        echo "Checking copilot configuration files..."
+        test -f .github/copilot-instructions.md
+        test -f .copilotrc.json
+        test -f .vscode/settings.json
+        echo "✓ All copilot configuration files present"
+    
+    - name: Validate JSON syntax
+      run: |
+        echo "Validating JSON configuration files..."
+        python -m json.tool .copilotrc.json > /dev/null
+        python -m json.tool .vscode/settings.json > /dev/null
+        echo "✓ JSON files are valid"
+    
+    - name: Run copilot configuration test
+      run: |
+        echo "Running copilot configuration validation..."
+        python test_copilot_config.py
