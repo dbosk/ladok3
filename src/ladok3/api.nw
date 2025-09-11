@@ -696,13 +696,10 @@ This method fetches all course rounds that uses the given course instance.
 <<LadokSession data methods>>=
 def course_rounds_JSON(self, course_instance_id):
   """Requires course instance ID"""
-  response = self.get_query(
+  data = self.get_query(
     f"/resultat/internal/kurstillfalle/kursinstans/{course_instance_id}")
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Utbildningstillfalle"]
-  raise Exception(f"can't list course round for course {course_instance_id}: "
-                  f"{response.text}")
+  return data["Utbildningstillfalle"]
 @
 
 We test this method as follows.
@@ -731,13 +728,10 @@ It requires the course instance ID.
 <<LadokSession data methods>>=
 def course_instance_JSON(self, instance_id):
   """Returns course instance data for a course with instance ID instance_id"""
-  response = self.get_query(
+  data = self.get_query(
     f"/resultat/internal/utbildningsinstans/kursinstans/{instance_id}")
 
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise Exception(f"can't get course instance data for {instance_id}: "
-                  f"{response.text}")
+  return data
 @
 
 We add the following test.
@@ -1129,7 +1123,7 @@ def create_result_JSON(self,
       grade_id, date,
       project_title=None):
   """Creates a new result"""
-  response = self.post_query(
+  data = self.post_query(
     f"/resultat/internal/resultat/student/{student_id}"
     f"/kursinstans/{course_instance_id}"
     f"/utbildningsinstans/{component_id}"
@@ -1141,10 +1135,7 @@ def create_result_JSON(self,
     }
   )
 
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise Exception(f"LADOK create request failed: "
-                  f"{response.json()['Meddelande']}")
+  return data
 @
 
 We test this in the following way.
@@ -1352,14 +1343,12 @@ def user_info_JSON(self):
   Raises:
       Exception: If the request fails or returns an error status.
   """
-  response = self.get_query(
+  data = self.get_query(
     "/kataloginformation/internal/anvandare/anvandarinformation",
     "application/vnd.ladok-kataloginformation+json"
   )
 
-  if response.status_code == 200:
-    return response.json()
-  raise Exception(response.text)
+  return data
 @
 
 We test this as follows.
