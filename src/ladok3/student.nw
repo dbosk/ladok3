@@ -88,6 +88,17 @@ student_parser.add_argument("-r", "--results",
 )
 @
 
+\subsection{A contact information flag}
+
+We also want a flag for specifying whether or not to include the student's 
+contact information (email, phone, address).
+<<add student command arguments to student parser>>=
+student_parser.add_argument("--contact",
+  action="store_true", default=False,
+  help="Include contact information (email, phone, address)."
+)
+@
+
 \section{Print the student data}
 
 Now that we have the student identifier, we can simply use that to fetch the 
@@ -101,7 +112,7 @@ try:
 except Exception as err:
   ladok3.cli.err(-1, f"can't fetch student data for {args.id}: {err}")
 
-print_student_data(student)
+print_student_data(student, args)
 
 if args.course:
   print()
@@ -113,14 +124,20 @@ if args.course:
 To print the student's personal data, we simply print the most interesting 
 attributes.
 <<functions>>=
-def print_student_data(student):
-  """Prints the student data, all attributes, to stdout."""
+def print_student_data(student, args):
+  """Prints the student data, all attributes, to stdout.
+  
+  Args:
+    student: A Student object with the student's data
+    args: Command line arguments, including flags like --contact
+  """
   print(f"First name:   {student.first_name}")
   print(f"Last name:    {student.last_name}")
   print(f"Personnummer: {student.personnummer}")
   print(f"LADOK ID:     {student.ladok_id}")
   print(f"Alive:        {student.alive}")
   <<print info about suspensions for [[student]]>>
+  <<print contact info if requested>>
 @
 
 We want to print whether the student is currently suspended or not.
@@ -139,6 +156,21 @@ if student.suspensions:
   for suspension in student.suspensions:
     print(f"{suspension}", end="\n              ")
   print()
+@
+
+Now we add the contact information display. 
+We only want to print this if the user has requested it using the [[--contact]] flag.
+<<print contact info if requested>>=
+if args.contact:
+  print("Contact information:")
+  if student.email:
+    print(f"Email:        {student.email}")
+  if student.phone:
+    print(f"Phone:        {student.phone}")
+  if student.address:
+    print(f"Address:      {student.address[0]}")
+    for line in student.address[1:]:
+      print(f"              {line}")
 @
 
 
