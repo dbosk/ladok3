@@ -486,14 +486,11 @@ It also includes when they were last updated.
 <<LadokSession data methods>>=
 def get_student_contact_data_JSON(self, student_id):
   """Returns contact data for student with student_id, returns JSON"""
-  response = self.get_query(
+  data = self.get_query(
     f"/studentinformation/internal/student/{student_id}/kontaktuppgifter",
     "application/vnd.ladok-studentinformation+json")
 
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise Exception("can't get contact data for "
-                 f"student {student_id}: {response.text}")
+  return data
 @
 
 We test this function.
@@ -521,14 +518,11 @@ def get_student_suspensions_JSON(self, student_id):
   Returns suspensions from studies for student with student_id,
   returns JSON
   """
-  response = self.get_query(
+  data = self.get_query(
     f"/studentinformation/internal/avstangning/student/{student_id}",
     "application/vnd.ladok-studentinformation+json")
 
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise Exception("can't get suspensions for "
-                 f"student {student_id}: {response.text}")
+  return data
 @
 
 We test this function.
@@ -590,16 +584,12 @@ def registrations_on_course_JSON(self,
     course_education_id, student_id):
   """Return a list of registrations on course with education_id for student 
   with student_id. JSON format."""
-  response = self.get_query(
+  data = self.get_query(
     "/studiedeltagande/internal/tillfallesdeltagande"
       f"/utbildning/{course_education_id}/student/{student_id}",
     "application/vnd.ladok-studiedeltagande+json")
   
-  if response.status_code == requests.codes.ok:
-    return response.json()["Tillfallesdeltaganden"]
-  raise Exception("can't get registrations for "
-                  f"student {student_id} on course {course_education_id}: "
-                  f"{response.text}")
+  return data["Tillfallesdeltaganden"]
 @
 
 We add the following test.
@@ -677,11 +667,9 @@ def search_course_rounds_JSON(self, /, **kwargs):
 
   url += "page=1&limit=400&sprakkod=sv"
 
-  response = self.get_query(url)
+  data = self.get_query(url)
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Resultat"]
-  raise Exception(f"search_course_rounds_JSON failed: {response.text}")
+  return data["Resultat"]
 @
 
 We add the following test.
@@ -906,14 +894,12 @@ This one includes data such as the number of registered students as well,
 unlike the method in the next section.
 <<LadokSession data methods>>=
 def course_round_components_JSON(self, round_id):
-  response = self.put_query(
+  data = self.put_query(
     "/resultat/internal/kurstillfalle/moment",
     {"Identitet": [round_id]}
   )
 
-  if response.status_code == 200:
-    return response.json()["MomentPerKurstillfallen"][0]["Moment"]
-  raise Exception(response.json()["Meddelande"])
+  return data["MomentPerKurstillfallen"][0]["Moment"]
 @
 
 We add the following test.
