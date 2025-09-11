@@ -9,18 +9,18 @@ ladok = ladok3.LadokSession("KTH",
                                   "password": os.environ["KTH_PASSWD"]},
                             test_environment=True) # for experiments
 
-prgiX = ladok.search_course_rounds(code="DD1315")
+course_rounds = ladok.search_course_rounds(code="DD1315")
 
-for prgi in prgiX:
-    print(f"{prgi.code} {prgi.start}--{prgi.end}")
+for course_round in course_rounds:
+    print(f"{course_round.code} {course_round.start}--{course_round.end}")
 print()
 
-prgi = prgiX[0]
-print(f"{prgi.code} {prgi.start}--{prgi.end}")
-print(f"round: {prgi.round_id}")
-print(f"round code: {prgi.round_code}")
-print(f"instance: {prgi.instance_id}")
-print(f"education: {prgi.education_id}")
-print(f"{prgi.code} components:")
-for component in prgi.components():
+course_round = course_rounds[0]
+print(f"{course_round.code} {course_round.start}--{course_round.end}")
+print(f"round: {course_round.round_id}")
+print(f"round code: {course_round.round_code}")
+print(f"instance: {course_round.instance_id}")
+print(f"education: {course_round.education_id}")
+print(f"{course_round.code} components:")
+for component in course_round.components():
     print(f"{component.code}: {component.instance_id}")

@@ -1050,9 +1050,9 @@ ladok = ladok3.LadokSession(
           test_environment=True)
 
 print(r"\begin{minted}{JSON}")
-prgi = ladok.search_course_rounds_JSON(code="DD1317")[0]
-ladok3.clean_data(prgi)
-print(json.dumps(prgi, indent=2))
+course_round = ladok.search_course_rounds_JSON(code="DD1317")[0]
+ladok3.clean_data(course_round)
+print(json.dumps(course_round, indent=2))
 print(r"\end{minted}")
 \end{pycode}
 

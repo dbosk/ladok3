@@ -7,8 +7,8 @@ in LADOK.
 we assume that all assignments in the Canvas course instance are grouped; and 
 each group must map exactly to the names of the LADOK components.
 
-The course components in LADOK (and assignment groups in Canvas) for the prgi 
-(DD1315) course are
+The course components in LADOK (and assignment groups in Canvas) for the DD1315 
+course are
 \begin{itemize}
 \item LAB1,
 \item LAB2,
@@ -47,11 +47,11 @@ We provide the following files:
 We provide an include file for GNU make to build all the targets.
 <<canvas2ladok.mk>>=
 .PHONY: all
-all: canvas2ladok.py prgi2ladok
+all: canvas2ladok.py canvas2ladok
 
-.PHONY: prgi2ladok
-prgi2ladok: canvas2ladok.py Dockerfile
-	docker build -t prgi2ladok .
+.PHONY: canvas2ladok
+canvas2ladok: canvas2ladok.py Dockerfile
+	docker build -t canvas2ladok .
 
 Dockerfile: canvas2ladok.nw
 	${NOTANGLE}
@@ -63,7 +63,7 @@ clean:
 
 .PHONY: distclean
 distclean:
-	-docker image rm prgi2ladok
+	-docker image rm canvas2ladok
 @
 
 The Docker image will just contain the [[canvas2ladok.py]] file and run it by 
