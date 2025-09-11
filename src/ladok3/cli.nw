@@ -40,17 +40,7 @@ import weblogin.seamlessaccess as sa
 <<modules>>
 
 dirs = appdirs.AppDirs("ladok", "dbosk@kth.se")
-# Override cache directory to use /tmp for regular cleanup
-class CustomDirs:
-    def __init__(self, base_dirs):
-        # Copy other directories from the original dirs object
-        self.user_config_dir = base_dirs.user_config_dir
-        self.user_data_dir = base_dirs.user_data_dir
-        self.user_log_dir = base_dirs.user_log_dir
-        # Override cache directory to use /tmp
-        self.user_cache_dir = "/tmp/ladok"
-
-dirs = CustomDirs(dirs)
+<<custom-dirs>>
 
 <<functions>>
 <<command-line interface>>
@@ -75,6 +65,55 @@ if __name__ == "__main__":
     sys.exit(0)
   except Exception as e:
     err(-1, e)
+@
+
+
+\section{Directory configuration}%
+\label{directory-configuration}
+
+We need to override the default cache directory location to use [[/tmp/ladok]] 
+instead of the user's persistent cache directory. This ensures that cached 
+session data is automatically cleaned up on system reboots, preventing 
+indefinite accumulation of cached files.
+
+The cache directory change is implemented using a wrapper class that preserves 
+the [[appdirs]] interface while redirecting only the cache location. This 
+approach is preferable to alternatives for several reasons:
+\begin{itemize}
+\item \textbf{Explicit and clear}: The override is visible and documented in 
+the code, making it easy to understand what's being changed.
+\item \textbf{Minimally invasive}: Only the cache directory is affected; all 
+other directories (config, data, logs) remain in their standard locations.
+\item \textbf{Interface preservation}: The wrapper maintains full compatibility 
+with the [[appdirs.AppDirs]] interface, requiring no changes to existing code.
+\item \textbf{Maintainable}: Changes are localized to a single class rather 
+than scattered throughout cache-related functions.
+\end{itemize}
+
+Alternative approaches were considered but rejected:
+\begin{itemize}
+\item \textbf{Direct attribute modification}: Monkey-patching 
+[[dirs.user_cache_dir]] would be less explicit and harder to debug.
+\item \textbf{Environment variables}: Using [[TMPDIR]] or similar would 
+introduce external dependencies and potential inconsistencies across systems.
+\item \textbf{Hardcoded paths}: Embedding [[/tmp/ladok]] directly in 
+cache-related functions would violate DRY principles and complicate maintenance.
+\end{itemize}
+
+The wrapper class copies all directory attributes from the original 
+[[appdirs.AppDirs]] object, overriding only the cache directory:
+<<custom-dirs>>=
+# Override cache directory to use /tmp for regular cleanup
+class CustomDirs:
+    def __init__(self, base_dirs):
+        # Copy other directories from the original dirs object
+        self.user_config_dir = base_dirs.user_config_dir
+        self.user_data_dir = base_dirs.user_data_dir
+        self.user_log_dir = base_dirs.user_log_dir
+        # Override cache directory to use /tmp
+        self.user_cache_dir = "/tmp/ladok"
+
+dirs = CustomDirs(dirs)
 @
 
 We want uniform error handling.
