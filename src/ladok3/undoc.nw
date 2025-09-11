@@ -48,7 +48,7 @@ Also, the code has been adapted to use [[self.session]] instead of
 def get_results(self, person_nr_raw, course_code):
   person_nr_raw = str(person_nr_raw)
   person_nr =  format_personnummer(person_nr_raw)
-  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  if not person_nr: raise LadokValidationError('Invalid person nr ' + person_nr_raw)
   
   student_data = self.__get_student_data(person_nr)
 
@@ -125,19 +125,19 @@ def get_results(self, person_nr_raw, course_code):
 def save_result(self, person_nr_raw, course_code, course_moment,
   result_date_raw, grade_raw, grade_scale):
   if grade_raw in ["AF", "PF"]:
-      raise Exception('Invalid grade: ' + grade_raw + ' looks like a grade_scale') 
+      raise LadokValidationError('Invalid grade: ' + grade_raw + ' looks like a grade_scale') 
 
   if (grade_raw == 'P' and grade_scale == "AF") or \
      (grade_raw in "ABCDE" and grade_scale == "PF"):
-    raise Exception('Invalid grade: ' + grade_raw +
+    raise LadokValidationError('Invalid grade: ' + grade_raw +
       ' does not match grade_scale ' + grade_scale)
   
   person_nr =  format_personnummer(person_nr_raw)
-  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  if not person_nr: raise LadokValidationError('Invalid person nr ' + person_nr_raw)
   
   result_date = self.__validate_date(result_date_raw)
   if not result_date:
-    raise Exception('Invalid grade date: ' + result_date_raw + ' pnr: ' +
+    raise LadokValidationError('Invalid grade date: ' + result_date_raw + ' pnr: ' +
       person_nr_raw + ' moment: ' + course_moment)
   
   student_data = self.__get_student_data(person_nr)
@@ -209,7 +209,7 @@ def save_result(self, person_nr_raw, course_code, course_moment,
         headers=headers)
   
   if not 'Resultat' in r.json():
-    raise Exception("Couldn't register " +
+    raise LadokServerError("Couldn't register " +
       course_moment + "=" + grade_raw + " " + result_date_raw + ": " +
         r.json()["Meddelande"])
   
@@ -232,7 +232,7 @@ def save_result(self, person_nr_raw, course_code, course_moment,
 def get_student_data(self, person_nr_raw):
   person_nr =  format_personnummer(person_nr_raw)
   
-  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  if not person_nr: raise LadokValidationError('Invalid person nr ' + person_nr_raw)
   
   student_data = self.__get_student_data(person_nr)
   return student_data
@@ -251,7 +251,7 @@ def get_student_data(self, person_nr_raw):
 def get_student_name(self, person_nr_raw):
   person_nr =  format_personnummer(person_nr_raw)
   
-  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  if not person_nr: raise LadokValidationError('Invalid person nr ' + person_nr_raw)
   
   student_data = self.__get_student_data(person_nr)
   return {

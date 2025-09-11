@@ -290,7 +290,7 @@ def grade_scales_JSON(self):
 
   if response.status_code == requests.codes.ok:
     return response.json()["Betygsskala"]
-  raise Exception(f"can't fetch grading scales: {response.text}")
+  raise LadokAPIError(f"can't fetch grading scales: {response.text}")
 @
 
 We add the following test.
@@ -349,7 +349,7 @@ def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
   """
   person_nr =  format_personnummer(person_nr_raw)
   
-  if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
+  if not person_nr: raise LadokValidationError('Invalid person nr ' + person_nr_raw)
 
   response = self.session.get(
     url=self.base_gui_proxy_url +
@@ -441,7 +441,7 @@ def get_student_contact_data_JSON(self, student_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  raise Exception("can't get contact data for "
+  raise LadokAPIError("can't get contact data for "
                  f"student {student_id}: {response.text}")
 @
 
@@ -476,7 +476,7 @@ def get_student_suspensions_JSON(self, student_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  raise Exception("can't get suspensions for "
+  raise LadokAPIError("can't get suspensions for "
                  f"student {student_id}: {response.text}")
 @
 
@@ -510,7 +510,7 @@ def registrations_JSON(self, student_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()["Tillfallesdeltaganden"]
-  raise Exception("can't get registrations for "
+  raise LadokAPIError("can't get registrations for "
                   f"student {student_id}: {response.text}")
 @
 
@@ -549,7 +549,7 @@ def registrations_on_course_JSON(self,
   
   if response.status_code == requests.codes.ok:
     return response.json()["Tillfallesdeltaganden"]
-  raise Exception("can't get registrations for "
+  raise LadokAPIError("can't get registrations for "
                   f"student {student_id} on course {course_education_id}: "
                   f"{response.text}")
 @
@@ -633,7 +633,7 @@ def search_course_rounds_JSON(self, /, **kwargs):
 
   if response.status_code == requests.codes.ok:
     return response.json()["Resultat"]
-  raise Exception(f"search_course_rounds_JSON failed: {response.text}")
+  raise LadokAPIError(f"search_course_rounds_JSON failed: {response.text}")
 @
 
 We add the following test.
@@ -665,7 +665,7 @@ def course_rounds_JSON(self, course_instance_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()["Utbildningstillfalle"]
-  raise Exception(f"can't list course round for course {course_instance_id}: "
+  raise LadokAPIError(f"can't list course round for course {course_instance_id}: "
                   f"{response.text}")
 @
 
@@ -700,7 +700,7 @@ def course_instance_JSON(self, instance_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  raise Exception(f"can't get course instance data for {instance_id}: "
+  raise LadokAPIError(f"can't get course instance data for {instance_id}: "
                   f"{response.text}")
 @
 
@@ -865,7 +865,7 @@ def course_round_components_JSON(self, round_id):
 
   if response.status_code == 200:
     return response.json()["MomentPerKurstillfallen"][0]["Moment"]
-  raise Exception(response.json()["Meddelande"])
+  raise LadokServerError(response.json()["Meddelande"])
 @
 
 We add the following test.
@@ -902,7 +902,7 @@ def course_instance_components_JSON(self, course_instance_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()["Utbildningsinstans"][0]
-  raise Exception(response.json()["Meddelande"])
+  raise LadokServerError(response.json()["Meddelande"])
 @
 
 We add the following test code.
@@ -966,7 +966,7 @@ def search_reported_results_JSON(self, course_round_id, component_instance_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()["Resultat"]
-  raise Exception(f"failed searching for results for "
+  raise LadokAPIError(f"failed searching for results for "
                   f"course {course_round_id}, "
                   f"component {component_instance_id}: {response.text}")
 @
@@ -1011,7 +1011,7 @@ def search_course_results_JSON(self, course_round_id, component_instance_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()["Resultat"]
-  raise Exception("can't get course results for "
+  raise LadokAPIError("can't get course results for "
                  f"course {course_round_id}, "
                  f"component {component_instance_id}: {response.text}")
 @
@@ -1051,7 +1051,7 @@ def student_results_JSON(self, student_id, course_education_id):
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  raise Exception(response.json()["Meddelande"])
+  raise LadokServerError(response.json()["Meddelande"])
 @
  
 We test this in the following way.
@@ -1109,7 +1109,7 @@ def create_result_JSON(self,
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  raise Exception(f"LADOK create request failed: "
+  raise LadokServerError(f"LADOK create request failed: "
                   f"{response.json()['Meddelande']}")
 @
 
@@ -1191,7 +1191,7 @@ def update_result_JSON(self,
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  raise Exception(f"LADOK request to modify result failed: "
+  raise LadokServerError(f"LADOK request to modify result failed: "
                   f"{response.json()['Meddelande']}")
 @
 
@@ -1243,7 +1243,7 @@ def result_attestants_JSON(self, result_id):
 
   if response.status_code == 200:
     return response.json()["Anvandare"]
-  raise Exception(response.json()["Meddelande"])
+  raise LadokServerError(response.json()["Meddelande"])
 @ The [[result_id]] is the ID returned in the [[ResultatUID]] field in the 
 response from the [[create_result_JSON]] method.
 
@@ -1283,7 +1283,7 @@ def result_reporters_JSON(self, organization_id):
 
   if response.status_code == 200:
     return response.json()["Anvandare"]
-  raise Exception(response.text)
+  raise LadokAPIError(response.text)
 @
 
 We test this method as follows.
@@ -1325,7 +1325,7 @@ def user_info_JSON(self):
 
   if response.status_code == 200:
     return response.json()
-  raise Exception(response.text)
+  raise LadokAPIError(response.text)
 @
 
 We test this as follows.
@@ -1369,7 +1369,7 @@ def finalize_result_JSON(self,
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  raise Exception(response.json()["Meddelande"])
+  raise LadokServerError(response.json()["Meddelande"])
 @ This method returns a copy of the finalized result.
 
 We test this in the following way.
@@ -1421,7 +1421,7 @@ def update_finalized_result_JSON(self,
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  raise Exception(f"LADOK request to modify finalized result failed: "
+  raise LadokServerError(f"LADOK request to modify finalized result failed: "
                   f"{response.json()['Meddelande']}")
 @
 
@@ -1465,7 +1465,7 @@ def finalized_result_to_draft_JSON(self, result_id, last_modified):
 
   if response.status_code == requests.codes.ok:
     return response.json()
-  raise Exception(f"LADOK request to change finalized result to draft failed: "
+  raise LadokServerError(f"LADOK request to change finalized result to draft failed: "
                   f"{response.json()['Meddelande']}")
 @
 
@@ -1502,7 +1502,7 @@ def remove_result_draft_JSON(self, result_id):
   )
 
   if response.status_code != 204:
-    raise Exception(f"LADOK request to remove draft result failed: "
+    raise LadokAPIError(f"LADOK request to remove draft result failed: "
                     f"{response.status_code}: {response.text}")
 @
 
@@ -1568,7 +1568,7 @@ def participants_JSON(self, course_round_id, /, **kwargs):
     "application/vnd.ladok-studiedeltagande+json")
   if response.status_code == requests.codes.ok:
     return response.json()["Resultat"]
-  raise Exception(f"can't get participants "
+  raise LadokAPIError(f"can't get participants "
                   f"with course_round_id = {course_round_id}: "
                   f"{response.text}")
 @

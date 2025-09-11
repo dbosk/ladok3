@@ -95,6 +95,27 @@ We will use the [[weblogin]] package\footnote{%
 } to handle this.
 This will guarantee that we're always signed in.
 <<classes>>=
+# Custom exception classes for LADOK errors
+class LadokError(Exception):
+  """Base exception for LADOK-related errors."""
+  pass
+
+class LadokServerError(LadokError):
+  """Exception for server-side LADOK errors (using response.json()["Meddelande"])."""
+  pass
+
+class LadokValidationError(LadokError):
+  """Exception for data validation errors (invalid person numbers, grades, etc.)."""
+  pass
+
+class LadokAPIError(LadokError):
+  """Exception for API/HTTP related errors (network failures, unexpected responses)."""
+  pass
+
+class LadokNotFoundError(LadokError):
+  """Exception for when resources are not found (missing courses, components, etc.)."""
+  pass
+
 class LadokSession:
   """This is an interface for reading and writing data from and to LADOK."""
   def __init__(self, institution, vars=None, autologin_handlers=None,
@@ -1747,7 +1768,7 @@ try:
     self.__uid, self.grade.id, self.date.isoformat(), self.__last_modified
   )
 except Exception as err:
-  raise Exception(
+  raise LadokError(
     f"couldn't update {self.component.code} to {self.grade} ({self.date})"
     f" to LADOK: {err}"
   )
@@ -1770,7 +1791,7 @@ try:
     self.grade.id, self.date.isoformat()
   )
 except Exception as err:
-  raise Exception("Couldn't register "
+  raise LadokError("Couldn't register "
     f"{self.component} {self.grade} {self.date}: {err}")
 
 self.__populate_attributes(**response)
