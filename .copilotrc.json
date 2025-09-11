@@ -1,0 +1,35 @@
+{
+  "projectType": "python-library",
+  "description": "Python wrapper for LADOK3 REST API - Swedish student information system",
+  "primaryLanguage": "python",
+  "framework": "none",
+  "codeStyle": "pep8",
+  "testFramework": "pytest",
+  "buildTool": "poetry",
+  "literateSource": true,
+  "filePatterns": {
+    "source": ["src/**/*.nw"],
+    "generated": ["src/**/*.py", "src/**/*.tex", "doc/**/*.tex"],
+    "tests": ["tests/**/*.py"],
+    "examples": ["examples/**/*.py"],
+    "docs": ["README.md"],
+    "config": ["pyproject.toml", "Makefile", "makefiles/**/*.mk"]
+  },
+  "keywords": [
+    "ladok3",
+    "api-wrapper",
+    "education",
+    "student-information-system",
+    "sweden",
+    "grade-reporting",
+    "cli-tool",
+    "literate-programming",
+    "noweb"
+  ],
+  "contextualPatterns": {
+    "personnummer": "Swedish personal identity numbers (YYYYMMDD-XXXX)",
+    "course_code": "Course codes like AB1234",
+    "component": "Course components like LAB1, TEN1",
+    "grade": "Grades: P/F (Pass/Fail) or A-F scale"
+  }
+}

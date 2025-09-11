@@ -1,0 +1,35 @@
+{
+  "extensions": {
+    "recommendations": [
+      "ms-python.python",
+      "ms-python.autopep8",
+      "GitHub.copilot",
+      "GitHub.copilot-chat",
+      "ms-python.pytest",
+      "charliermarsh.ruff"
+    ]
+  },
+  "settings": {
+    "python.defaultInterpreterPath": "./venv/bin/python",
+    "python.analysis.typeCheckingMode": "basic",
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+      "tests"
+    ],
+    "python.linting.enabled": true,
+    "files.associations": {
+      "*.nw": "plaintext"
+    },
+    "github.copilot.enable": {
+      "*": true,
+      "yaml": true,
+      "plaintext": true,
+      "markdown": true,
+      "python": true
+    },
+    "github.copilot.advanced": {
+      "listCount": 10,
+      "inlineSuggestCount": 3
+    }
+  }
+}
