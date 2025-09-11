@@ -32,6 +32,14 @@ import sys
 <<functions>>
 
 def add_command_options(parser):
+  """Add the 'report' subcommand options to the argument parser.
+  
+  Creates a subparser for result reporting with options for single results
+  via command line arguments or batch processing via CSV input.
+  
+  Args:
+      parser (ArgumentParser): The parent parser to add the subcommand to.
+  """
   report_parser = parser.add_parser("report",
     help="Reports course results to LADOK",
     description="Reports course results to LADOK"
@@ -40,6 +48,12 @@ def add_command_options(parser):
   <<add report command arguments to report parser>>
 
 def command(ladok, args):
+  """Execute the result reporting command.
+  
+  Args:
+      ladok (LadokSession): The LADOK session for data access.
+      args: Parsed command line arguments containing result data or CSV options.
+  """
   <<report results depending on args>>
 @
 
@@ -60,9 +74,21 @@ many_parser = report_parser.add_argument_group(
 We provide two functions, one for each way of reporting the results.
 <<functions>>=
 def report_one_result(ladok, args):
+  """Report a single result specified via command line arguments.
+  
+  Args:
+      ladok (LadokSession): The LADOK session for data access.
+      args: Command line arguments containing course, student, component, and grade info.
+  """
   <<report results given in args>>
 
 def report_many_results(ladok, args):
+  """Report multiple results read from CSV data on stdin.
+  
+  Args:
+      ladok (LadokSession): The LADOK session for data access.
+      args: Command line arguments containing CSV processing options.
+  """
   <<report results given in stdin>>
 @
 
@@ -148,6 +174,24 @@ We want to report errors as exceptions.
 <<functions>>=
 def set_grade(ladok, args,
               student_id, course_code, component_code, grade, date, graders):
+  """Set a grade for a student's course component result.
+  
+  Handles the logic for setting grades, including checking if results are
+  already attested, validating dates, and optionally finalizing results.
+  
+  Args:
+      ladok (LadokSession): The LADOK session for data access.
+      args: Command line arguments with options like verbose and finalize.
+      student_id (str): Student identifier (personnummer or LADOK ID).
+      course_code (str): Course code (e.g., "DD1315").
+      component_code (str): Component code (e.g., "LAB1").
+      grade (str): Grade to assign (e.g., "P", "F", "A").
+      date (str): Examination date in YYYY-MM-DD format.
+      graders (list): List of grader identifiers.
+  
+  Raises:
+      Exception: If the grade setting fails or validation errors occur.
+  """
   student = ladok.get_student(student_id)
   <<get [[course]] from [[student]] and [[course_code]]>>
   <<get [[component]] from [[course]] and [[component_code]]>>
