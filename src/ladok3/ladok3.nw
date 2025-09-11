@@ -263,7 +263,20 @@ For completeness, we also provide [[LadokDataEncoder]], a subclass of
 [[JSONEncoder]].
 <<classes>>=
 class LadokDataEncoder(json.JSONEncoder):
+  """JSON encoder for LadokData objects.
+  
+  Extends JSONEncoder to properly serialize LadokData objects using their
+  json property for consistent JSON output.
+  """
   def default(self, object):
+    """Convert LadokData objects to JSON-serializable format.
+    
+    Args:
+        object: The object to encode.
+    
+    Returns:
+        dict: JSON representation for LadokData objects, or default handling.
+    """
     if isinstance(object, LadokData):
       return object.json
     return super().default(object)

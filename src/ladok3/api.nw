@@ -162,6 +162,14 @@ invalidated by LADOK.
 <<LadokSession data methods>>=
 @property
 def xsrf_token(self):
+  """Get a fresh XSRF token for authenticated requests.
+  
+  LADOK requires XSRF tokens for PUT, POST, and DELETE requests. This property
+  ensures the token is fresh and valid, triggering a re-login if necessary.
+  
+  Returns:
+      str: A valid XSRF token for use in authenticated requests.
+  """
   <<ensure the XSRF token is fresh>>
 
   cookies = self.session.cookies.get_dict()
@@ -268,6 +276,14 @@ To request the grading scales from LADOK, we request all of them and return a
 list of JSON data objects containing the grading scale data.
 <<LadokSession data methods>>=
 def grade_scales_JSON(self):
+  """Fetch all grading scales from LADOK.
+  
+  Returns:
+      list: A list of JSON objects containing grading scale data from LADOK.
+  
+  Raises:
+      Exception: If the request fails or returns an error status.
+  """
   response = self.get_query(
     "/kataloginformation/internal/grunddata/betygsskala",
     content_type="application/vnd.ladok-kataloginformation+json;charset=UTF-8")
@@ -318,6 +334,19 @@ of Chip.)
 #
 # RETURNERAR en dictionary med för- och efternamn and more
 def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
+  """Get student data from LADOK using a Swedish personal number (personnummer).
+  
+  Args:
+      person_nr_raw (str): Swedish personal number in format YYYYMMDD-XXXX or similar
+      lang (str, optional): Language code 'en' or 'sv'. Defaults to 'sv'.
+  
+  Returns:
+      dict: Student data dictionary containing name, contact info, and more.
+  
+  Raises:
+      Exception: If the personal number format is invalid.
+      ValueError: If student cannot be found or multiple matches found.
+  """
   person_nr =  format_personnummer(person_nr_raw)
   
   if not person_nr: raise Exception('Invalid person nr ' + person_nr_raw)
@@ -363,6 +392,17 @@ directly.
 #
 # RETURNERAR en dictionary med för- och efternamn and more
 def get_student_data_by_uid_JSON(self, uid):
+  """Get student data from LADOK using a LADOK UID.
+  
+  Args:
+      uid (str): The student's unique LADOK identifier.
+  
+  Returns:
+      dict: Student data dictionary containing personal information.
+  
+  Raises:
+      AttributeError: If student cannot be found by the given UID.
+  """
   response = self.get_query(
     f"/studentinformation/internal/student/{uid}",
     content_type="application/vnd.ladok-studentinformation+json;charset=UTF-8")
@@ -1122,6 +1162,23 @@ we did for [[create_result_JSON]].
 <<LadokSession data methods>>=
 def update_result_JSON(self,
       result_id, grade_id, date, last_modified, notes=[]):
+  """Update an existing result draft in LADOK.
+  
+  Note: Cannot be used to update finalized results. Uses ResultatUID, not StudieresultatUID.
+  
+  Args:
+      result_id (str): The unique result identifier (ResultatUID).
+      grade_id (int): The numeric grade identifier from the grade scale.
+      date (str): Examination date in YYYY-MM-DD format.
+      last_modified (str): Last modification timestamp to prevent conflicts.
+      notes (list, optional): List of notes to attach to the result.
+  
+  Returns:
+      dict: Updated result data from LADOK.
+  
+  Raises:
+      Exception: If the update request fails or is rejected by LADOK.
+  """
   response = self.put_query(
     f"/resultat/internal/resultat/uppdatera/{result_id}",
     {
@@ -1253,6 +1310,14 @@ Usually, we want to set the reporter to the logged-in user.
 We can use the following API call to get information about the logged-in user.
 <<LadokSession data methods>>=
 def user_info_JSON(self):
+  """Get information about the currently logged-in user.
+  
+  Returns:
+      dict: User information including name, roles, and permissions.
+  
+  Raises:
+      Exception: If the request fails or returns an error status.
+  """
   response = self.get_query(
     "/kataloginformation/internal/anvandare/anvandarinformation",
     "application/vnd.ladok-kataloginformation+json"

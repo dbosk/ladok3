@@ -23,6 +23,14 @@ import ladok3.cli
 <<functions>>
 
 def add_command_options(parser):
+  """Add the 'student' subcommand options to the argument parser.
+  
+  Creates a subparser for displaying student information with options
+  for course filtering and result display.
+  
+  Args:
+      parser (ArgumentParser): The parent parser to add the subcommand to.
+  """
   student_parser = parser.add_parser("student",
     help="Shows a student's information in LADOK",
     description="""
@@ -34,6 +42,12 @@ def add_command_options(parser):
   <<add student command arguments to student parser>>
 
 def command(ladok, args):
+  """Execute the student information display command.
+  
+  Args:
+      ladok (LadokSession): The LADOK session for data access.
+      args: Parsed command line arguments containing student ID and display options.
+  """
   <<print info depending on args>>
 @
 

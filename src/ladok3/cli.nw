@@ -71,10 +71,21 @@ We will use the function [[err]] for errors and [[warn]] for warnings, both
 inspired by err(3) and warn(3) in the BSD world.
 <<functions>>=
 def err(rc, msg):
+  """Print error message to stderr and exit with given return code.
+  
+  Args:
+      rc (int): Return code to exit with.
+      msg (str): Error message to display.
+  """
   print(f"{sys.argv[0]}: error: {msg}", file=sys.stderr)
   sys.exit(rc)
 
 def warn(msg):
+  """Print warning message to stderr.
+  
+  Args:
+      msg (str): Warning message to display.
+  """
   print(f"{sys.argv[0]}: {msg}", file=sys.stderr)
 @
 
@@ -188,6 +199,18 @@ But we also want to encrypt the stored object using authenticated encryption.
 That way, we know that we can trust the pickle (which is otherwise a problem).
 <<functions>>=
 def store_ladok_session(ls, credentials):
+  """Store a LadokSession object to disk with encryption.
+  
+  Saves the session object as an encrypted pickle file in the user's cache directory.
+  The credentials are used to derive an encryption key for security.
+  
+  Args:
+      ls (LadokSession): The session object to store.
+      credentials (tuple): Tuple of (institution, vars) used for key derivation.
+  
+  Raises:
+      ValueError: If credentials are missing or invalid.
+  """
   if not os.path.isdir(dirs.user_cache_dir):
     os.makedirs(dirs.user_cache_dir)
 
@@ -200,6 +223,17 @@ def store_ladok_session(ls, credentials):
     file.write(encrypted_ls)
   
 def restore_ladok_session(credentials):
+  """Restore a LadokSession object from disk.
+  
+  Attempts to load and decrypt a previously stored session object. Returns None
+  if no cached session exists or decryption fails.
+  
+  Args:
+      credentials (tuple): Tuple of (institution, vars) used for key derivation.
+  
+  Returns:
+      LadokSession or None: The restored session object, or None if unavailable.
+  """
   file_path = dirs.user_cache_dir + "/LadokSession"
 
   if os.path.isfile(file_path):
@@ -665,6 +699,15 @@ If we don't exit using [[sys.exit]], the main program will write the cache back
 again on its exit.
 <<functions>>=
 def clear_cache(ls, args):
+  """Clear the cached LADOK session data.
+  
+  Removes the stored encrypted session file from the user's cache directory.
+  Silently ignores if the file doesn't exist.
+  
+  Args:
+      ls (LadokSession): The LADOK session (unused but required by interface).
+      args: Command line arguments (unused).
+  """
   try:
     os.remove(dirs.user_cache_dir + "/LadokSession")
   except FileNotFoundError as err:
