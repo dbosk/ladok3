@@ -587,7 +587,7 @@ def studystructure_student_JSON(self, uid):
     headers=self.headers)
   if r.status_code == 200:
     return r.json()
-  return None
+  raise LadokAPIError(f"can't get study structure for student {uid}: {r.text}")
 @
 
 Let's add a test.
@@ -738,8 +738,10 @@ def course_instances_JSON(self, course_code, lang = 'sv'):
   r = self.session.get(
     url=self.base_gui_proxy_url + '/resultat/internal/kurstillfalle/filtrera?kurskod=' +
       course_code + '&page=1&limit=100&skipCount=false&sprakkod=' + lang, # not sure about this one /CO
-    headers=self.headers).json()
-  return r
+    headers=self.headers)
+  if r.status_code == requests.codes.ok:
+    return r.json()
+  raise LadokAPIError(f"failed to get course instances for {course_code}: {r.text}")
 @
 
 Let's add a test.
@@ -785,7 +787,9 @@ def instance_info(self, course_code, instance_code, lang = 'sv'):
     for course in rj['Resultat']:
       if course['TillfallesKod'] == instance_code:
         return course
-  return None
+    # If we get here, the course instance was not found
+    raise LadokNotFoundError(f"course instance {instance_code} not found for course {course_code}")
+  raise LadokAPIError(f"failed to search for course instance {course_code}/{instance_code}: {r.text}")
 @
 
 Let's add a test.
@@ -822,8 +826,10 @@ def instance_info_uid(self, instance_uid):
   r = self.session.get(
     url=self.base_gui_proxy_url +
       '/resultat/internal/kurstillfalle/'+instance_uid,
-    headers=self.headers).json()
-  return r
+    headers=self.headers)
+  if r.status_code == requests.codes.ok:
+    return r.json()
+  raise LadokAPIError(f"failed to get course instance info for {instance_uid}: {r.text}")
 @
 
 Let's add a test.
@@ -1612,8 +1618,10 @@ def grading_rights(self):
   r = self.session.get(
     url=self.base_gui_proxy_url +
       '/resultat/internal/resultatrattighet/listaforinloggadanvandare',
-    headers=self.headers).json()
-  return r['Resultatrattighet']
+    headers=self.headers)
+  if r.status_code == requests.codes.ok:
+    return r.json()['Resultatrattighet']
+  raise LadokAPIError(f"failed to get grading rights: {r.text}")
 @
 
 Let's add a test.
@@ -1645,8 +1653,10 @@ def organization_info_JSON(self):
   """
   r = self.session.get(
     url=self.base_gui_proxy_url + '/resultat/internal/organisation/utanlankar',
-    headers=self.headers).json()
-  return r
+    headers=self.headers)
+  if r.status_code == requests.codes.ok:
+    return r.json()
+  raise LadokAPIError(f"failed to get organization info: {r.text}")
 @
 
 Let's add a test.
