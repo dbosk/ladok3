@@ -104,41 +104,96 @@ The other requests track that by the use of the XSRF token itself.
 We'll get back to this in \cref{XSRFtoken}.
 <<LadokSession data methods>>=
 def get_query(self, path, content_type="application/vnd.ladok-resultat+json"):
-  """Returns GET query response for path on the LADOK server"""
+  """Make GET query to LADOK server and return cleaned JSON data.
+  
+  Args:
+    path: API endpoint path
+    content_type: HTTP Content-Type header value
+  
+  Returns:
+    Cleaned JSON data from the response
+    
+  Raises:
+    Exception: If the request fails or returns an error status
+  """
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
 
   <<record time of request>>
 
-  return self.session.get(
+  response = self.session.get(
     url=self.base_gui_proxy_url + path,
     headers=headers)
+    
+  if response.status_code == requests.codes.ok:
+    return clean_data(response.json())
+  raise Exception(f"GET request to {path} failed: {response.text}")
 
 def put_query(self, path, put_data,
   content_type="application/vnd.ladok-resultat+json"):
-  """Returns PUT query response for path on the LADOK server"""
+  """Make PUT query to LADOK server and return cleaned JSON data.
+  
+  Args:
+    path: API endpoint path
+    put_data: Data to send in request body
+    content_type: HTTP Content-Type header value
+  
+  Returns:
+    Cleaned JSON data from the response
+    
+  Raises:
+    Exception: If the request fails or returns an error status
+  """
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
   headers["X-XSRF-TOKEN"] = self.xsrf_token
   headers["Referer"] = self.base_gui_url
 
-  return self.session.put(
+  response = self.session.put(
     url=self.base_gui_proxy_url + path,
     json=put_data,
     headers=headers)
+    
+  if response.status_code == requests.codes.ok:
+    return clean_data(response.json())
+  try:
+    error_msg = response.json().get("Meddelande", response.text)
+  except:
+    error_msg = response.text
+  raise Exception(f"PUT request to {path} failed: {error_msg}")
 
 def post_query(self, path, post_data,
   content_type="application/vnd.ladok-resultat+json"):
-  """Returns POST query response for path on the LADOK server"""
+  """Make POST query to LADOK server and return cleaned JSON data.
+  
+  Args:
+    path: API endpoint path
+    post_data: Data to send in request body
+    content_type: HTTP Content-Type header value
+  
+  Returns:
+    Cleaned JSON data from the response
+    
+  Raises:
+    Exception: If the request fails or returns an error status
+  """
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
   headers["X-XSRF-TOKEN"] = self.xsrf_token
   headers["Referer"] = self.base_gui_url
 
-  return self.session.post(
+  response = self.session.post(
     url=self.base_gui_proxy_url + path,
     json=post_data,
     headers=headers)
+    
+  if response.status_code == requests.codes.ok:
+    return clean_data(response.json())
+  try:
+    error_msg = response.json().get("Meddelande", response.text)
+  except:
+    error_msg = response.text
+  raise Exception(f"POST request to {path} failed: {error_msg}")
 
 def del_query(self, path):
   """Returns GET query response for path on the LADOK server"""
@@ -284,13 +339,11 @@ def grade_scales_JSON(self):
   Raises:
       Exception: If the request fails or returns an error status.
   """
-  response = self.get_query(
+  data = self.get_query(
     "/kataloginformation/internal/grunddata/betygsskala",
     content_type="application/vnd.ladok-kataloginformation+json;charset=UTF-8")
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Betygsskala"]
-  raise Exception(f"can't fetch grading scales: {response.text}")
+  return data["Betygsskala"]
 @
 
 We add the following test.
@@ -403,13 +456,11 @@ def get_student_data_by_uid_JSON(self, uid):
   Raises:
       AttributeError: If student cannot be found by the given UID.
   """
-  response = self.get_query(
+  data = self.get_query(
     f"/studentinformation/internal/student/{uid}",
     content_type="application/vnd.ladok-studentinformation+json;charset=UTF-8")
 
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise AttributeError(f"can't fetch student attributes by LADOK ID {uid}")
+  return data
 @
 
 To test this function, we do the following.
@@ -503,15 +554,12 @@ on courses and programmes.
 <<LadokSession data methods>>=
 def registrations_JSON(self, student_id):
   """Return all registrations for student with ID student_id."""
-  response = self.get_query(
+  data = self.get_query(
     "/studiedeltagande/internal/tillfallesdeltagande/kurstillfallesdeltagande"
       f"/student/{student_id}",
     "application/vnd.ladok-studiedeltagande+json")
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Tillfallesdeltaganden"]
-  raise Exception("can't get registrations for "
-                  f"student {student_id}: {response.text}")
+  return data["Tillfallesdeltaganden"]
 @
 
 We provide the following test.
