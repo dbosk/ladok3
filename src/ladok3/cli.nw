@@ -100,20 +100,20 @@ introduce external dependencies and potential inconsistencies across systems.
 cache-related functions would violate DRY principles and complicate maintenance.
 \end{itemize}
 
-The wrapper class copies all directory attributes from the original 
-[[appdirs.AppDirs]] object, overriding only the cache directory:
+The wrapper class extends [[appdirs.AppDirs]] and overrides only the cache 
+directory, inheriting all other functionality:
 <<custom-dirs>>=
 # Override cache directory to use /tmp for regular cleanup
-class CustomDirs:
-    def __init__(self, base_dirs):
-        # Copy other directories from the original dirs object
-        self.user_config_dir = base_dirs.user_config_dir
-        self.user_data_dir = base_dirs.user_data_dir
-        self.user_log_dir = base_dirs.user_log_dir
-        # Override cache directory to use /tmp
-        self.user_cache_dir = "/tmp/ladok"
+class CustomDirs(appdirs.AppDirs):
+    def __init__(self, appname, appauthor):
+        super().__init__(appname, appauthor)
+    
+    @property
+    def user_cache_dir(self):
+        """Override cache directory to use /tmp"""
+        return "/tmp/ladok"
 
-dirs = CustomDirs(dirs)
+dirs = CustomDirs("ladok", "dbosk@kth.se")
 @
 
 We want uniform error handling.
