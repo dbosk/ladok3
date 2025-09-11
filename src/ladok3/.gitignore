@@ -2,10 +2,10 @@
 *.tex
 *.py
 ltxobj/
-prgi.out
-prgi.pdf
-prgi.py
-prgi.tex
+canvas2ladok.out
+canvas2ladok.pdf
+canvas2ladok.py
+canvas2ladok.tex
 ladok.bash
 test.bash
 ladok.sh

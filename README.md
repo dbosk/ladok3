@@ -131,7 +131,7 @@ There are some examples that can be found in the `examples` directory:
   - `example_LadokSession.py` just shows how to establish a session.
   - `example_Course.py` shows course data related examples.
   - `example_Student.py` shows student data related examples.
-  - `prgi.py` shows how to transfer grades from KTH Canvas to LADOK.
+  - `canvas2ladok.py` shows how to transfer grades from KTH Canvas to LADOK.
   - `statsdata.py` shows how to extract data for doing statistics for a course 
     and the students' results.
 

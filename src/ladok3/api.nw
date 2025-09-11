@@ -646,9 +646,9 @@ def test_search_course_rounds_JSON():
 The output looks like this.
 \begin{pycode}[apitest]
 print(r"\begin{minted}{JSON}")
-prgi = ladok.search_course_rounds_JSON(code="DD1317")
-ladok3.clean_data(prgi)
-print(json.dumps(prgi, indent=2, ensure_ascii=False))
+course_rounds = ladok.search_course_rounds_JSON(code="DD1317")
+ladok3.clean_data(course_rounds)
+print(json.dumps(course_rounds, indent=2, ensure_ascii=False))
 print(r"\end{minted}")
 \end{pycode}
 
