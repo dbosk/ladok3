@@ -9,7 +9,7 @@
   "literateSource": true,
   "filePatterns": {
     "source": ["src/**/*.nw"],
-    "generated": ["src/**/*.py", "doc/**/*.tex"],
+    "generated": ["src/**/*.py", "src/**/*.tex", "doc/**/*.tex"],
     "tests": ["tests/**/*.py"],
     "examples": ["examples/**/*.py"],
     "docs": ["README.md"],
