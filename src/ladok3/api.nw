@@ -55,6 +55,129 @@ KTH_org_id = "2474f616-dc41-11e8-8cc1-eaeeb71b497f"
 \end{pycode}
 
 
+\section{Exception Classes}\label{ExceptionClasses}
+
+LADOK operations can fail in various ways, and it's important to handle these 
+failures gracefully with meaningful error messages. To provide better error 
+handling and debugging capabilities, we define a hierarchy of custom exception 
+classes that represent different types of errors that can occur when working 
+with the LADOK API.
+
+All custom exceptions inherit from a base [[LadokError]] class, which in turn 
+inherits from Python's built-in [[Exception]] class. This ensures backward 
+compatibility while providing enhanced error handling capabilities.
+
+\subsection{Exception class hierarchy}
+
+The exception hierarchy is designed to allow applications to catch specific 
+types of errors while still maintaining the ability to catch all LADOK-related 
+errors with a single exception handler.
+
+\begin{itemize}
+\item \textbf{[[LadokError]]} --- Base exception class for all LADOK-related errors
+\item \textbf{[[LadokServerError]]} --- For server-side LADOK errors (uses [[response.json()["Meddelande"]]])
+\item \textbf{[[LadokValidationError]]} --- For data validation errors (invalid person numbers, grades, etc.)
+\item \textbf{[[LadokAPIError]]} --- For API/HTTP related errors (network failures, unexpected responses)
+\item \textbf{[[LadokNotFoundError]]} --- For resource not found errors (missing courses, components, etc.)
+\end{itemize}
+
+Usage example:
+\begin{minted}{python}
+import ladok3
+
+try:
+    session = ladok3.LadokSession("University", test_environment=True)
+    student = session.get_student("invalid-person-nr")
+except ladok3.LadokValidationError as e:
+    print(f"Invalid data provided: {e}")
+except ladok3.LadokServerError as e:
+    print(f"LADOK server returned error: {e}")
+except ladok3.LadokAPIError as e:
+    print(f"Network/API failure: {e}")
+except ladok3.LadokError as e:
+    print(f"General LADOK error: {e}")
+\end{minted}
+
+\subsection{Exception class definitions}
+
+The exception classes are defined as follows:
+<<classes>>=
+class LadokError(Exception):
+  """Base exception class for all LADOK-related errors.
+  
+  This is the parent class for all LADOK-specific exceptions. It can be used
+  to catch any LADOK-related error in a single exception handler while still
+  allowing more specific error handling when needed.
+  
+  All other LADOK exception classes inherit from this class, ensuring
+  backward compatibility with existing code that catches generic exceptions.
+  """
+  pass
+
+class LadokServerError(LadokError):
+  """Exception for server-side LADOK errors.
+  
+  This exception is raised when the LADOK server returns an error response,
+  typically containing an error message in the response JSON under the
+  "Meddelande" key. This indicates that the request reached the server
+  successfully, but the server was unable to process it due to business
+  logic constraints or data validation issues on the server side.
+  
+  Examples:
+  - Attempting to register a grade for a student not enrolled in the course
+  - Trying to access data that the authenticated user doesn't have permission to view
+  - Server-side validation failures
+  """
+  pass
+
+class LadokValidationError(LadokError):
+  """Exception for data validation errors.
+  
+  This exception is raised when input data fails validation before being
+  sent to the LADOK API. This includes format validation, business rule
+  validation, and other client-side checks that can be performed without
+  contacting the server.
+  
+  Examples:
+  - Invalid Swedish personal numbers (personnummer)
+  - Invalid grade values for a specific grading scale
+  - Missing required fields
+  - Date format errors
+  """
+  pass
+
+class LadokAPIError(LadokError):
+  """Exception for API/HTTP related errors.
+  
+  This exception is raised when there are problems with the HTTP communication
+  to the LADOK API or when the API returns unexpected responses. This includes
+  network connectivity issues, HTTP protocol errors, and malformed responses.
+  
+  Examples:
+  - Network connectivity failures
+  - HTTP status codes indicating client or server errors
+  - Malformed JSON responses
+  - Authentication failures
+  - Timeouts
+  """
+  pass
+
+class LadokNotFoundError(LadokError):
+  """Exception for resource not found errors.
+  
+  This exception is raised when a requested resource cannot be found in LADOK.
+  This is typically used for HTTP 404 responses or when searching for entities
+  that don't exist.
+  
+  Examples:
+  - Course instances that don't exist
+  - Students not found in the system
+  - Course components that are not part of a course
+  - Non-existent course rounds
+  """
+  pass
+@
+
 \section{HTTP queries to LADOK}
 
 We will make all queries to LADOK over HTTP as they provide a REST API.
