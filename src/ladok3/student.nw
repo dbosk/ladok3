@@ -72,6 +72,13 @@ student_parser.add_argument("-r", "--results",
   action="store_true", default=False,
   help="Set to include results for each course listed."
 )
+@
+
+\subsection{A contact information flag}
+
+We also want a flag for specifying whether or not to include the student's 
+contact information (email, phone, address).
+<<add student command arguments to student parser>>=
 student_parser.add_argument("--contact",
   action="store_true", default=False,
   help="Include contact information (email, phone, address)."
@@ -104,7 +111,12 @@ To print the student's personal data, we simply print the most interesting
 attributes.
 <<functions>>=
 def print_student_data(student, args):
-  """Prints the student data, all attributes, to stdout."""
+  """Prints the student data, all attributes, to stdout.
+  
+  Args:
+    student: A Student object with the student's data
+    args: Command line arguments, including flags like --contact
+  """
   print(f"First name:   {student.first_name}")
   print(f"Last name:    {student.last_name}")
   print(f"Personnummer: {student.personnummer}")
@@ -136,44 +148,15 @@ Now we add the contact information display.
 We only want to print this if the user has requested it using the [[--contact]] flag.
 <<print contact info if requested>>=
 if args.contact:
-  try:
-    contact_data = student.ladok.get_student_contact_data_JSON(student.ladok_id)
-    print("Contact information:")
-    <<print email from contact data>>
-    <<print phone from contact data>>
-    <<print address from contact data>>
-  except Exception as err:
-    print(f"Contact info: Error retrieving contact data: {err}")
-@
-
-The contact data includes email, phone number, and postal address information.
-We print each piece if it exists in the JSON response.
-<<print email from contact data>>=
-if 'Epost' in contact_data and contact_data['Epost']:
-  for email in contact_data['Epost']:
-    if 'Adress' in email:
-      print(f"Email:        {email['Adress']}")
-<<print phone from contact data>>=
-if 'Telefon' in contact_data and contact_data['Telefon']:
-  for phone in contact_data['Telefon']:
-    if 'Nummer' in phone:
-      print(f"Phone:        {phone['Nummer']}")
-<<print address from contact data>>=
-if 'Postadress' in contact_data and contact_data['Postadress']:
-  addr = contact_data['Postadress']
-  if isinstance(addr, list) and len(addr) > 0:
-    addr = addr[0]
-  if isinstance(addr, dict):
-    address_lines = []
-    for field in ['Adressrad1', 'Adressrad2', 'Adressrad3']:
-      if field in addr and addr[field]:
-        address_lines.append(addr[field])
-    if address_lines:
-      print(f"Address:      {address_lines[0]}")
-      for line in address_lines[1:]:
-        print(f"              {line}")
-    if 'Postnummer' in addr and addr['Postnummer'] and 'Postort' in addr and addr['Postort']:
-      print(f"              {addr['Postnummer']} {addr['Postort']}")
+  print("Contact information:")
+  if student.email:
+    print(f"Email:        {student.email}")
+  if student.phone:
+    print(f"Phone:        {student.phone}")
+  if student.address:
+    print(f"Address:      {student.address[0]}")
+    for line in student.address[1:]:
+      print(f"              {line}")
 @
 
 
