@@ -959,7 +959,7 @@ Let's add a test.
 This should return a dictionary.
 <<test functions>>=
 def test_instance_info_uid():
-  r = ladok.instance_info_uid('da99b691-8f70-11ee-b4f1-bdc8f0e04f23')
+  r = ladok.instance_info_uid(dasak_round_id)
   assert type(r) == dict
 @
 
@@ -967,7 +967,7 @@ The output looks like this:
 \begin{pycode}[apitest]
 print(r"\begin{minted}{JSON}")
 print(json.dumps(ladok3.clean_data(
-                  ladok.instance_info_uid(dasak_instance_id)),
+                  ladok.instance_info_uid(dasak_round_id)),
                  indent=2))
 print(r"\end{minted}")
 \end{pycode}
