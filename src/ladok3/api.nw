@@ -270,7 +270,12 @@ def get_query(self, path,
     
   if response.status_code == requests.codes.ok:
     return clean_data(response.json())
-  raise LadokAPIError(f"GET request to {path} failed: {response.text}")
+  try:
+    error_msg = response.json()["Meddelande"]
+    raise LadokServerError(error_msg)
+  except:
+    error_msg = response.text
+  raise LadokAPIError(f"GET request to {path} failed: {error_msg}")
 
 def put_query(self, path, put_data,
               content_type="application/vnd.ladok-resultat+json"):
@@ -299,9 +304,10 @@ def put_query(self, path, put_data,
     headers=headers)
     
   if response.status_code == requests.codes.ok:
-    return clean_data(response.json())
+    return response.json()
   try:
-    error_msg = response.json().get("Meddelande", response.text)
+    error_msg = response.json()["Meddelande"]
+    raise LadokServerError(error_msg)
   except:
     error_msg = response.text
   raise LadokAPIError(f"PUT request to {path} failed: {error_msg}")
@@ -333,9 +339,10 @@ def post_query(self, path, post_data,
     headers=headers)
     
   if response.status_code == requests.codes.ok:
-    return clean_data(response.json())
+    return response.json()
   try:
-    error_msg = response.json().get("Meddelande", response.text)
+    error_msg = response.json()["Meddelande"]
+    raise LadokServerError(error_msg)
   except:
     error_msg = response.text
   raise LadokAPIError(f"POST request to {path} failed: {error_msg}")
@@ -347,8 +354,19 @@ def del_query(self, path):
   headers = self.headers.copy()
   headers["X-XSRF-TOKEN"] = self.xsrf_token
 
-  return self.session.delete(url=self.base_gui_proxy_url+path,
-                             headers=headers)
+  response = self.session.delete(url=self.base_gui_proxy_url+path,
+                                 headers=headers)
+  if response.status_code == requests.codes.ok:
+    try:
+      return response.json()
+    except:
+      return response
+  try:
+    error_msg = response.json()["Meddelande"]
+    raise LadokServerError(error_msg)
+  except:
+    error_msg = response.text
+  raise LadokAPIError(f"DELETE request to {path} failed: {error_msg}")
 @
 
 \subsection{The XSRF token}\label{XSRFtoken}
