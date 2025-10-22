@@ -111,26 +111,28 @@ invalid personnummer to [[.get_student]].
 The exception classes are defined as follows:
 <<classes>>=
 class LadokError(Exception):
-  """Base exception class for all LADOK-related errors.
-  
+  """
+  Base exception class for all LADOK-related errors.
+
   This is the parent class for all LADOK-specific exceptions. It can be used
   to catch any LADOK-related error in a single exception handler while still
   allowing more specific error handling when needed.
-  
+
   All other LADOK exception classes inherit from this class, ensuring
   backward compatibility with existing code that catches generic exceptions.
   """
   pass
 
 class LadokServerError(LadokError):
-  """Exception for server-side LADOK errors.
-  
+  """
+  Exception for server-side LADOK errors.
+
   This exception is raised when the LADOK server returns an error response,
   typically containing an error message in the response JSON under the
   "Meddelande" key. This indicates that the request reached the server
   successfully, but the server was unable to process it due to business
   logic constraints or data validation issues on the server side.
-  
+
   Examples:
   - Attempting to register a grade for a student not enrolled in the course
   - Trying to access data that the authenticated user doesn't have permission to view
@@ -139,13 +141,14 @@ class LadokServerError(LadokError):
   pass
 
 class LadokValidationError(LadokError):
-  """Exception for data validation errors.
-  
+  """
+  Exception for data validation errors.
+
   This exception is raised when input data fails validation before being
   sent to the LADOK API. This includes format validation, business rule
   validation, and other client-side checks that can be performed without
   contacting the server.
-  
+
   Examples:
   - Invalid Swedish personal numbers (personnummer)
   - Invalid grade values for a specific grading scale
@@ -155,12 +158,13 @@ class LadokValidationError(LadokError):
   pass
 
 class LadokAPIError(LadokError):
-  """Exception for API/HTTP related errors.
-  
+  """
+  Exception for API/HTTP related errors.
+
   This exception is raised when there are problems with the HTTP communication
   to the LADOK API or when the API returns unexpected responses. This includes
   network connectivity issues, HTTP protocol errors, and malformed responses.
-  
+
   Examples:
   - Network connectivity failures
   - HTTP status codes indicating client or server errors
@@ -171,12 +175,13 @@ class LadokAPIError(LadokError):
   pass
 
 class LadokNotFoundError(LadokError):
-  """Exception for resource not found errors.
-  
+  """
+  Exception for resource not found errors.
+
   This exception is raised when a requested resource cannot be found in LADOK.
   This is typically used for HTTP 404 responses or when searching for entities
   that don't exist.
-  
+
   Examples:
   - Course instances that don't exist
   - Students not found in the system
@@ -241,7 +246,9 @@ We'll get back to this in \cref{XSRFtoken}.
 <<LadokSession data methods>>=
 def get_query(self, path,
               content_type="application/vnd.ladok-resultat+json"):
-  """Returns GET query response for path on the LADOK server"""
+  """
+  Returns GET query response for path on the LADOK server
+  """
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
 
@@ -253,7 +260,9 @@ def get_query(self, path,
 
 def put_query(self, path, put_data,
               content_type="application/vnd.ladok-resultat+json"):
-  """Returns PUT query response for path on the LADOK server"""
+  """
+  Returns PUT query response for path on the LADOK server
+  """
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
   headers["X-XSRF-TOKEN"] = self.xsrf_token
@@ -266,7 +275,9 @@ def put_query(self, path, put_data,
 
 def post_query(self, path, post_data,
                content_type="application/vnd.ladok-resultat+json"):
-  """Returns POST query response for path on the LADOK server"""
+  """
+  Returns POST query response for path on the LADOK server
+  """
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
   headers["X-XSRF-TOKEN"] = self.xsrf_token
@@ -278,7 +289,9 @@ def post_query(self, path, post_data,
     headers=headers)
 
 def del_query(self, path):
-  """Returns GET query response for path on the LADOK server"""
+  """
+  Returns DELETE query response for path on the LADOK server
+  """
   headers = self.headers.copy()
   headers["X-XSRF-TOKEN"] = self.xsrf_token
 
@@ -299,11 +312,12 @@ invalidated by LADOK.
 <<LadokSession data methods>>=
 @property
 def xsrf_token(self):
-  """Get a fresh XSRF token for authenticated requests.
-  
+  """
+  Get a fresh XSRF token for authenticated requests.
+
   LADOK requires XSRF tokens for PUT, POST, and DELETE requests. This property
   ensures the token is fresh and valid, triggering a re-login if necessary.
-  
+
   Returns:
       str: A valid XSRF token for use in authenticated requests.
   """
@@ -353,6 +367,15 @@ These recursively transcends the JSON structure removing the data that should
 be removed.
 <<functions>>=
 def clean_data(json_obj):
+  """
+  Clean a JSON object by removing internal links and pseudonymizing personal data.
+
+  Args:
+      json_obj (dict or list): The JSON data to clean.
+
+  Returns:
+      dict or list: The cleaned JSON object.
+  """
   remove_links(json_obj)
   pseudonymize(json_obj)
   return json_obj
@@ -362,7 +385,9 @@ The [[remove_links]] functions removes the [[link]] key--value pairs.
 The [[link]] values contains URLs for all requests that data are based on.
 <<functions>>=
 def remove_links(json_obj):
-  """Recursively removes all "link" keys and values"""
+  """
+  Recursively removes all "link" keys and values
+  """
   if isinstance(json_obj, dict):
     if "link" in json_obj:
       json_obj.pop("link")
@@ -377,7 +402,9 @@ The [[pseudonymize]] function replaces names and personnummer with dummy
 entries.
 <<functions>>=
 def pseudonymize(json_obj):
-  """Recursively pseudonymizes a JSON data record"""
+  """
+  Recursively pseudonymizes a JSON data record
+  """
   if isinstance(json_obj, dict):
     if "Fornamn" in json_obj:
       json_obj["Fornamn"] = "Student"
@@ -413,11 +440,12 @@ To request the grading scales from LADOK, we request all of them and return a
 list of JSON data objects containing the grading scale data.
 <<LadokSession data methods>>=
 def grade_scales_JSON(self):
-  """Fetch all grading scales from LADOK.
-  
+  """
+  Fetch all grading scales from LADOK.
+
   Returns:
       list: A list of JSON objects containing grading scale data from LADOK.
-  
+
   Raises:
       Exception: If the request fails or returns an error status.
   """
@@ -471,15 +499,16 @@ of Chip.)
 #
 # RETURNERAR en dictionary med för- och efternamn and more
 def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
-  """Get student data from LADOK using a Swedish personal number (personnummer).
-  
+  """
+  Get student data from LADOK using a Swedish personal number (personnummer).
+
   Args:
       person_nr_raw (str): Swedish personal number in format YYYYMMDD-XXXX or similar
       lang (str, optional): Language code 'en' or 'sv'. Defaults to 'sv'.
-  
+
   Returns:
       dict: Student data dictionary containing name, contact info, and more.
-  
+
   Raises:
       Exception: If the personal number format is invalid.
       ValueError: If student cannot be found or multiple matches found.
@@ -529,14 +558,15 @@ directly.
 #
 # RETURNERAR en dictionary med för- och efternamn and more
 def get_student_data_by_uid_JSON(self, uid):
-  """Get student data from LADOK using a LADOK UID.
-  
+  """
+  Get student data from LADOK using a LADOK UID.
+
   Args:
       uid (str): The student's unique LADOK identifier.
-  
+
   Returns:
       dict: Student data dictionary containing personal information.
-  
+
   Raises:
       AttributeError: If student cannot be found by the given UID.
   """
@@ -571,7 +601,9 @@ This data includes email, postal address and phone number.
 It also includes when they were last updated.
 <<LadokSession data methods>>=
 def get_student_contact_data_JSON(self, student_id):
-  """Returns contact data for student with student_id, returns JSON"""
+  """
+  Returns contact data for student with student_id, returns JSON
+  """
   response = self.get_query(
     f"/studentinformation/internal/student/{student_id}/kontaktuppgifter",
     "application/vnd.ladok-studentinformation+json")
@@ -1001,6 +1033,18 @@ This one includes data such as the number of registered students as well,
 unlike the method in the next section.
 <<LadokSession data methods>>=
 def course_round_components_JSON(self, round_id):
+  """
+  Fetch course components for a given course round.
+
+  Args:
+      round_id (str): The unique identifier of the course round.
+
+  Returns:
+      list: A list of course component JSON objects.
+
+  Raises:
+      LadokServerError: If the request fails or server returns an error message.
+  """
   response = self.put_query(
     "/resultat/internal/kurstillfalle/moment",
     {"Identitet": [round_id]}
@@ -1038,6 +1082,18 @@ This method fetches the course components for a course instance, \ie a version
 of the syllabus.
 <<LadokSession data methods>>=
 def course_instance_components_JSON(self, course_instance_id):
+  """
+  Fetch course components for a given course instance.
+
+  Args:
+      course_instance_id (str): The unique identifier of the course instance.
+
+  Returns:
+      dict: JSON object containing course instance components.
+
+  Raises:
+      LadokServerError: If the request fails or server returns an error message.
+  """
   response = self.put_query(
     "/resultat/internal/utbildningsinstans/moduler",
     {"Identitet": [course_instance_id]}
@@ -1140,6 +1196,19 @@ print(r"\end{minted}")
 Another method, which gives slightly different results is the following.
 <<LadokSession data methods>>=
 def search_course_results_JSON(self, course_round_id, component_instance_id):
+  """
+  Retrieve course results for a specific component in a course round.
+
+  Args:
+      course_round_id (str): The unique identifier of the course round.
+      component_instance_id (str): The unique identifier of the component instance.
+
+  Returns:
+      list: List of course result JSON objects.
+
+  Raises:
+      LadokAPIError: If the request fails.
+  """
   put_data = {
     "KurstillfallenUID": [course_round_id],
     "Tillstand": ["REGISTRERAD", "AVKLARAD", "AVBROTT"],
