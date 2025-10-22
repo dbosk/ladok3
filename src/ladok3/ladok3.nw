@@ -1832,7 +1832,7 @@ try:
     self.__uid, self.grade.id, self.date.isoformat(), self.__last_modified
   )
 except Exception as err:
-  raise Exception(
+  raise LadokError(
     f"couldn't update {self.component.code} to {self.grade} ({self.date})"
     f" to LADOK: {err}"
   )
@@ -1855,7 +1855,7 @@ try:
     self.grade.id, self.date.isoformat()
   )
 except Exception as err:
-  raise Exception("Couldn't register "
+  raise LadokError("Couldn't register "
     f"{self.component} {self.grade} {self.date}: {err}")
 
 self.__populate_attributes(**response)
