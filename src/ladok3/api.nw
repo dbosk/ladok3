@@ -55,7 +55,7 @@ KTH_org_id = "2474f616-dc41-11e8-8cc1-eaeeb71b497f"
 \end{pycode}
 
 
-\section{Exception Classes}\label{ExceptionClasses}
+\section{Exception classes}\label{ExceptionClasses}
 
 LADOK operations can fail in various ways, and it's important to handle these 
 failures gracefully with meaningful error messages. To provide better error 
@@ -73,20 +73,26 @@ The exception hierarchy is designed to allow applications to catch specific
 types of errors while still maintaining the ability to catch all LADOK-related 
 errors with a single exception handler.
 
-\begin{itemize}
-\item \textbf{[[LadokError]]} --- Base exception class for all LADOK-related errors
-\item \textbf{[[LadokServerError]]} --- For server-side LADOK errors (uses [[response.json()["Meddelande"]]])
-\item \textbf{[[LadokValidationError]]} --- For data validation errors (invalid person numbers, grades, etc.)
-\item \textbf{[[LadokAPIError]]} --- For API/HTTP related errors (network failures, unexpected responses)
-\item \textbf{[[LadokNotFoundError]]} --- For resource not found errors (missing courses, components, etc.)
-\end{itemize}
+\begin{description}
+\item[{[[LadokError]]}] Base exception class for all LADOK-related errors.
+\item[{[[LadokServerError]]}] For server-side LADOK errors (uses 
+[[response.json()["Meddelande"]]]).
+\item[{[[LadokValidationError]]}] For data validation errors (invalid person 
+numbers, grades, etc.).
+\item[{[[LadokAPIError]]}] For API/HTTP related errors (network failures, 
+unexpected responses).
+\item[{[[LadokNotFoundError]]}] For resource not found errors (missing courses, 
+components, etc.).
+\end{description}
 
 Usage example:
 \begin{minted}{python}
 import ladok3
+import ladok3.cli
 
 try:
-    session = ladok3.LadokSession("University", test_environment=True)
+    session = ladok3.LadokSession(**ladok3.cli.load_credentials(),
+                                  test_environment=True)
     student = session.get_student("invalid-person-nr")
 except ladok3.LadokValidationError as e:
     print(f"Invalid data provided: {e}")
@@ -97,6 +103,8 @@ except ladok3.LadokAPIError as e:
 except ladok3.LadokError as e:
     print(f"General LADOK error: {e}")
 \end{minted}
+This example should yield at least a validation error, since we supply an 
+invalid personnummer to [[.get_student]].
 
 \subsection{Exception class definitions}
 
@@ -197,21 +205,26 @@ To run against the test environment, change the base URL to
 \end{center}
 <<LadokSession constructor body>>=
 self.base_url = "https://www.start.ladok.se" if not test_environment \
-  else "https://www.test.ladok.se"
+                                             else "https://www.test.ladok.se"
 self.base_gui_url = self.base_url + "/gui"
 self.base_gui_proxy_url = self.base_gui_url + "/proxy"
 @
 
 We also set the headers that we will accept.
 <<LadokSession constructor body>>=
-self.headers = { 'Accept' : 'application/vnd.ladok-resultat+json, \
+self.headers = { 'Accept' : '\
+application/vnd.ladok-resultat+json, \
 application/vnd.ladok-kataloginformation+json, \
 application/vnd.ladok-studentinformation+json, \
 application/vnd.ladok-studiedeltagande+json, \
 application/vnd.ladok-utbildningsinformation+json, \
-application/vnd.ladok-examen+json, application/vnd.ladok-extintegration+json, \
-application/vnd.ladok-uppfoljning+json, application/vnd.ladok-extra+json, \
-application/json, text/plain' }
+application/vnd.ladok-examen+json, \
+application/vnd.ladok-extintegration+json, \
+application/vnd.ladok-uppfoljning+json, \
+application/vnd.ladok-extra+json, \
+application/json, \
+text/plain\
+'}
 @
 
 
@@ -226,7 +239,8 @@ freshness of the XSRF token.
 The other requests track that by the use of the XSRF token itself.
 We'll get back to this in \cref{XSRFtoken}.
 <<LadokSession data methods>>=
-def get_query(self, path, content_type="application/vnd.ladok-resultat+json"):
+def get_query(self, path,
+              content_type="application/vnd.ladok-resultat+json"):
   """Returns GET query response for path on the LADOK server"""
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
@@ -238,7 +252,7 @@ def get_query(self, path, content_type="application/vnd.ladok-resultat+json"):
     headers=headers)
 
 def put_query(self, path, put_data,
-  content_type="application/vnd.ladok-resultat+json"):
+              content_type="application/vnd.ladok-resultat+json"):
   """Returns PUT query response for path on the LADOK server"""
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
@@ -251,7 +265,7 @@ def put_query(self, path, put_data,
     headers=headers)
 
 def post_query(self, path, post_data,
-  content_type="application/vnd.ladok-resultat+json"):
+               content_type="application/vnd.ladok-resultat+json"):
   """Returns POST query response for path on the LADOK server"""
   headers = self.headers.copy()
   headers["Content-Type"] = content_type
@@ -322,8 +336,8 @@ POST or DEL request will soon follow.
 Hence, we can update the time of the last request whenever the XSRF token is 
 read.
 <<ensure the XSRF token is fresh>>=
-if not self.__access_time \
-      or datetime.datetime.now()-self.__access_time > self.__timeout:
+if (not self.__access_time
+    or datetime.datetime.now()-self.__access_time > self.__timeout):
   self.user_info_JSON() # trigger login
 else:
   <<record time of request>>
