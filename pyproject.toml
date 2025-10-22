@@ -1,26 +1,54 @@
-[tool.poetry]
+[project]
 name = "ladok3"
 version = "5.2"
 description = "Python wrapper and CLI for the LADOK3 REST API."
-authors = [
-  "Daniel Bosk <dbosk@kth.se>",
-  "Alexander Baltatzis",
-  "Gerald Q. Maguire Jr"
-]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/dbosk/ladok3"
 keywords = ["ladok3", "ladok"]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Development Status :: 4 - Beta",
-    "Environment :: Console",
-    "Intended Audience :: Education",
-    "Intended Audience :: Science/Research",
-    "Topic :: Utilities"
+authors = [
+  {name = "Daniel Bosk", email = "daniel@bosk.se"},
+  {name = "Gerald Q. Maguire Jr"},
+  {name = "Alexander Baltatzis"}
 ]
+maintainers = [
+  {name = "Daniel Bosk", email = "dbosk@kth.se"}
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Environment :: Console",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "Topic :: Utilities"
+]
+requires-python = ">=3.8,<4.0"
+dependencies = [
+  "appdirs>=1.4.4,<2.0.0",
+  "argcomplete>=2.0.0,<3.0.0",
+  "cachetools>=5.2.0,<6.0.0",
+  "cryptography>=41.0.3,<42.0.0",
+  "keyring>=24.2.0,<25.0.0",
+  "requests>=2.31.0,<3.0.0",
+  "urllib3>=1.26.9,<2.0.0",
+  "weblogin>=1.11,<2.0"
+]
+
+[project.scripts]
+ladok = "ladok3.cli:main"
+
+[project.urls]
+repository = "https://github.com/dbosk/ladok3"
+documentation = "https://github.com/dbosk/ladok3/releases"
+"Bug Tracker" = "https://github.com/dbosk/ladok3/issues"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.4"
+snoop = ">=0.4.3"
+pysnooper = ">=1.2.1"
+pdbpp = ">=0.10.3"
+
+[tool.poetry]
 include = [
   {path="src/**/*.py", format="wheel"},
   {path="src/ladok3/ladok.bash", format="wheel"},
@@ -37,32 +65,12 @@ exclude = [
   {path="doc/", format="wheel"},
   "*/**/*.csv",
   "*/**/ltxobj",
-  "*/**/*.pdf"
+  "*/**/*.pdf",
+  "*/**/.gitignore",
+  {path = "*/**/Makefile", format = "wheel"},
+  "*/**/.git",
+  "*/**/*.xlsx"
 ]
-
-[tool.poetry.scripts]
-ladok = "ladok3.cli:main"
-
-[tool.poetry.urls]
-"Bug Tracker" = "https://github.com/dbosk/ladok3/issues"
-"Releases" = "https://github.com/dbosk/ladok3/releases"
-
-[tool.poetry.dependencies]
-python = "^3.8"
-appdirs = "^1.4.4"
-argcomplete = "^2.0.0"
-cachetools = "^5.2.0"
-cryptography = "^41.0.3"
-keyring = "^24.2.0"
-requests = "^2.31.0"
-urllib3 = "^1.26.9"
-weblogin = "^1.11"
-
-[tool.poetry.dev-dependencies]
-pytest = "^7.1.3"
-numpy = "^1.23.4"
-pandas = "^1.5.1"
-Pygments = "^2.13.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
