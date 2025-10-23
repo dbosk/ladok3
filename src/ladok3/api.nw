@@ -217,8 +217,7 @@ self.base_gui_proxy_url = self.base_gui_url + "/proxy"
 
 We also set the headers that we will accept.
 <<LadokSession constructor body>>=
-self.headers = { 'Accept' : '\
-application/vnd.ladok-resultat+json, \
+self.headers = { 'Accept' : 'application/vnd.ladok-resultat+json, \
 application/vnd.ladok-kataloginformation+json, \
 application/vnd.ladok-studentinformation+json, \
 application/vnd.ladok-studiedeltagande+json, \
@@ -228,8 +227,7 @@ application/vnd.ladok-extintegration+json, \
 application/vnd.ladok-uppfoljning+json, \
 application/vnd.ladok-extra+json, \
 application/json, \
-text/plain\
-'}
+text/plain'}
 @
 
 
