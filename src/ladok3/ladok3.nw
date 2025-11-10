@@ -16,6 +16,8 @@ import json
 import operator
 import re
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import urllib.parse
 import weblogin.ladok
 
@@ -180,7 +182,74 @@ autologin_handlers.insert(0,
                                     test_environment=test_environment))
 
 self.__session = weblogin.AutologinSession(autologin_handlers)
+<<configure retry policy for the session>>
 @
+
+
+\subsection{Retry policy for network resilience}
+
+Network operations can fail transiently due to temporary connectivity issues, 
+server overload, or other intermittent problems. To make the LADOK API wrapper 
+more robust, we implement an automatic retry mechanism with exponential backoff.
+
+The retry policy addresses the "why" behind network failures: they are often 
+temporary. Rather than immediately failing when encountering a network error or 
+server overload (5xx errors), we wait and try again. The exponential backoff 
+prevents overwhelming an already struggling server while still providing 
+reasonable response times for transient failures.
+
+We use the [[urllib3.util.retry.Retry]] class, which provides sophisticated 
+retry logic, combined with [[requests.adapters.HTTPAdapter]] to integrate it 
+into our session. This approach is preferable to manual retry loops because it:
+\begin{itemize}
+\item Handles backoff timing automatically with exponential growth
+\item Respects HTTP standards (like [[Retry-After]] headers)
+\item Integrates seamlessly with the [[requests]] session infrastructure
+\item Applies to all HTTP methods uniformly
+\end{itemize}
+
+We configure the retry policy as follows:
+\begin{description}
+\item[{Total retries}] We set a maximum of 10 retry attempts. With exponential 
+backoff starting at 1 second, this allows for approximately 5 minutes of total 
+retry time (1, 2, 4, 8, 16, 32, 64, 128, 256, 300 seconds = \~{}5 minutes when 
+capped at 300 seconds).
+
+\item[{Backoff factor}] We use a backoff factor of 1, meaning the wait time 
+between retries is $\{\text{backoff factor}\} \times 2^{(\text{retry number} - 
+1)}$ seconds. The first retry waits 1 second, the second waits 2 seconds, the 
+third waits 4 seconds, and so on.
+
+\item[{Maximum backoff}] We cap the backoff at 300 seconds (5 minutes) to 
+prevent excessively long waits on later retries while still allowing the full 
+retry sequence to span approximately 5 minutes total.
+
+\item[{Status forcelist}] We retry on HTTP status codes 500 (Internal Server 
+Error), 502 (Bad Gateway), 503 (Service Unavailable), and 504 (Gateway Timeout). 
+These indicate temporary server-side issues that often resolve quickly.
+
+\item[{Allowed methods}] We allow retries on all HTTP methods including GET, 
+POST, PUT, and DELETE. While POST/PUT/DELETE are not idempotent by HTTP 
+standards, LADOK's API design makes these operations safe to retry (results are 
+either already recorded or will be recorded on retry).
+\end{description}
+
+<<configure retry policy for the session>>=
+retry_strategy = Retry(
+    total=10,
+    backoff_factor=1,
+    backoff_max=300,
+    status_forcelist=[500, 502, 503, 504],
+    allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", 
+                     "POST"]
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+self.__session.mount("http://", adapter)
+self.__session.mount("https://", adapter)
+@
+
+The [[mount]] method attaches the retry-enabled adapter to both HTTP and HTTPS 
+URLs, ensuring all requests through this session benefit from automatic retries.
 
 
 \section{The [[LadokSession]] data methods}\label{LadokSession-data-methods}

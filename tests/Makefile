@@ -8,13 +8,15 @@ $(shell echo $1 | cut -d: -f1): $(shell echo $1 | cut -d: -f2)
 	notangle ${NOTANGLEFLAGS.py} "-R$$(shell echo $$@ | sed 's/_/ /')" $$^ > $$@
 endef
 
+PYTESTFLAGS=--pdb
+
 TESTS=	$(shell ${find_tests})
 
 $(foreach files,${TESTS},$(eval $(call def_target, ${files})))
 
 .PHONY: all
 all: $(foreach files,${TESTS},$(shell echo ${files} | cut -d: -f1))
-	poetry run pytest
+	poetry run pytest ${PYTESTFLAGS}
 
 .PHONY: clean
 clean:
