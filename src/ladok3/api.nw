@@ -245,16 +245,17 @@ We'll get back to this in \cref{XSRFtoken}.
 def get_query(self, path,
               content_type="application/vnd.ladok-resultat+json"):
   """
-  Make GET query to LADOK server and return cleaned JSON data.
+  Make GET query to LADOK server and return JSON data.
   
   Args:
     path: API endpoint path
     content_type: HTTP Content-Type header value
   
   Returns:
-    Cleaned JSON data from the response
+    JSON data from the response
     
   Raises:
+    LadokServerError: If the server returns an error message
     LadokAPIError: If the request fails or returns an error status
   """
   headers = self.headers.copy()
@@ -266,8 +267,8 @@ def get_query(self, path,
     url=self.base_gui_proxy_url + path,
     headers=headers)
     
-  if response.status_code == requests.codes.ok:
-    return clean_data(response.json())
+  if response.ok:
+    return response.json()
   try:
     error_msg = response.json()["Meddelande"]
     raise LadokServerError(error_msg)
@@ -278,7 +279,7 @@ def get_query(self, path,
 def put_query(self, path, put_data,
               content_type="application/vnd.ladok-resultat+json"):
   """
-  Make PUT query to LADOK server and return cleaned JSON data.
+  Make PUT query to LADOK server and return JSON data.
   
   Args:
     path: API endpoint path
@@ -286,9 +287,10 @@ def put_query(self, path, put_data,
     content_type: HTTP Content-Type header value
   
   Returns:
-    Cleaned JSON data from the response
+    JSON data from the response
     
   Raises:
+    LadokServerError: If the server returns an error message
     LadokAPIError: If the request fails or returns an error status
   """
   headers = self.headers.copy()
@@ -301,7 +303,7 @@ def put_query(self, path, put_data,
     json=put_data,
     headers=headers)
     
-  if response.status_code == requests.codes.ok:
+  if response.ok:
     return response.json()
   try:
     error_msg = response.json()["Meddelande"]
@@ -313,7 +315,7 @@ def put_query(self, path, put_data,
 def post_query(self, path, post_data,
                content_type="application/vnd.ladok-resultat+json"):
   """
-  Make POST query to LADOK server and return cleaned JSON data.
+  Make POST query to LADOK server and return JSON data.
   
   Args:
     path: API endpoint path
@@ -321,9 +323,10 @@ def post_query(self, path, post_data,
     content_type: HTTP Content-Type header value
   
   Returns:
-    Cleaned JSON data from the response
+    JSON data from the response
     
   Raises:
+    LadokServerError: If the server returns an error message
     LadokAPIError: If the request fails or returns an error status
   """
   headers = self.headers.copy()
@@ -347,7 +350,17 @@ def post_query(self, path, post_data,
 
 def del_query(self, path):
   """
-  Returns DELETE query response for path on the LADOK server
+  Returns DELETE query response for path on the LADOK server.
+
+  Args:
+      path (str): API endpoint path
+
+  Returns:
+      dict or requests.Response: JSON data from the response or raw response
+
+  Raises:
+      LadokServerError: If the server returns an error message
+      LadokAPIError: If the request fails or returns an error status
   """
   headers = self.headers.copy()
   headers["X-XSRF-TOKEN"] = self.xsrf_token
