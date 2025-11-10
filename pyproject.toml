@@ -1,6 +1,6 @@
 [project]
 name = "ladok3"
-version = "5.2"
+version = "5.3"
 description = "Python wrapper and CLI for the LADOK3 REST API."
 license = "MIT"
 readme = "README.md"
