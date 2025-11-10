@@ -8,7 +8,7 @@ $(shell echo $1 | cut -d: -f1): $(shell echo $1 | cut -d: -f2)
 	notangle ${NOTANGLEFLAGS.py} "-R$$(shell echo $$@ | sed 's/_/ /')" $$^ > $$@
 endef
 
-PYTESTFLAGS=--pdb
+#PYTESTFLAGS=--pdb
 
 TESTS=	$(shell ${find_tests})
 
