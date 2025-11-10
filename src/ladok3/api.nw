@@ -339,7 +339,7 @@ def post_query(self, path, post_data,
     json=post_data,
     headers=headers)
     
-  if response.status_code == requests.codes.ok:
+  if response.ok:
     return response.json()
   try:
     error_msg = response.json()["Meddelande"]
@@ -356,7 +356,9 @@ def del_query(self, path):
       path (str): API endpoint path
 
   Returns:
-      dict or requests.Response: JSON data from the response or raw response
+    True, if success but no content is returned.
+    JSON data from the response, if any.
+    Otherwise the response object.
 
   Raises:
       LadokServerError: If the server returns an error message
@@ -367,7 +369,10 @@ def del_query(self, path):
 
   response = self.session.delete(url=self.base_gui_proxy_url+path,
                                  headers=headers)
-  if response.status_code == requests.codes.ok:
+
+  if response.status_code == requests.codes.no_content:
+    return True
+  if response.ok:
     try:
       return response.json()
     except:
