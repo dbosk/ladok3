@@ -534,14 +534,17 @@ def grade_scales_JSON(self):
   Raises:
       Exception: If the request fails or returns an error status.
   """
-  response = self.get_query(
+  data = self.get_query(
     "/kataloginformation/internal/grunddata/betygsskala",
     content_type="application/vnd.ladok-kataloginformation+json;charset=UTF-8"
   )
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Betygsskala"]
-  raise LadokAPIError(f"can't fetch grading scales: {response.text}")
+  try:
+    return data["Betygsskala"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when fetching grading scales: "
+                       f"missing 'Betygsskala' key") from err
 @
 
 We add the following test.
@@ -688,15 +691,17 @@ def get_student_contact_data_JSON(self, student_id):
   """
   Returns contact data for student with student_id, returns JSON
   """
-  response = self.get_query(
-    f"/studentinformation/internal/student/{student_id}/kontaktuppgifter",
-    "application/vnd.ladok-studentinformation+json"
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokAPIError("can't get contact data for "
-                     f"student {student_id}: {response.text}")
+  try:
+    return self.get_query(
+      f"/studentinformation/internal/student/{student_id}/kontaktuppgifter",
+      "application/vnd.ladok-studentinformation+json"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get contact data for "
+                        f"student {student_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting contact data for "
+                           f"student {student_id}: {err}") from err
 @
 
 We test this function.
@@ -724,15 +729,17 @@ def get_student_suspensions_JSON(self, student_id):
   Returns suspensions from studies for student with student_id,
   returns JSON
   """
-  response = self.get_query(
-    f"/studentinformation/internal/avstangning/student/{student_id}",
-    "application/vnd.ladok-studentinformation+json"
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokAPIError("can't get suspensions for "
-                     f"student {student_id}: {response.text}")
+  try:
+    return self.get_query(
+      f"/studentinformation/internal/avstangning/student/{student_id}",
+      "application/vnd.ladok-studentinformation+json"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get suspensions for "
+                        f"student {student_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting suspensions for "
+                           f"student {student_id}: {err}") from err
 @
 
 We test this function.
@@ -760,16 +767,18 @@ def registrations_JSON(self, student_id):
   """
   Return all registrations for student with ID student_id.
   """
-  response = self.get_query(
+  data = self.get_query(
     "/studiedeltagande/internal/tillfallesdeltagande/kurstillfallesdeltagande"
       f"/student/{student_id}",
     "application/vnd.ladok-studiedeltagande+json"
   )
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Tillfallesdeltaganden"]
-  raise LadokAPIError("can't get registrations for "
-                     f"student {student_id}: {response.text}")
+  try:
+    return data["Tillfallesdeltaganden"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when fetching registrations for "
+                       f"student {student_id}: missing 'Tillfallesdeltaganden' key") from err
 @
 
 We provide the following test.
@@ -801,17 +810,19 @@ def registrations_on_course_JSON(self, course_education_id, student_id):
   Return a list of registrations on course with education_id for student with 
   student_id. JSON format.
   """
-  response= self.get_query(
+  data = self.get_query(
     "/studiedeltagande/internal/tillfallesdeltagande"
       f"/utbildning/{course_education_id}/student/{student_id}",
     "application/vnd.ladok-studiedeltagande+json"
   )
   
-  if response.status_code == requests.codes.ok:
-    return response.json()["Tillfallesdeltaganden"]
-  raise LadokAPIError("can't get registrations for "
-                     f"student {student_id} on course {course_education_id}: "
-                     f"{response.text}")
+  try:
+    return data["Tillfallesdeltaganden"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when fetching registrations for "
+                       f"student {student_id} on course {course_education_id}: "
+                       f"missing 'Tillfallesdeltaganden' key") from err
 @
 
 We add the following test.
@@ -889,11 +900,14 @@ def search_course_rounds_JSON(self, /, **kwargs):
 
   url += "page=1&limit=400&sprakkod=sv"
 
-  response = self.get_query(url)
+  data = self.get_query(url)
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Resultat"]
-  raise LadokAPIError(f"searching for course rounds failed: {response.text}")
+  try:
+    return data["Resultat"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when searching for course rounds: "
+                       f"missing 'Resultat' key") from err
 @
 
 We add the following test.
@@ -920,14 +934,16 @@ This method fetches all course rounds that uses the given course instance.
 <<LadokSession data methods>>=
 def course_rounds_JSON(self, course_instance_id):
   """Requires course instance ID"""
-  response = self.get_query(
+  data = self.get_query(
     f"/resultat/internal/kurstillfalle/kursinstans/{course_instance_id}"
   )
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Utbildningstillfalle"]
-  raise LadokAPIError(f"can't list course round for course {course_instance_id}: "
-                      f"{response.text}")
+  try:
+    return data["Utbildningstillfalle"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when fetching course rounds for "
+                       f"instance {course_instance_id}: missing 'Utbildningstillfalle' key") from err
 @
 
 We test this method as follows.
@@ -958,14 +974,16 @@ def course_instance_JSON(self, instance_id):
   """
   Returns course instance data for a course with instance ID instance_id
   """
-  response = self.get_query(
-    f"/resultat/internal/utbildningsinstans/kursinstans/{instance_id}"
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokAPIError(f"can't get course instance data for {instance_id}: "
-                      f"{response.text}")
+  try:
+    return self.get_query(
+      f"/resultat/internal/utbildningsinstans/kursinstans/{instance_id}"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get course instance data for "
+                        f"{instance_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting course instance data for "
+                           f"{instance_id}: {err}") from err
 @
 
 We add the following test.
@@ -1140,14 +1158,17 @@ def course_round_components_JSON(self, round_id):
   Raises:
       LadokServerError: If the request fails or server returns an error message.
   """
-  response = self.put_query(
+  data = self.put_query(
     "/resultat/internal/kurstillfalle/moment",
     {"Identitet": [round_id]}
   )
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["MomentPerKurstillfallen"][0]["Moment"]
-  raise LadokServerError(response.json()["Meddelande"])
+  try:
+    return data["MomentPerKurstillfallen"][0]["Moment"]
+  except (KeyError, IndexError) as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when fetching components for "
+                       f"round {round_id}: {type(err).__name__}") from err
 @
 
 We add the following test.
@@ -1189,14 +1210,17 @@ def course_instance_components_JSON(self, course_instance_id):
   Raises:
       LadokServerError: If the request fails or server returns an error message.
   """
-  response = self.put_query(
+  data = self.put_query(
     "/resultat/internal/utbildningsinstans/moduler",
     {"Identitet": [course_instance_id]}
   )
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Utbildningsinstans"][0]
-  raise LadokServerError(response.json()["Meddelande"])
+  try:
+    return data["Utbildningsinstans"][0]
+  except (KeyError, IndexError) as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when fetching components for "
+                       f"instance {course_instance_id}: {type(err).__name__}") from err
 @
 
 We add the following test code.
@@ -1253,16 +1277,18 @@ def search_reported_results_JSON(self, course_round_id, component_instance_id):
     "StudenterUID": []
   }
 
-  response = self.put_query(
+  data = self.put_query(
     "/resultat/internal/studieresultat/rapportera"
       f"/utbildningsinstans/{component_instance_id}/sok",
     put_data)
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Resultat"]
-  raise LadokAPIError(f"failed searching for results for "
-                  f"course {course_round_id}, "
-                  f"component {component_instance_id}: {response.text}")
+  try:
+    return data["Resultat"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when searching for results for "
+                       f"round {course_round_id}, component {component_instance_id}: "
+                       f"missing 'Resultat' key") from err
 @
 
 We write the following test.
@@ -1312,15 +1338,17 @@ def search_course_results_JSON(self, course_round_id, component_instance_id):
     "Page": 1,
   }
 
-  response = self.put_query(
+  data = self.put_query(
     "/resultat/internal/resultatuppfoljning/resultatuppfoljning/sok",
     put_data)
 
-  if response.status_code == requests.codes.ok:
-    return response.json()["Resultat"]
-  raise LadokAPIError("can't get course results for "
-                 f"course {course_round_id}, "
-                 f"component {component_instance_id}: {response.text}")
+  try:
+    return data["Resultat"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when searching course results for "
+                       f"round {course_round_id}, component {component_instance_id}: "
+                       f"missing 'Resultat' key") from err
 @
 
 We test this by the following.
@@ -1351,14 +1379,18 @@ LADOK changed this API request in 2022.
 <<LadokSession data methods>>=
 def student_results_JSON(self, student_id, course_education_id):
   """Returns the results for a student on a course"""
-  response = self.get_query(
-    "/resultat/internal/studentenskurser/kursinformation"
-    f"/student/{student_id}/kursUID/{course_education_id}"
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokServerError(response.json()["Meddelande"])
+  try:
+    return self.get_query(
+      "/resultat/internal/studentenskurser/kursinformation"
+      f"/student/{student_id}/kursUID/{course_education_id}"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get results for student {student_id} "
+                        f"on course {course_education_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting results for "
+                           f"student {student_id} on course {course_education_id}: "
+                           f"{err}") from err
 @
  
 We test this in the following way.
@@ -1404,22 +1436,25 @@ def create_result_JSON(self,
   """
   Creates a new result
   """
-  response = self.post_query(
-    f"/resultat/internal/resultat/student/{student_id}"
-    f"/kursinstans/{course_instance_id}"
-    f"/utbildningsinstans/{component_id}"
-    f"/skapa",
-    {
-      "Betygsgrad": grade_id,
-      "Examinationsdatum": date,
-      "Projekttitel": project_title
-    }
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokServerError(f"LADOK create request failed: "
-                         f"{response.json()['Meddelande']}")
+  try:
+    return self.post_query(
+      f"/resultat/internal/resultat/student/{student_id}"
+      f"/kursinstans/{course_instance_id}"
+      f"/utbildningsinstans/{component_id}"
+      f"/skapa",
+      {
+        "Betygsgrad": grade_id,
+        "Examinationsdatum": date,
+        "Projekttitel": project_title
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to create result for student {student_id} "
+                        f"on component {component_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when creating result for "
+                           f"student {student_id} on component {component_id}: "
+                           f"{err}") from err
 @
 
 We test this in the following way.
@@ -1488,20 +1523,21 @@ def update_result_JSON(self,
   Raises:
       Exception: If the update request fails or is rejected by LADOK.
   """
-  response = self.put_query(
-    f"/resultat/internal/resultat/uppdatera/{result_id}",
-    {
-      'Betygsgrad': grade_id,
-      'Examinationsdatum': date,
-      'Noteringar': notes,
-      'SenasteResultatandring': last_modified
-    }
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokServerError(f"LADOK request to modify result failed: "
-                  f"{response.json()['Meddelande']}")
+  try:
+    return self.put_query(
+      f"/resultat/internal/resultat/uppdatera/{result_id}",
+      {
+        'Betygsgrad': grade_id,
+        'Examinationsdatum': date,
+        'Noteringar': notes,
+        'SenasteResultatandring': last_modified
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to update result {result_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when updating result "
+                           f"{result_id}: {err}") from err
 @
 
 We test this in the following way.
@@ -1545,14 +1581,17 @@ We start with who can attest.
 <<LadokSession data methods>>=
 def result_attestants_JSON(self, result_id):
   """Returns a list of result attestants"""
-  response = self.put_query(
+  data = self.put_query(
     "/resultat/internal/anvandare/resultatrattighet/attestanter/kurstillfallesrapportering",
     {"Identitet": [result_id]}
   )
 
-  if response.status_code == 200:
-    return response.json()["Anvandare"]
-  raise LadokServerError(response.json()["Meddelande"])
+  try:
+    return data["Anvandare"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when fetching attestants for "
+                       f"result {result_id}: missing 'Anvandare' key") from err
 @ The [[result_id]] is the ID returned in the [[ResultatUID]] field in the 
 response from the [[create_result_JSON]] method.
 
@@ -1584,15 +1623,18 @@ organization).
 <<LadokSession data methods>>=
 def result_reporters_JSON(self, organization_id):
   """Returns a list of who can report results in an organization"""
-  response = self.get_query(
+  data = self.get_query(
     "/kataloginformation/internal/anvandare/organisation/" +
       organization_id + "/resultatrapportorer",
     "application/vnd.ladok-kataloginformation+json"
   )
 
-  if response.status_code == 200:
-    return response.json()["Anvandare"]
-  raise LadokAPIError(response.text)
+  try:
+    return data["Anvandare"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(f"Unexpected response format when fetching reporters for "
+                       f"organization {organization_id}: missing 'Anvandare' key") from err
 @
 
 We test this method as follows.
@@ -1628,14 +1670,16 @@ def user_info_JSON(self):
   Raises:
       Exception: If the request fails or returns an error status.
   """
-  response = self.get_query(
-    "/kataloginformation/internal/anvandare/anvandarinformation",
-    "application/vnd.ladok-kataloginformation+json"
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokAPIError(response.text)
+  try:
+    return self.get_query(
+      "/kataloginformation/internal/anvandare/anvandarinformation",
+      "application/vnd.ladok-kataloginformation+json"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get user info: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting user info: "
+                           f"{err}") from err
 @
 
 We test this as follows.
@@ -1666,20 +1710,22 @@ def finalize_result_JSON(self,
     result_id, last_modified, reporter_id, attestant_ids=[],
     others=[]):
   """Marks a result as finalized (klarmarkera)"""
-  response = self.put_query(
-    f"/resultat/internal/resultat/klarmarkera/{result_id}",
-    {
-      "Beslutsfattare": attestant_ids,
-      "KlarmarkeradAvUID": reporter_id,
-      "RattadAv": [],
-      "OvrigaMedverkande": "\n".join(set(others)),
-      "ResultatetsSenastSparad": last_modified
-    }
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokServerError(response.json()["Meddelande"])
+  try:
+    return self.put_query(
+      f"/resultat/internal/resultat/klarmarkera/{result_id}",
+      {
+        "Beslutsfattare": attestant_ids,
+        "KlarmarkeradAvUID": reporter_id,
+        "RattadAv": [],
+        "OvrigaMedverkande": "\n".join(set(others)),
+        "ResultatetsSenastSparad": last_modified
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to finalize result {result_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when finalizing result "
+                           f"{result_id}: {err}") from err
 @ This method returns a copy of the finalized result.
 
 We test this in the following way.
@@ -1719,20 +1765,22 @@ uses [[uppdateraklarmarkerat]] instead of just [[uppdatera]].
 <<LadokSession data methods>>=
 def update_finalized_result_JSON(self,
       result_id, grade_id, date, last_modified, notes=[]):
-  response = self.put_query(
-    f"/resultat/internal/resultat/uppdateraklarmarkerat/{result_id}",
-    {
-      'Betygsgrad': grade_id,
-      'Examinationsdatum': date,
-      'Noteringar': notes,
-      'SenasteResultatandring': last_modified
-    }
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokServerError(f"LADOK request to modify finalized result failed: "
-                  f"{response.json()['Meddelande']}")
+  try:
+    return self.put_query(
+      f"/resultat/internal/resultat/uppdateraklarmarkerat/{result_id}",
+      {
+        'Betygsgrad': grade_id,
+        'Examinationsdatum': date,
+        'Noteringar': notes,
+        'SenasteResultatandring': last_modified
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to update finalized result {result_id}: "
+                        f"{err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when updating finalized result "
+                           f"{result_id}: {err}") from err
 @
 
 We test this in the following way.
@@ -1765,18 +1813,20 @@ print(r"\end{minted}")
 We can also change a result from finalized back to draft status.
 <<LadokSession data methods>>=
 def finalized_result_to_draft_JSON(self, result_id, last_modified):
-  response = self.put_query(
-    f"/resultat/internal/resultat/tillbakatillutkast/{result_id}",
-    {
-      'ResultatUID': result_id,
-      'ResultatetsSenastSparad': last_modified
-    }
-  )
-
-  if response.status_code == requests.codes.ok:
-    return response.json()
-  raise LadokServerError(f"LADOK request to change finalized result to draft failed: "
-                  f"{response.json()['Meddelande']}")
+  try:
+    return self.put_query(
+      f"/resultat/internal/resultat/tillbakatillutkast/{result_id}",
+      {
+        'ResultatUID': result_id,
+        'ResultatetsSenastSparad': last_modified
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to change finalized result {result_id} to draft: "
+                        f"{err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when changing finalized result "
+                           f"{result_id} to draft: {err}") from err
 @
 
 We test this in the following way.
@@ -1807,13 +1857,17 @@ print(r"\end{minted}")
 We can also change a result from finalized back to draft status.
 <<LadokSession data methods>>=
 def remove_result_draft_JSON(self, result_id):
-  response = self.del_query(
-    f"/resultat/internal/resultat/tabort/{result_id}"
-  )
-
-  if response.status_code != 204:
-    raise LadokAPIError(f"LADOK request to remove draft result failed: "
-                    f"{response.status_code}: {response.text}")
+  try:
+    data = self.del_query(
+      f"/resultat/internal/resultat/tabort/{result_id}"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"LADOK request to remove draft result "
+                        f"{result_id} failed: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when removing "
+                           f"draft result {result_id}: "
+                           f"{err}") from err
 @
 
 We test this in the following way.
@@ -1876,11 +1930,12 @@ def participants_JSON(self, course_round_id, /, **kwargs):
     '/studiedeltagande/internal/deltagare/kurstillfalle',
     put_data,
     "application/vnd.ladok-studiedeltagande+json")
-  if response.status_code == requests.codes.ok:
-    return response.json()["Resultat"]
-  raise LadokAPIError(f"can't get participants "
-                  f"with course_round_id = {course_round_id}: "
-                  f"{response.text}")
+  try:
+    return response["Resultat"]
+  except KeyError as err:
+    err.add_note(f"Response data: {response}")
+    raise LadokAPIError(f"Unexpected response format when fetching participants for "
+                       f"round {course_round_id}: missing 'Resultat' key") from err
 @
 
 We test this as follows.
