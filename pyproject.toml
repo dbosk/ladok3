@@ -1,6 +1,6 @@
 [project]
 name = "ladok3"
-version = "5.2"
+version = "5.3"
 description = "Python wrapper and CLI for the LADOK3 REST API."
 license = "MIT"
 readme = "README.md"
@@ -30,7 +30,7 @@ dependencies = [
   "cryptography>=41.0.3,<42.0.0",
   "keyring>=24.2.0,<25.0.0",
   "requests>=2.31.0,<3.0.0",
-  "urllib3>=1.26.9,<2.0.0",
+  "urllib3 (>=2.0)",
   "weblogin>=1.11,<2.0"
 ]
 
