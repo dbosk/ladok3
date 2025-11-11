@@ -691,10 +691,17 @@ def get_student_contact_data_JSON(self, student_id):
   """
   Returns contact data for student with student_id, returns JSON
   """
-  return self.get_query(
-    f"/studentinformation/internal/student/{student_id}/kontaktuppgifter",
-    "application/vnd.ladok-studentinformation+json"
-  )
+  try:
+    return self.get_query(
+      f"/studentinformation/internal/student/{student_id}/kontaktuppgifter",
+      "application/vnd.ladok-studentinformation+json"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get contact data for "
+                        f"student {student_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting contact data for "
+                           f"student {student_id}: {err}") from err
 @
 
 We test this function.
@@ -722,10 +729,17 @@ def get_student_suspensions_JSON(self, student_id):
   Returns suspensions from studies for student with student_id,
   returns JSON
   """
-  return self.get_query(
-    f"/studentinformation/internal/avstangning/student/{student_id}",
-    "application/vnd.ladok-studentinformation+json"
-  )
+  try:
+    return self.get_query(
+      f"/studentinformation/internal/avstangning/student/{student_id}",
+      "application/vnd.ladok-studentinformation+json"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get suspensions for "
+                        f"student {student_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting suspensions for "
+                           f"student {student_id}: {err}") from err
 @
 
 We test this function.
@@ -960,9 +974,16 @@ def course_instance_JSON(self, instance_id):
   """
   Returns course instance data for a course with instance ID instance_id
   """
-  return self.get_query(
-    f"/resultat/internal/utbildningsinstans/kursinstans/{instance_id}"
-  )
+  try:
+    return self.get_query(
+      f"/resultat/internal/utbildningsinstans/kursinstans/{instance_id}"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get course instance data for "
+                        f"{instance_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting course instance data for "
+                           f"{instance_id}: {err}") from err
 @
 
 We add the following test.
@@ -1358,10 +1379,18 @@ LADOK changed this API request in 2022.
 <<LadokSession data methods>>=
 def student_results_JSON(self, student_id, course_education_id):
   """Returns the results for a student on a course"""
-  return self.get_query(
-    "/resultat/internal/studentenskurser/kursinformation"
-    f"/student/{student_id}/kursUID/{course_education_id}"
-  )
+  try:
+    return self.get_query(
+      "/resultat/internal/studentenskurser/kursinformation"
+      f"/student/{student_id}/kursUID/{course_education_id}"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get results for student {student_id} "
+                        f"on course {course_education_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting results for "
+                           f"student {student_id} on course {course_education_id}: "
+                           f"{err}") from err
 @
  
 We test this in the following way.
@@ -1407,17 +1436,25 @@ def create_result_JSON(self,
   """
   Creates a new result
   """
-  return self.post_query(
-    f"/resultat/internal/resultat/student/{student_id}"
-    f"/kursinstans/{course_instance_id}"
-    f"/utbildningsinstans/{component_id}"
-    f"/skapa",
-    {
-      "Betygsgrad": grade_id,
-      "Examinationsdatum": date,
-      "Projekttitel": project_title
-    }
-  )
+  try:
+    return self.post_query(
+      f"/resultat/internal/resultat/student/{student_id}"
+      f"/kursinstans/{course_instance_id}"
+      f"/utbildningsinstans/{component_id}"
+      f"/skapa",
+      {
+        "Betygsgrad": grade_id,
+        "Examinationsdatum": date,
+        "Projekttitel": project_title
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to create result for student {student_id} "
+                        f"on component {component_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when creating result for "
+                           f"student {student_id} on component {component_id}: "
+                           f"{err}") from err
 @
 
 We test this in the following way.
@@ -1486,15 +1523,21 @@ def update_result_JSON(self,
   Raises:
       Exception: If the update request fails or is rejected by LADOK.
   """
-  return self.put_query(
-    f"/resultat/internal/resultat/uppdatera/{result_id}",
-    {
-      'Betygsgrad': grade_id,
-      'Examinationsdatum': date,
-      'Noteringar': notes,
-      'SenasteResultatandring': last_modified
-    }
-  )
+  try:
+    return self.put_query(
+      f"/resultat/internal/resultat/uppdatera/{result_id}",
+      {
+        'Betygsgrad': grade_id,
+        'Examinationsdatum': date,
+        'Noteringar': notes,
+        'SenasteResultatandring': last_modified
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to update result {result_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when updating result "
+                           f"{result_id}: {err}") from err
 @
 
 We test this in the following way.
@@ -1627,10 +1670,16 @@ def user_info_JSON(self):
   Raises:
       Exception: If the request fails or returns an error status.
   """
-  return self.get_query(
-    "/kataloginformation/internal/anvandare/anvandarinformation",
-    "application/vnd.ladok-kataloginformation+json"
-  )
+  try:
+    return self.get_query(
+      "/kataloginformation/internal/anvandare/anvandarinformation",
+      "application/vnd.ladok-kataloginformation+json"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get user info: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when getting user info: "
+                           f"{err}") from err
 @
 
 We test this as follows.
@@ -1661,16 +1710,22 @@ def finalize_result_JSON(self,
     result_id, last_modified, reporter_id, attestant_ids=[],
     others=[]):
   """Marks a result as finalized (klarmarkera)"""
-  return self.put_query(
-    f"/resultat/internal/resultat/klarmarkera/{result_id}",
-    {
-      "Beslutsfattare": attestant_ids,
-      "KlarmarkeradAvUID": reporter_id,
-      "RattadAv": [],
-      "OvrigaMedverkande": "\n".join(set(others)),
-      "ResultatetsSenastSparad": last_modified
-    }
-  )
+  try:
+    return self.put_query(
+      f"/resultat/internal/resultat/klarmarkera/{result_id}",
+      {
+        "Beslutsfattare": attestant_ids,
+        "KlarmarkeradAvUID": reporter_id,
+        "RattadAv": [],
+        "OvrigaMedverkande": "\n".join(set(others)),
+        "ResultatetsSenastSparad": last_modified
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to finalize result {result_id}: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when finalizing result "
+                           f"{result_id}: {err}") from err
 @ This method returns a copy of the finalized result.
 
 We test this in the following way.
@@ -1710,15 +1765,22 @@ uses [[uppdateraklarmarkerat]] instead of just [[uppdatera]].
 <<LadokSession data methods>>=
 def update_finalized_result_JSON(self,
       result_id, grade_id, date, last_modified, notes=[]):
-  return self.put_query(
-    f"/resultat/internal/resultat/uppdateraklarmarkerat/{result_id}",
-    {
-      'Betygsgrad': grade_id,
-      'Examinationsdatum': date,
-      'Noteringar': notes,
-      'SenasteResultatandring': last_modified
-    }
-  )
+  try:
+    return self.put_query(
+      f"/resultat/internal/resultat/uppdateraklarmarkerat/{result_id}",
+      {
+        'Betygsgrad': grade_id,
+        'Examinationsdatum': date,
+        'Noteringar': notes,
+        'SenasteResultatandring': last_modified
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to update finalized result {result_id}: "
+                        f"{err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when updating finalized result "
+                           f"{result_id}: {err}") from err
 @
 
 We test this in the following way.
@@ -1751,13 +1813,20 @@ print(r"\end{minted}")
 We can also change a result from finalized back to draft status.
 <<LadokSession data methods>>=
 def finalized_result_to_draft_JSON(self, result_id, last_modified):
-  return self.put_query(
-    f"/resultat/internal/resultat/tillbakatillutkast/{result_id}",
-    {
-      'ResultatUID': result_id,
-      'ResultatetsSenastSparad': last_modified
-    }
-  )
+  try:
+    return self.put_query(
+      f"/resultat/internal/resultat/tillbakatillutkast/{result_id}",
+      {
+        'ResultatUID': result_id,
+        'ResultatetsSenastSparad': last_modified
+      }
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to change finalized result {result_id} to draft: "
+                        f"{err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when changing finalized result "
+                           f"{result_id} to draft: {err}") from err
 @
 
 We test this in the following way.
@@ -1788,13 +1857,17 @@ print(r"\end{minted}")
 We can also change a result from finalized back to draft status.
 <<LadokSession data methods>>=
 def remove_result_draft_JSON(self, result_id):
-  response = self.del_query(
-    f"/resultat/internal/resultat/tabort/{result_id}"
-  )
-
-  if response.status_code != 204:
-    raise LadokAPIError(f"LADOK request to remove draft result failed: "
-                    f"{response.status_code}: {response.text}")
+  try:
+    data = self.del_query(
+      f"/resultat/internal/resultat/tabort/{result_id}"
+    )
+  except LadokAPIError as err:
+    raise LadokAPIError(f"LADOK request to remove draft result "
+                        f"{result_id} failed: {err}") from err
+  except LadokServerError as err:
+    raise LadokServerError(f"LADOK server error when removing "
+                           f"draft result {result_id}: "
+                           f"{err}") from err
 @
 
 We test this in the following way.
