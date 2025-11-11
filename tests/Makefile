@@ -9,6 +9,7 @@ $(shell echo $1 | cut -d: -f1): $(shell echo $1 | cut -d: -f2)
 endef
 
 #PYTESTFLAGS=--pdb
+PYTESTFLAGS=
 
 TESTS=	$(shell ${find_tests})
 
