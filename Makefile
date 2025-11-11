@@ -28,8 +28,12 @@ requirements.txt:
 build: compile
 	poetry build
 
+.PHONY: test
+test: compile
+	${MAKE} -C tests clean all test
+
 .PHONY: publish publish-github publish-pypi publish-docker
-publish: publish-github publish-pypi publish-docker
+publish: test publish-github publish-pypi publish-docker
 
 publish-github: doc/ladok3.pdf
 	git push
