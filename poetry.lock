@@ -899,14 +899,14 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "weblogin"
-version = "1.11"
+version = "1.13"
 description = "Automates logging into web UIs to access unofficial APIs"
 optional = false
 python-versions = "<4.0,>=3.8"
 groups = ["main"]
 files = [
-    {file = "weblogin-1.11-py3-none-any.whl", hash = "sha256:4899784e062a4d1956853a8933254b6b29ee4960a8ae09be8a8b13e94ee24b87"},
-    {file = "weblogin-1.11.tar.gz", hash = "sha256:7cac1026d78ae9520afe03c2cfc4ef12f63e37a7a83054ebbbab72fca80d7f07"},
+    {file = "weblogin-1.13-py3-none-any.whl", hash = "sha256:b51433ef56f0c7060fab201f0f1827c77c36351d966cfd91760a4bbe02bc5cee"},
+    {file = "weblogin-1.13.tar.gz", hash = "sha256:553afb485d48680eb70caf5e56b49554757c08b27a1d2c35798ea627268dae69"},
 ]
 
 [package.dependencies]
@@ -933,4 +933,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.8,<4.0"
-content-hash = "5d1f0f9066b6692b49ce2854074fe3df2740e69e041eaaf74a7523bdc52bce55"
+content-hash = "817e29b3e46315e71d001efadcdc5a64607d109f4eb498cc7139599371f90cd7"

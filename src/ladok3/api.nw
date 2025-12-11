@@ -203,14 +203,14 @@ The data that we must keep track of is which URL to use, \ie which system to
 access: the production system or test system.
 To run against the test environment, change the base URL to
 \begin{center}
-\url{https://www.test.ladok.se}\footnote{%
+\url{https://start.test.ladok.se}\footnote{%
   According to 
   \url{https://ladok.se/drift-och-support/produktionsmiljo-for-nya-ladok}.
 }
 \end{center}
 <<LadokSession constructor body>>=
-self.base_url = "https://www.start.ladok.se" if not test_environment \
-                                             else "https://www.test.ladok.se"
+self.base_url = "https://start.ladok.se" if not test_environment \
+                                             else "https://start.test.ladok.se"
 self.base_gui_url = self.base_url + "/gui"
 self.base_gui_proxy_url = self.base_gui_url + "/proxy"
 @
