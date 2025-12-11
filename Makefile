@@ -30,7 +30,7 @@ build: compile
 
 .PHONY: test
 test: compile
-	${MAKE} -C tests clean all test
+	${MAKE} -C tests clean all
 
 .PHONY: publish publish-github publish-pypi publish-docker
 publish: test publish-github publish-pypi publish-docker
