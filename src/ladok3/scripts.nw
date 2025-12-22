@@ -90,24 +90,85 @@ function of [[canvaslms]]\footnote{\label{canvaslms-doc}%
   Particularly Chapter 11 discusses the summary modules.
   You can also read [[pydoc canvaslms.grades]] for a more brief summary.
 }.
-We want something like this:
+We want something like [[<<main script>>]] below.
+For the datintro course (DD1301), we simply have four lab assignments in the 
+assignment group LAB1.
+LAB1 is the only course component in LADOK.
 <<main script>>=
+# datintro
 report_components "DD1301 HT${YEARS}" \
                   LAB1
-report_components "DD131[057] HT${YEARS}" \
-                  "(LAB|MAT|KAL)[1-3]"
-report_components "DA2215 [HV]T${YEARS}" \
-                  INL1
+@
 
+For the prgi (DD1317) course we have four components: KAL1, LAB1, LAB2 and 
+LAB3.
+In the old version of the course (DD1315), we had MAT1 instead of KAL1.
+
+The LAB1, MAT1 and KAL1 components each contain lab assignments.
+The students must pass all of them for a grade.
+<<main script>>=
+# prgi
+# labs
+report_components "DD131[57] HT${YEARS}" \
+                  "(LAB|MAT|KAL)1"
+@
+
+The LAB2 component is just an exam.
+In some older versions it also contains a mandatory survey to get a date in the 
+last week of the course in LADOK.
+In some versions we also have multiple assignments, one for each time the exam 
+was given (hence maxgradesurvey); but in newer we reuse the same assignment for 
+all re-exams.
+<<main script>>=
+# datorprov with optional survey
+report_components "DD1317.*LAB2.*${YEARS}" \
+                  LAB2 \
+                  canvaslms.grades.maxgradesurvey
+@ However, now we have that mandatory survey in the LAB3 component with the 
+project that the students finish last.
+This project contains three parts:
+\begin{enumerate}
+\item the specification (P/F),
+\item the peer review (P/F),
+\item the presentation of the project (A--F grades), and
+\item the mandatory survey (numerical).
+\end{enumerate}
+We use the [[canvaslms.grades.conjunctavgsurvey]] summary module to get the 
+final grade to be the A--F grade of the presentation, but only if the 
+specification, peer review and survey are all passed.
+<<main script>>=
+# p-uppgift with optional survey
+report_components "DD131[57] HT${YEARS}" \
+                  LAB3 \
+                  canvaslms.grades.conjunctavgsurvey
+@
+
+For vetcyb (DA2215) we have one component: INL1.
+It's just a few P/F-assignments and a mandatory survey.
+<<main script>>=
+# vetcyb
+report_components "DA2215 [HV]T${YEARS}" \
+                  INL1 \
+                  canvaslms.grades.conjunctavgsurvey
+@
+
+For tilkry (DD2520) we have two components: INL1 and LAB1.
+The INL1 component is just a few P/F-assignments.
+The LAB1 component is a set of mandatory and optional assignments.
+The number of optional assignments (and their grades) determine the final 
+grade.
+So it has a custom summary module: [[canvaslms.grades.tilkryLAB1]].
+<<main script>>=
+# tilkry
 report_components "DD2520 VT${YEARS}" \
                   INL1
 report_components "DD2520 VT${YEARS}" \
                   LAB1 \
                   canvaslms.grades.tilkryLAB1
-@ Note that the line reporting for DD1310 reports for \emph{all} instances as 
-well---that course is given five times in parallel.
-But the assessment should be the same so it is sufficient that one of the 
-examiners run this script to report all the results.
+@
+
+
+\section{Getting component results from Canvas to LADOK}
 
 To get the results out of Canvas we'll use the [[canvaslms results]] command.
 We must install the [[canvaslms]] tool.
@@ -133,10 +194,18 @@ report_components() {
 
   # Get the course results from Canvas.
   canvaslms results -c "$course" -A "$component" $summary_opt \
-  | sed -E "s/ ?[HV]T[0-9]{2}( \(.*\))?//" \
+  | <<change course column to only course code>> \
   | <<[[tee]] the component results to use for course grades>> \
   | ladok report -fv # Report them to LADOK.
 }
+@
+
+The course code the is the first column of the output from
+[[canvaslms results]].
+The course code is the first word, separated from the rest by a space.
+So we simply drop everything after the first space.
+<<change course column to only course code>>=
+awk -F '\t' -v OFS='\t' '{ split($1,a," "); $1=a[1]; print }'
 @
 
 
@@ -146,7 +215,7 @@ Now we can set the course grades based on the reported components.
 We'll have to report one course at a time since the course grade is based on 
 different components in different courses.
 <<main script>>=
-report_course "DD131[057] HT${YEARS}" \
+report_course "DD131[57] HT${YEARS}" \
               LAB3
 report_course "DD2520 VT${YEARS}" \
               LAB1
