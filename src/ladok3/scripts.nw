@@ -311,3 +311,9 @@ report_course() {
                      "$student" "$grade" "$grade_date"
   done
 }
+@
+
+
+\section{The script as a whole}
+
+\inputminted{bash}{../src/ladok3/ladok.sh}
