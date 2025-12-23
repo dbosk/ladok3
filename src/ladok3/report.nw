@@ -206,7 +206,7 @@ def set_grade(ladok, args,
             f"{component.component} = {component.grade} ({date}) "
             f"by {', '.join(graders)}.")
   elif component.grade != grade:
-    raise LadokValidationError(f"attested {component.component} "
+    raise ladok3.LadokValidationError(f"attested {component.component} "
                     f"result {component.grade} ({component.date}) "
                     f"is different from {grade} ({date}).")
 @
@@ -218,12 +218,12 @@ exist.
 try:
   course = student.courses(code=course_code)[0]
 except IndexError:
-  raise LadokNotFoundError(f"{course_code}: No such course for {student}")
+  raise ladok3.LadokNotFoundError(f"{course_code}: No such course for {student}")
 <<get [[component]] from [[course]] and [[component_code]]>>=
 try:
   component = course.results(component=component_code)[0]
 except IndexError:
-  raise LadokNotFoundError(f"{component_code}: no such component for {course_code}")
+  raise ladok3.LadokNotFoundError(f"{component_code}: no such component for {course_code}")
 @
 
 Finally, we want to ensure the date is correct.
