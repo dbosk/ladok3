@@ -247,7 +247,6 @@ retry_strategy = Retry(
 adapter = HTTPAdapter(max_retries=retry_strategy)
 self.__session.mount("http://", adapter)
 self.__session.mount("https://", adapter)
-<<wrap session with logging>>=
 self.__session = LoggingSessionWrapper(self.__session)
 @
 
