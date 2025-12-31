@@ -215,11 +215,14 @@ We use [[LADOK_VARS]] as credentials, since it contains the credentials.
 <<create or restore the LadokSession ls>>=
 LADOK_INST, LADOK_VARS = load_credentials(args.config_file)
 try:
+  logging.debug("Attempting to restore cached LADOK session")
   ls = restore_ladok_session(LADOK_VARS)
 <<handle exceptions during restore of [[ls]]>>
 if not ls:
+  logging.info(f"Creating new LADOK session for {LADOK_INST}")
   ls = ladok3.LadokSession(LADOK_INST, vars=LADOK_VARS)
 <<save LadokSession ls>>=
+logging.debug("Storing LADOK session to cache")
 store_ladok_session(ls, LADOK_VARS)
 @
 
@@ -257,6 +260,7 @@ def store_ladok_session(ls, credentials):
   """
   if not os.path.isdir(dirs.user_cache_dir):
     os.makedirs(dirs.user_cache_dir)
+    logging.debug(f"Created cache directory: {dirs.user_cache_dir}")
 
   file_path = dirs.user_cache_dir + "/LadokSession"
 
@@ -265,6 +269,7 @@ def store_ladok_session(ls, credentials):
 
   with open(file_path, "wb") as file:
     file.write(encrypted_ls)
+  logging.debug(f"Saved encrypted session to {file_path}")
   
 def restore_ladok_session(credentials):
   """Restore a LadokSession object from disk.
@@ -281,11 +286,15 @@ def restore_ladok_session(credentials):
   file_path = dirs.user_cache_dir + "/LadokSession"
 
   if os.path.isfile(file_path):
+    logging.debug(f"Found cached session at {file_path}")
     with open(file_path, "rb") as file:
       encrypted_ls = file.read()
       <<decrypt encrypted ls>>
       if pickled_ls:
+        logging.debug("Successfully restored session from cache")
         return pickle.loads(pickled_ls)
+  else:
+    logging.debug("No cached session found")
 
   return None
 @
@@ -636,6 +645,7 @@ try:
     "password": os.environ["LADOK_PASS"]
   }
   if institution and vars["username"] and vars["password"]:
+    logging.debug(f"Loaded credentials from environment for {institution}")
     return institution, vars
 except:
   pass
@@ -659,6 +669,7 @@ try:
       <<print warning about missing variable in [[LADOK_VARS]]>>
 
   if institution and vars:
+    logging.debug(f"Loaded credentials from LADOK_VARS for {institution}")
     return institution, vars
 except:
   pass
@@ -682,6 +693,7 @@ try:
 
   institution = config.pop("institution",
                            "KTH Royal Institute of Technology")
+  logging.debug(f"Loaded credentials from config file for {institution}")
   return institution, config
 except:
   pass
@@ -703,6 +715,7 @@ try:
       vars[key] = value
 
   if institution and vars:
+    logging.debug(f"Loaded credentials from keyring for {institution}")
     return institution, vars
 except:
   pass
@@ -716,6 +729,7 @@ try:
   username = keyring.get_password("ladok3", "username")
   password = keyring.get_password("ladok3", "password")
   if username and password:
+    logging.debug(f"Loaded credentials from keyring (legacy format) for {institution}")
     return institution, {"username": username, "password": password}
 except:
   pass

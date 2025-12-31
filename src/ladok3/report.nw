@@ -126,15 +126,9 @@ many_parser.add_argument("-d", "--delimiter",
     "use `-d,` or `-d ,` to get comma-separated values.")
 @
 
-We also want to handle errors and confirmations.
-When reporting in bulk, we don't want unnecessary errors.
 We also want to have a summary of the changes.
-<<add many results group arguments>>=
-many_parser.add_argument("-v", "--verbose",
-  action="count", default=0,
-  help="Increases the verbosity of the output: -v will print results that "
-    "were reported to standard out. Otherwise only errors are printed.")
-@
+When reporting in bulk, successes are logged at INFO level,
+so use the global [[-v]] flag to see them.
 
 Then we can actually report the result using the values read from [[stdin]].
 <<report a result read from stdin>>=
@@ -199,12 +193,13 @@ def set_grade(ladok, args,
   if not component.attested and component.grade != grade:
     <<ensure [[date]] is a valid date for [[course]]>>
     component.set_grade(grade, date)
+    logging.debug(f"Set grade for {course_code} {component_code} to {grade} ({date})")
     if args.finalize:
       component.finalize(graders)
-    if args.verbose:
-      logging.info(f"{course_code} {student}: reported "
-                   f"{component.component} = {component.grade} ({date}) "
-                   f"by {', '.join(graders)}.")
+      logging.debug(f"Finalized grade for {course_code} {component_code}")
+    logging.info(f"{course_code} {student}: reported "
+                 f"{component.component} = {component.grade} ({date}) "
+                 f"by {', '.join(graders)}.")
   elif component.grade != grade:
     raise ladok3.LadokValidationError(f"attested {component.component} "
                     f"result {component.grade} ({component.date}) "
