@@ -193,10 +193,10 @@ def set_grade(ladok, args,
   if not component.attested and component.grade != grade:
     <<ensure [[date]] is a valid date for [[course]]>>
     component.set_grade(grade, date)
-    logging.debug(f"Set grade for {course_code} {component_code} to {grade} ({date})")
+    logging.debug(f"Set grade for course {course_code} component {component_code} to {grade} on {date}")
     if args.finalize:
       component.finalize(graders)
-      logging.debug(f"Finalized grade for {course_code} {component_code}")
+      logging.debug(f"Finalized grade for course {course_code} component {component_code}")
     logging.info(f"{course_code} {student}: reported "
                  f"{component.component} = {component.grade} ({date}) "
                  f"by {', '.join(graders)}.")
