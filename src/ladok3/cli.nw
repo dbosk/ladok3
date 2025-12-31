@@ -28,6 +28,7 @@ import getpass
 import json
 import keyring
 import ladok3
+import logging
 import os
 import pickle
 import re
@@ -69,24 +70,25 @@ if __name__ == "__main__":
 We want uniform error handling.
 We will use the function [[err]] for errors and [[warn]] for warnings, both 
 inspired by err(3) and warn(3) in the BSD world.
+We use the [[logging]] module to output these messages.
 <<functions>>=
 def err(rc, msg):
-  """Print error message to stderr and exit with given return code.
+  """Log error message and exit with given return code.
   
   Args:
       rc (int): Return code to exit with.
       msg (str): Error message to display.
   """
-  print(f"{sys.argv[0]}: error: {msg}", file=sys.stderr)
+  logging.error(msg)
   sys.exit(rc)
 
 def warn(msg):
-  """Print warning message to stderr.
+  """Log warning message.
   
   Args:
       msg (str): Warning message to display.
   """
-  print(f"{sys.argv[0]}: {msg}", file=sys.stderr)
+  logging.warning(msg)
 @
 
 
@@ -115,6 +117,7 @@ subp = argp.add_subparsers(
 <<add subparsers to subp>>
 argcomplete.autocomplete(argp)
 args = argp.parse_args()
+<<configure logging based on verbosity>>
 <<create or restore the LadokSession ls>>
 <<execute subcommand>>
 <<save LadokSession ls>>
@@ -137,6 +140,47 @@ The first request is made by the command's function, which in the case of
 <<execute subcommand>>=
 if "func" in args:
   args.func(ls, args)
+@
+
+
+\section{Configure logging based on verbosity}
+
+We configure the logging module based on the verbosity level specified by the 
+user.
+The user can increase verbosity with [[-v]] (which can be repeated) and 
+decrease it with [[-q]] (which can also be repeated).
+We compute the net verbosity as [[verbose - quiet]].
+
+The logging levels are:
+\begin{description}
+\item[CRITICAL (50)] Only critical errors (net verbosity -2 or lower)
+\item[ERROR (40)] Errors (net verbosity -1)
+\item[WARNING (30)] Warnings (default, net verbosity 0)
+\item[INFO (20)] Informational messages (net verbosity 1)
+\item[DEBUG (10)] Debug messages (net verbosity 2 or higher)
+\end{description}
+<<configure logging based on verbosity>>=
+verbosity = args.verbose - args.quiet
+# Map verbosity to logging level: default is WARNING (30)
+# -2 or less: CRITICAL, -1: ERROR, 0: WARNING, 1: INFO, 2+: DEBUG
+if verbosity <= -2:
+  log_level = logging.CRITICAL
+elif verbosity == -1:
+  log_level = logging.ERROR
+elif verbosity == 0:
+  log_level = logging.WARNING
+elif verbosity == 1:
+  log_level = logging.INFO
+else:  # verbosity >= 2
+  log_level = logging.DEBUG
+
+logging.basicConfig(
+  level=log_level,
+  format='%(levelname)s: %(message)s',
+  stream=sys.stderr
+)
+logger = logging.getLogger(__name__)
+logger.debug(f"Logging configured to {logging.getLevelName(log_level)} level")
 @
 
 
@@ -311,12 +355,28 @@ We want to allow the user to specify different locations for the configuration.
 
 We want the user to be able to specify the location of the configuration 
 file.
+
+\paragraph{Verbosity control}
+
+We also provide options to control the verbosity of diagnostic output.
+The user can use [[-v]] to increase verbosity (can be repeated) and [[-q]] to 
+decrease verbosity (can also be repeated).
+The net verbosity is calculated as [[verbose - quiet]], and this maps to 
+logging levels from [[CRITICAL]] to [[DEBUG]].
 <<add global configuration options>>=
 argp.add_argument("-f", "--config-file",
   default=f"{dirs.user_config_dir}/config.json",
   help="Path to configuration file "
     f"(default: {dirs.user_config_dir}/config.json) "
     "or set LADOK_USER and LADOK_PASS environment variables.")
+argp.add_argument("-v", "--verbose",
+  action="count",
+  default=0,
+  help="Increase verbosity (can be repeated, e.g., -vv for debug level)")
+argp.add_argument("-q", "--quiet",
+  action="count",
+  default=0,
+  help="Decrease verbosity (can be repeated)")
 @ Since we provide the default value here, we can always rely on it to be 
 available, so we can use [[args.config_file]] directly when we want to access 
 the configuration file.
