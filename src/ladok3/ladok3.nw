@@ -13,6 +13,7 @@ import datetime
 import functools
 import html
 import json
+import logging
 import operator
 import re
 import requests
@@ -246,6 +247,44 @@ retry_strategy = Retry(
 adapter = HTTPAdapter(max_retries=retry_strategy)
 self.__session.mount("http://", adapter)
 self.__session.mount("https://", adapter)
+<<wrap session with logging>>=
+self.__session = LoggingSessionWrapper(self.__session)
+@
+
+\subsection{Logging wrapper for API requests}
+
+To provide visibility into API requests and cache performance, we wrap the 
+session with a logging wrapper.
+This wrapper logs all HTTP requests at DEBUG level and is transparent to the 
+rest of the code.
+
+The wrapper logs:
+\begin{itemize}
+\item HTTP method and URL for each request (DEBUG level)
+\item Response status code and timing (DEBUG level)
+\end{itemize}
+
+For cache hits and misses, we add logging to the cached methods themselves
+(covered in their respective sections).
+<<classes>>=
+class LoggingSessionWrapper:
+  """Wrapper for requests.Session that logs API calls at DEBUG level"""
+  def __init__(self, session):
+    self._session = session
+  
+  def __getattr__(self, name):
+    """Delegate attribute access to wrapped session"""
+    attr = getattr(self._session, name)
+    # If it's a request method, wrap it with logging
+    if name in ['get', 'post', 'put', 'delete', 'patch', 'head', 'options']:
+      def logged_method(*args, **kwargs):
+        url = args[0] if args else kwargs.get('url', 'unknown')
+        logging.debug(f"LADOK API request: {name.upper()} {url}")
+        response = attr(*args, **kwargs)
+        logging.debug(f"LADOK API response: {response.status_code} from {name.upper()} {url}")
+        return response
+      return logged_method
+    return attr
 @
 
 The [[mount]] method attaches the retry-enabled adapter to both HTTP and HTTPS 
@@ -643,6 +682,9 @@ We start with the method that returns the grading-scales objects.
 This method interacts with LADOK, so we want to cache its responses.
 We also want to be able to filter the responses, we do this by keyword 
 arguments.
+
+We add INFO level logging to indicate cache hits and misses for better 
+observability of the caching behavior.
 <<LadokSession data methods>>=
 @cachetools.cachedmethod(
   operator.attrgetter("cache"),
@@ -650,6 +692,11 @@ arguments.
 def get_grade_scales(self, /, **kwargs):
   """Return a list of (un)filtered grade scales"""
   if len(kwargs) == 0:
+    cache_key = "grade_scale"
+    if cache_key in self.cache:
+      logging.info(f"Cache hit for grade scales")
+    else:
+      logging.info(f"Cache miss for grade scales, fetching from LADOK")
     return [GradeScale(**scale_data)
               for scale_data in self.grade_scales_JSON()]
 
@@ -819,6 +866,11 @@ However, we an delegate this job to the [[Student]] class.
 def get_student(self, id):
   """Get a student by unique ID, returns a Student object"""
   # note that self is the required LadokSession object
+  cache_key = cachetools.keys.hashkey("get_student", id)
+  if cache_key in self.cache:
+    logging.info(f"Cache hit for student {id}")
+  else:
+    logging.info(f"Cache miss for student {id}, fetching from LADOK")
   return Student(ladok=self, id=id)
 @
 
@@ -1187,6 +1239,11 @@ def search_course_rounds(self, /, **kwargs):
   """Query LADOK about course rounds, possible keys:
   code, round_code, name
   """
+  cache_key = cachetools.keys.hashkey("search_courses", tuple(sorted(kwargs.items())))
+  if cache_key in self.cache:
+    logging.info(f"Cache hit for search_course_rounds({kwargs})")
+  else:
+    logging.info(f"Cache miss for search_course_rounds({kwargs}), fetching from LADOK")
   results = self.search_course_rounds_JSON(**kwargs)
   return [CourseRound(ladok=self, **result) for result in results]
 @
