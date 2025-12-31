@@ -153,7 +153,7 @@ We compute the net verbosity as [[verbose - quiet]].
 
 The logging levels are:
 \begin{description}
-\item[CRITICAL (50)] Only critical errors (net verbosity -2 or lower)
+\item[CRITICAL (50)] Critical errors and application failures (net verbosity -2 or lower)
 \item[ERROR (40)] Errors (net verbosity -1)
 \item[WARNING (30)] Warnings (default, net verbosity 0)
 \item[INFO (20)] Informational messages (net verbosity 1)
@@ -174,11 +174,13 @@ elif verbosity == 1:
 else:  # verbosity >= 2
   log_level = logging.DEBUG
 
-logging.basicConfig(
-  level=log_level,
-  format='%(levelname)s: %(message)s',
-  stream=sys.stderr
-)
+# Only configure logging if not already configured
+if not logging.getLogger().handlers:
+  logging.basicConfig(
+    level=log_level,
+    format='%(levelname)s: %(message)s',
+    stream=sys.stderr
+  )
 logging.debug(f"Logging configured to {logging.getLevelName(log_level)} level")
 @
 

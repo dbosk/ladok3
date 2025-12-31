@@ -128,7 +128,7 @@ many_parser.add_argument("-d", "--delimiter",
 
 We also want to have a summary of the changes.
 When reporting in bulk, successes are logged at INFO level,
-so use the global [[-v]] flag to see them.
+so use the global [[-v]] flag (or [[-vv]] for debug level) to see them.
 
 Then we can actually report the result using the values read from [[stdin]].
 <<report a result read from stdin>>=
