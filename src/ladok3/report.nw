@@ -27,6 +27,7 @@ We need access to LADOK through the [[ladok3]] module.
 import csv
 import datetime
 import ladok3
+import logging
 import sys
 
 <<functions>>
@@ -125,15 +126,9 @@ many_parser.add_argument("-d", "--delimiter",
     "use `-d,` or `-d ,` to get comma-separated values.")
 @
 
-We also want to handle errors and confirmations.
-When reporting in bulk, we don't want unnecessary errors.
 We also want to have a summary of the changes.
-<<add many results group arguments>>=
-many_parser.add_argument("-v", "--verbose",
-  action="count", default=0,
-  help="Increases the verbosity of the output: -v will print results that "
-    "were reported to standard out. Otherwise only errors are printed.")
-@
+When reporting in bulk, successes are logged at INFO level,
+so use the global [[-v]] flag (or [[-vv]] for debug level) to see them.
 
 Then we can actually report the result using the values read from [[stdin]].
 <<report a result read from stdin>>=
@@ -142,9 +137,8 @@ try:
             student_id, course_code, component_code, grade, date, graders)
 except Exception as err:
   <<try to resolve [[student]] from [[ladok]] using [[student_id]]>>
-  print(f"{course_code} {component_code}={grade} ({date}) {student}: "
-        f"{err}",
-        file=sys.stderr)
+  logging.error(f"{course_code} {component_code}={grade} ({date}) {student}: "
+                f"{err}")
 @
 
 The reason we want to resolve the student from LADOK is that the [[student_id]] 
@@ -199,12 +193,13 @@ def set_grade(ladok, args,
   if not component.attested and component.grade != grade:
     <<ensure [[date]] is a valid date for [[course]]>>
     component.set_grade(grade, date)
+    logging.debug(f"Set grade for course {course_code} component {component_code} to {grade} on {date}")
     if args.finalize:
       component.finalize(graders)
-    if args.verbose:
-      print(f"{course_code} {student}: reported "
-            f"{component.component} = {component.grade} ({date}) "
-            f"by {', '.join(graders)}.")
+      logging.debug(f"Finalized grade for course {course_code} component {component_code}")
+    logging.info(f"{course_code} {student}: reported "
+                 f"{component.component} = {component.grade} ({date}) "
+                 f"by {', '.join(graders)}.")
   elif component.grade != grade:
     raise ladok3.LadokValidationError(f"attested {component.component} "
                     f"result {component.grade} ({component.date}) "
@@ -235,11 +230,11 @@ if not isinstance(date, datetime.date):
   date = datetime.date.fromisoformat(date)
 
 if date < course.start:
-  print(f"{course_code} {component_code}={grade} "
-        f"({date}) {student}: "
-        f"Grade date ({date}) is before "
-        f"course start date ({course.start}), "
-        f"using course start date instead.")
+  logging.warning(f"{course_code} {component_code}={grade} "
+                  f"({date}) {student}: "
+                  f"Grade date ({date}) is before "
+                  f"course start date ({course.start}), "
+                  f"using course start date instead.")
   date = course.start
 @
 
@@ -275,10 +270,9 @@ we got the arguments.
 <<check that we got all positional arguments>>=
 if not (args.course_code and args.component_code and
   args.student_id and args.grade):
-  print(f"{sys.argv[0]} report: "
-        "not all positional args given: "
-        "course_code, component, student, grade",
-        file=sys.stderr)
+  logging.error("report: "
+                "not all positional args given: "
+                "course_code, component, student, grade")
   sys.exit(1)
 @
 
@@ -313,9 +307,8 @@ try:
 except Exception as err:
   student_id = args.student_id
   <<try to resolve [[student]] from [[ladok]] using [[student_id]]>>
-  print(f"{args.course_code} {args.component_code}={args.grade} ({args.date}) "
-        f"{student}: {err}",
-        file=sys.stderr)
+  logging.error(f"{args.course_code} {args.component_code}={args.grade} ({args.date}) "
+                f"{student}: {err}")
 @
 
 
