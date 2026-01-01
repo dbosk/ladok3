@@ -682,8 +682,10 @@ This method interacts with LADOK, so we want to cache its responses.
 We also want to be able to filter the responses, we do this by keyword 
 arguments.
 
-We add INFO level logging to indicate cache hits and misses for better 
-observability of the caching behavior.
+We add INFO level logging for cache misses.
+Note that cache hits cannot be logged from within the method itself, as the 
+[[cachetools.cachedmethod]] decorator returns the cached value before the 
+method body executes.
 <<LadokSession data methods>>=
 @cachetools.cachedmethod(
   operator.attrgetter("cache"),
@@ -691,11 +693,7 @@ observability of the caching behavior.
 def get_grade_scales(self, /, **kwargs):
   """Return a list of (un)filtered grade scales"""
   if len(kwargs) == 0:
-    cache_key = "grade_scale"
-    if cache_key in self.cache:
-      logging.info(f"Cache hit for grade scales")
-    else:
-      logging.info(f"Cache miss for grade scales, fetching from LADOK")
+    logging.info(f"Cache miss for grade scales, fetching from LADOK")
     return [GradeScale(**scale_data)
               for scale_data in self.grade_scales_JSON()]
 
@@ -865,11 +863,9 @@ However, we an delegate this job to the [[Student]] class.
 def get_student(self, id):
   """Get a student by unique ID, returns a Student object"""
   # note that self is the required LadokSession object
-  cache_key = cachetools.keys.hashkey("get_student", id)
-  if cache_key in self.cache:
-    logging.info(f"Cache hit for student {id}")
-  else:
-    logging.info(f"Cache miss for student {id}, fetching from LADOK")
+  # Only cache misses are logged; cache hits are handled by cachetools before
+  # this method body executes
+  logging.info(f"Cache miss for student {id}, fetching from LADOK")
   return Student(ladok=self, id=id)
 @
 
@@ -1238,11 +1234,9 @@ def search_course_rounds(self, /, **kwargs):
   """Query LADOK about course rounds, possible keys:
   code, round_code, name
   """
-  cache_key = cachetools.keys.hashkey("search_courses", tuple(sorted(kwargs.items())))
-  if cache_key in self.cache:
-    logging.info(f"Cache hit for search_course_rounds({kwargs})")
-  else:
-    logging.info(f"Cache miss for search_course_rounds({kwargs}), fetching from LADOK")
+  # Only cache misses are logged; cache hits are handled by cachetools before
+  # this method body executes
+  logging.info(f"Cache miss for search_course_rounds({kwargs}), fetching from LADOK")
   results = self.search_course_rounds_JSON(**kwargs)
   return [CourseRound(ladok=self, **result) for result in results]
 @
