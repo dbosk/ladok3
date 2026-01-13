@@ -167,6 +167,17 @@ report_components "DD2520 VT${YEARS}" \
                   canvaslms.grades.tilkryLAB1
 @
 
+Finally, let's do this also for the courses that I have given previous years.
+<<main script>>=
+# tidigare kurser
+# DD1310 - prgm2[1-5]
+report_components "DD1310 HT2[1-5]" \
+                  "LAB1"
+report_components "DD1310 HT2[1-5]" \
+                  "LAB3" \
+                  canvaslms.grades.conjunctavgsurvey
+@
+
 
 \section{Getting component results from Canvas to LADOK}
 
