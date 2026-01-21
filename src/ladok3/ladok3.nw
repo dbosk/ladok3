@@ -1534,7 +1534,7 @@ class CourseComponent(LadokData):
     return self.__grade_scale
 
   def __str__(self):
-    return self.code
+    return f"{self.code} {self.description} {self.credits} {self.unit}"
 
   def __eq__(self, other):
     if isinstance(other, str):
@@ -1643,7 +1643,8 @@ class CourseRegistration(CourseInstance):
     return self.__end
 
   def __str__(self):
-    return f"{self.code} {self.round_code or ''} ({self.start}--{self.end})"
+    return f"{self.code} {self.name} " \
+           f"{self.round_code or ''} ({self.start}--{self.end})"
 
   def __repr__(self):
     return f"{self.code}:{self.round_code or ''}:{self.start}--{self.end}"
