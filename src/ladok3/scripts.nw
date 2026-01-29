@@ -150,6 +150,17 @@ It's just a few P/F-assignments and a mandatory survey.
 report_components "DA2215 [HV]T${YEARS}" \
                   INL1 \
                   canvaslms.grades.conjunctavgsurvey
+@ However, we also want to report the \enquote{Participation INL1}.
+But that would require us to rewrite the name of the group to just INL1, so we 
+need to use the [[report_alt_components]] function.
+Also, we need to use the [[canvaslms.grades.participation]] summary module to 
+get the participation grade (since those assignments consist only of 
+complete/incomplete and 0--100 grades).
+<<main script>>=
+# vetcyb participation
+report_alt_components "DA2215 [HV]T${YEARS}" \
+                      "Participation INL1" INL1 \
+                      canvaslms.grades.participation
 @
 
 For tilkry (DD2520) we have two components: INL1 and LAB1.
@@ -192,11 +203,16 @@ canvaslms login                  # or read `canvaslms login --help`
 For details on how to extract the results, read
 \mintinline{bash}{canvaslms results --help}
 (also read \cref{canvaslms-doc} on page~\pageref{canvaslms-doc}).
+
+Course codes always have the same structure, so they're easy to replace.
+But we also want to replace the component name with the desired component name 
+in LADOK.
 <<helper functions>>=
-report_components() {
+report_alt_components() {
   local course="$1"
   local component="$2"
-  local summary_module="$3"
+  local desired_component="$3"
+  local summary_module="$4"
 
   local summary_opt=""
   if [[ -n "$summary_module" ]]; then
@@ -206,8 +222,20 @@ report_components() {
   # Get the course results from Canvas.
   canvaslms results -c "$course" -A "$component" $summary_opt \
   | <<change course column to only course code>> \
+  | <<rename the component column to the desired component>> \
   | <<[[tee]] the component results to use for course grades>> \
   | ladok report -fv # Report them to LADOK.
+}
+@
+
+However, let's also add a version where the component name is the same.
+<<helper functions>>=
+report_components() {
+  local course="$1"
+  local component="$2"
+  local summary_module="$3"
+
+  report_components "$course" "$component" "$component" "$summary_module"
 }
 @
 
@@ -217,6 +245,10 @@ The course code is the first word, separated from the rest by a space.
 So we simply drop everything after the first space.
 <<change course column to only course code>>=
 awk -F '\t' -v OFS='\t' '{ split($1,a," "); $1=a[1]; print }'
+@ We can do something similar for the component column, but we simply replace 
+it with the desired component name.
+<<rename the component column to the desired component>>=
+awk -F '\t' -v OFS='\t' -v comp="$desired_component" '{ $2=comp; print }'
 @
 
 
