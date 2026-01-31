@@ -23,9 +23,11 @@ poetry run pytest tests/ -v    # Run tests directly with verbose output
 
 ### ⚠️ NEVER edit `.py` or `.tex` files directly - they are auto-generated
 
+**This includes test files in `tests/`!** All `.py` files (library code AND tests) are generated from `.nw` files via `notangle`. The test files are gitignored because they are generated.
+
 When making changes:
 1. Edit the `.nw` files in `src/ladok3/`
-2. Run `make compile` to regenerate Python files
+2. Run `make compile` to regenerate Python files (including tests)
 3. Test with `make test`
 4. Only commit the `.nw` files
 

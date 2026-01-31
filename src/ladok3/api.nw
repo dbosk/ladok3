@@ -1741,7 +1741,32 @@ def test_finalize_result_JSON():
 
   result_last_modified = result["SenasteResultatandring"]
 
+  assert result.get("ProcessStatus") == 2
   assert json.dumps(result, indent=2, ensure_ascii=False)
+@
+
+We also want to verify that the [[CourseResult]] class correctly reflects the
+finalized state through its [[finalized]] property.
+<<test functions>>=
+def test_finalized_CourseResult():
+  """Verify CourseResult.finalized property after finalization."""
+  student = ladok.get_student(datintro_student_uid)
+
+  # Find the course participation for datintro
+  courses = [c for c in student.courses()
+             if c.instance_id == datintro_instance_id]
+  assert len(courses) > 0, "Student should have course participation"
+  course = courses[0]
+
+  # Find the result that was just finalized (should be finalized but not attested)
+  results = course.results()
+  finalized_results = [r for r in results
+                       if r.finalized and not r.attested]
+  assert len(finalized_results) > 0, "Should have a finalized result"
+
+  result = finalized_results[0]
+  assert result.finalized == True
+  assert result.attested == False
 @
 
 The output looks like this.
