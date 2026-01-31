@@ -165,10 +165,18 @@ First, if the grade is different from what we want, we set the new grade.
 Then, if we want to finalize, we finalize the grade---this allows us to run
 the command first without [[-f]] (to set the grade) and then with [[-f]] (to
 finalize it) without getting an error.
-(This might still fail if the grade is finalized but not attested.)
 If we've selected the verbose option, then we print what we have reported.
 
-If the grade was attested, then we check if it's different.
+Results in LADOK go through three states:
+\begin{description}
+\item[Draft] Can be modified and finalized.
+\item[Finalized] Ready for examiner attestation, cannot be modified or
+  finalized again.
+\item[Attested] Fully locked.
+\end{description}
+If the result is already finalized (but not attested), we skip trying to
+modify or finalize it again---this makes the command idempotent.
+If the result was attested, we check if the grade is different.
 If it's different, we output an error.
 If it's the same, we silently ignore it.
 This is best for bulk reporting, because then we can always try to report for
@@ -179,10 +187,10 @@ We want to report errors as exceptions.
 def set_grade(ladok, args,
               student_id, course_code, component_code, grade, date, graders):
   """Set a grade for a student's course component result.
-  
+
   Handles the logic for setting grades, including checking if results are
   already attested, validating dates, and optionally finalizing results.
-  
+
   Args:
       ladok (LadokSession): The LADOK session for data access.
       args: Command line arguments with options like verbose and finalize.
@@ -192,7 +200,7 @@ def set_grade(ladok, args,
       grade (str): Grade to assign (e.g., "P", "F", "A").
       date (str): Examination date in YYYY-MM-DD format.
       graders (list): List of grader identifiers.
-  
+
   Raises:
       Exception: If the grade setting fails or validation errors occur.
   """
@@ -200,20 +208,45 @@ def set_grade(ladok, args,
   <<get [[course]] from [[student]] and [[course_code]]>>
   <<get [[component]] from [[course]] and [[component_code]]>>
 
-  if not component.attested:
-    if component.grade != grade:
-      <<ensure [[date]] is a valid date for [[course]]>>
-      component.set_grade(grade, date)
-    if args.finalize:
-      component.finalize(graders)
-    if args.verbose:
-      print(f"{course_code} {student}: reported "
-            f"{component.component} = {component.grade} ({date}) "
-            f"by {', '.join(graders)}.")
-  elif component.grade != grade:
-    raise ladok3.LadokValidationError(f"attested {component.component} "
-                    f"result {component.grade} ({component.date}) "
-                    f"is different from {grade} ({date}).")
+  if component.attested:
+    <<handle attested result>>
+  elif component.finalized:
+    <<handle finalized result>>
+  else:
+    <<handle draft result>>
+@
+
+If the result is a draft, we can set and finalize the grade as usual.
+<<handle draft result>>=
+if component.grade != grade:
+  <<ensure [[date]] is a valid date for [[course]]>>
+  component.set_grade(grade, date)
+if args.finalize:
+  component.finalize(graders)
+if args.verbose:
+  print(f"{course_code} {student}: reported "
+        f"{component.component} = {component.grade} ({date}) "
+        f"by {', '.join(graders)}.")
+@
+
+If the result is already finalized but not attested, it's waiting for the
+examiner to attest it.
+We cannot modify or re-finalize it, so we skip those operations.
+In verbose mode, we inform the user that the result is already finalized.
+<<handle finalized result>>=
+if args.verbose:
+  print(f"{course_code} {student}: {component.component} already finalized, "
+        f"waiting for attestation.")
+@
+
+If the result is attested, we check if the grade we want to report matches.
+If not, we raise an error since we cannot change an attested grade.
+If it matches, we silently succeed since the desired grade is already set.
+<<handle attested result>>=
+if component.grade != grade:
+  raise ladok3.LadokValidationError(f"attested {component.component} "
+                  f"result {component.grade} ({component.date}) "
+                  f"is different from {grade} ({date}).")
 @
 
 Now we simply want to set those objects up.
