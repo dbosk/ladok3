@@ -1735,6 +1735,7 @@ class CourseResult(LadokRemoteData):
     self.__student = kwargs.pop("student")
 
     self.__attested = False
+    self.__finalized = False
     if "component" in kwargs:
       self.__component = kwargs.pop("component")
       self.__populate_attributes()
@@ -1747,6 +1748,7 @@ class CourseResult(LadokRemoteData):
         data = results["Arbetsunderlag"]
       elif "SenastAttesteradeResultat" in results:
         self.__attested = True
+        self.__finalized = True
         data = results["SenastAttesteradeResultat"]
       else:
         data = kwargs
@@ -1780,6 +1782,9 @@ class CourseResult(LadokRemoteData):
     """Sets a new grade and date for the component"""
     if self.attested:
       raise AttributeError("can't change already attested grade")
+    if self.finalized:
+      raise AttributeError("can't change finalized grade without "
+                           "un-finalizing first")
 
     <<set the grade for CourseResult>>
 
@@ -1808,6 +1813,11 @@ class CourseResult(LadokRemoteData):
     """Returns True if the grade has been attested in LADOK"""
     return self.__attested
 
+  @property
+  def finalized(self):
+    """Returns True if the grade has been finalized (klarmarkerad) in LADOK"""
+    return self.__finalized
+
   def __str__(self):
     return f"{self.component} {self.grade} " \
            f"{self.date}{'*' if not self.attested else ''}"
@@ -1821,11 +1831,24 @@ class CourseResult(LadokRemoteData):
 @
 
 If we get the data from LADOK, then we can fill in all the attributes.
+We also need to check if the result has been finalized (klarmarkerad).
+LADOK uses [[ProcessStatus]] to indicate the state of a result:
+\begin{description}
+\item[1] Draft (Utkast) --- can be modified and finalized.
+\item[2] Finalized (Klarmarkerad) --- ready for examiner attestation,
+  cannot be finalized again.
+\end{description}
+An attested result has no [[ProcessStatus]] since it's stored in
+[[SenastAttesteradeResultat]] rather than [[Arbetsunderlag]].
 <<populate CourseResult attributes from data>>=
 self.__uid = data.pop("Uid", None)
 self.__instance_id = data.pop("UtbildningsinstansUID")
 self.__results_id = data.pop("ResultatUID", None)
 self.__study_results_id = data.pop("StudieresultatUID", None)
+
+process_status = data.pop("ProcessStatus", None)
+if process_status == 2:
+  self.__finalized = True
 
 try:
   grade = data.pop("Betygsgrad", None)
@@ -1852,6 +1875,7 @@ self.__modified = False
 
 However, if this is a completely new result, it doesn't exist in LADOK.
 Then we lack quite a few of the attributes.
+A new result is neither finalized nor attested.
 <<populate CourseResult attributes for empty result>>=
 self.__uid = None
 self.__instance_id = self.__component.instance_id
@@ -1860,6 +1884,7 @@ self.__date = None
 self.__grade_scale = self.__component.grade_scale
 self.__grade = None
 
+self.__finalized = False
 self.__modified = False
 self.__last_modified = None
 @
