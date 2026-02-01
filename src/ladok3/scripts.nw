@@ -235,7 +235,7 @@ report_components() {
   local component="$2"
   local summary_module="$3"
 
-  report_components "$course" "$component" "$component" "$summary_module"
+  report_alt_components "$course" "$component" "$component" "$summary_module"
 }
 @
 
