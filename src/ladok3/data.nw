@@ -76,7 +76,10 @@ We set it up to use the function [[command]].
 data_parser = parser.add_parser("course",
   help="Returns course results data in CSV form",
   description="""
-Returns the results in CSV form for all first-time registered students.
+Returns the results in CSV form for all students on a course round.
+By default, all students are included.
+Use --exclude-reregistered to exclude students who reregistered.
+Use --exclude-credit-transfers to exclude students with credit transfers.
 """.strip())
 data_parser.set_defaults(func=command)
 @
@@ -374,28 +377,42 @@ data_parser.add_argument("-s", "--students", nargs="+",
 data_parser.add_argument("-c", "--components", nargs="+",
   help="List of component codes for components to include, "
     "otherwise all components will be included.")
+
+data_parser.add_argument("-x", "--exclude-reregistered", action="store_true",
+  help="Exclude students who are reregistered on this round "
+    "(i.e., only include students registered for the first time).")
+
+data_parser.add_argument("-X", "--exclude-credit-transfers", action="store_true",
+  help="Exclude students who have credit transfers on the course "
+    "(note: credit transfer may be for only part of the course).")
 @
 
 
-\section{Which students to exclude}\label{WhoToInclude}
+\section{Which students to include}\label{WhoToInclude}
 
-However, we don't want to include all students.
-We check if a student should be included or not.
+By default, we include all students on a course round.
+However, for certain analyses, we may want to exclude some students.
+The user can optionally exclude reregistered students or students with credit
+transfers using command-line flags.
 <<determine if student should be included>>=
-if not should_include(ladok, student, course_round, student_results):
+if not should_include(ladok, student, course_round, student_results,
+                      args.exclude_reregistered, args.exclude_credit_transfers):
   continue
 @
 
-We want to filter out some values from the data.
-We only want to keep students who are registered on the course the first time 
-and who doesn't have any credit transfer on the course.
+We filter students based on the user's choices.
+If the user has specified [[-x]] ([[--exclude-reregistered]]), we exclude
+students who are reregistered on this round.
+If the user has specified [[-X]] ([[--exclude-credit-transfers]]), we exclude
+students who have any credit transfer on the course.
 <<functions>>=
-def should_include(ladok, student, course_round, result):
+def should_include(ladok, student, course_round, result,
+                   exclude_reregistered=False, exclude_credit_transfers=False):
   """Returns True if student should be included, False if to be excluded"""
-  if is_reregistered(ladok, student.ladok_id, course_round):
+  if exclude_reregistered and is_reregistered(ladok, student.ladok_id, course_round):
     return False
 
-  if has_credit_transfer(result):
+  if exclude_credit_transfers and has_credit_transfer(result):
     return False
 
   return True
