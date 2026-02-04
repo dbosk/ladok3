@@ -13,7 +13,7 @@ We will design the test functions in such a way that we can reuse them to show
 the example outputs from the API requests.
 
 We will use the following to test the API methods.
-<<test api.py>>=
+<<[[test api.py]]>>=
 import json
 import ladok3
 import ladok3.cli

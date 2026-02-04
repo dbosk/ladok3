@@ -83,7 +83,7 @@ CMD ["python", "./canvas2ladok.py"]
 We use the standard structure for the script.
 We start with the imports and set up our [[ladok]] and [[canvas]] objects, 
 these are used to access the two systems.
-<<canvas2ladok.py>>=
+<<[[canvas2ladok.py]]>>=
 import cachetools
 from canvasapi import Canvas
 import collections

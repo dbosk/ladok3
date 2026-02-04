@@ -5,7 +5,7 @@ package [[ladok3]].
 We use the standard structure for the script.
 We start with the imports and then our class definitions follow in 
 [[<<classes>>]] and some helper functions in [[<<functions>>]].
-<<ladok3.py>>=
+<<[[ladok3.py]]>>=
 """A Python wrapper for the LADOK3 API"""
 # -*- coding: utf-8 -*-
 import cachetools
@@ -28,7 +28,7 @@ import weblogin.ladok
 We also provide tests for all functionality in [[<<test ladok3.py>>]].
 These illustrate how to the [[ladok3]] module and provide testing using 
 [[pytest]].
-<<test ladok3.py>>=
+<<[[test ladok3.py]]>>=
 import json
 import ladok3
 import os

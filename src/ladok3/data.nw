@@ -37,7 +37,7 @@ We provide a function [[add_command_options]] that adds the subcommand options
 to a given parser.
 We need access to LADOK through the [[ladok3]] module.
 We will also write data to disk in CSV form, so we need the [[csv]] module.
-<<data.py>>=
+<<[[data.py]]>>=
 import csv
 import datetime
 import ladok3

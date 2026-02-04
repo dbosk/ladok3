@@ -14,7 +14,7 @@ The command outputs all results for all rounds of a course in CSV format.
 We use [[argparse]] with [[argcomplete]] to handle the command-line interface.
 We use [[appdirs]] to handle configuration directories on various systems, we 
 set up a global [[dirs]] that we can use.
-<<cli.py>>=
+<<[[cli.py]]>>=
 #!/bin/env python3
 """A command-line interface for LADOK 3"""
 

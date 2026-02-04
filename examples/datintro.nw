@@ -20,7 +20,7 @@ For now we will ignore setting the grade on the full course.
 We use the standard structure for the script.
 We start with the imports and set up our [[ladok]] and [[canvas]] objects, 
 these are used to access the two systems.
-<<datintro.py>>=
+<<[[datintro.py]]>>=
 # -*- coding: utf-8 -*-
 import cachetools
 from canvasapi import Canvas

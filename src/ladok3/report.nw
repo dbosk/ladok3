@@ -23,7 +23,7 @@ This is a subcommand is run as part of the [[ladok3.cli]] module.
 We provide a function [[add_command_options]] that adds the subcommand options 
 to a given parser.
 We need access to LADOK through the [[ladok3]] module.
-<<report.py>>=
+<<[[report.py]]>>=
 import csv
 import datetime
 import ladok3

@@ -1,6 +1,6 @@
 LIB=	ladok3.nw api.nw undoc.nw
 CLI=	cli.nw data.nw report.nw student.nw
-SCRIPTS=$(shell noroots scripts.nw | sed -E "s/(<<|>>)//g")
+SCRIPTS=$(shell noroots scripts.nw | sed -E "s/(<<|>>|\[\[|\]\])//g")
 
 .PHONY: all
 all: ${LIB:.nw=.tex} __init__.py

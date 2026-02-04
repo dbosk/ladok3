@@ -19,7 +19,7 @@ registered in LADOK.
 
 We'll have a script [[<<ladok.sh>>]] that is run by [[cron]].
 It's useful to load our profile, so that we have our normal environment.
-<<ladok.sh>>=
+<<[[ladok.sh]]>>=
 #!/bin/bash
 . ${HOME}/.profile
 @
@@ -28,7 +28,7 @@ We also want some helper functions and a main function that is only run when
 the script is run.
 If the script is sourced, the main function is not run.
 This way we can use the helper functions in our terminal.
-<<ladok.sh>>=
+<<[[ladok.sh]]>>=
 <<constants>>
 <<helper functions>>
 
