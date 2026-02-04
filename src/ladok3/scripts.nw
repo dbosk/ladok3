@@ -28,6 +28,12 @@ We also want some helper functions and a main function that is only run when
 the script is run.
 If the script is sourced, the main function is not run.
 This way we can use the helper functions in our terminal.
+
+The design is that all functions output lines expected by [[ladok report]].
+This way, we can simply pipe the output of the main function to
+[[ladok report -fv]] to report them.
+This also makes it easy to debug the script by running it in the terminal and 
+seeing what it would report.
 <<ladok.sh>>=
 <<constants>>
 <<helper functions>>
@@ -38,7 +44,7 @@ main() {
 
 # Only run if this is the main script
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  main "$@"
+  main "$@" | ladok report -fv
 fi
 @
 
@@ -67,8 +73,9 @@ To construct the regex for years, we simply take a sequence of years
 ([[24 25]]) and make a regex ([[(24|25)]]) out of it.
 <<constants>>=
 YEAR=$(date +%y)
+LOOKBACK=5
 YEARS=$(echo -n "("; \
-        seq $((YEAR - 1)) $YEAR \
+        seq $((YEAR - $LOOKBACK)) $YEAR \
         | sed -zE "s/\s/|/g" \
         | sed "s/|$/)/")
 @
@@ -91,6 +98,9 @@ function of [[canvaslms]]\footnote{\label{canvaslms-doc}%
   You can also read [[pydoc canvaslms.grades]] for a more brief summary.
 }.
 We want something like [[<<main script>>]] below.
+
+\subsection{DD1301 datintro}
+
 For the datintro course (DD1301), we simply have four lab assignments in the 
 assignment group LAB1.
 LAB1 is the only course component in LADOK.
@@ -99,6 +109,8 @@ LAB1 is the only course component in LADOK.
 report_components "DD1301 HT${YEARS}" \
                   LAB1
 @
+
+\subsection{DD1317 prgi}
 
 For the prgi (DD1317) course we have four components: KAL1, LAB1, LAB2 and 
 LAB3.
@@ -109,8 +121,10 @@ The students must pass all of them for a grade.
 <<main script>>=
 # prgi
 # labs
-report_components "DD131[57] HT${YEARS}" \
-                  "(LAB|MAT|KAL)1"
+report_components "DD1317 HT${YEARS}" \
+                  "LAB1"
+report_components "DD1317 HT${YEARS}" \
+                  "KAL1"
 @
 
 The LAB2 component is just an exam.
@@ -138,10 +152,27 @@ final grade to be the A--F grade of the presentation, but only if the
 specification, peer review and survey are all passed.
 <<main script>>=
 # p-uppgift with optional survey
-report_components "DD131[57] HT${YEARS}" \
+report_components "DD1317 HT${YEARS}" \
                   LAB3 \
                   canvaslms.grades.conjunctavgsurvey
 @
+
+\subsection{DD1315 prgi2[0-3]}
+
+For the old version of the course, we simply have MAT1 instead of KAL1.
+And there was no mandatory survey.
+But we run it for a fixed number of years.
+<<main script>>=
+report_components "DD1315 HT2[0-3]" \
+                  "LAB1"
+report_components "DD1315 HT2[0-3]" \
+                  "MAT1"
+report_components "DD1315 HT2[0-3]" \
+                  "LAB3"
+@ We don't need to run LAB2 for it, because they have to reregister for the 
+newer course to do LAB2.
+
+\subsection{DA2215 vetcyb}
 
 For vetcyb (DA2215) we have one component: INL1.
 It's just a few P/F-assignments and a mandatory survey.
@@ -162,6 +193,8 @@ report_alt_components "DA2215 [HV]T${YEARS}" \
                       "Participation INL1" INL1 \
                       canvaslms.grades.participation
 @
+
+\subsection{DD2520 tilkry}
 
 For tilkry (DD2520) we have two components: INL1 and LAB1.
 The INL1 component is just a few P/F-assignments.
@@ -205,8 +238,8 @@ For details on how to extract the results, read
 (also read \cref{canvaslms-doc} on page~\pageref{canvaslms-doc}).
 
 Course codes always have the same structure, so they're easy to replace.
-But we also want to replace the component name with the desired component name 
-in LADOK.
+But sometimes we also want to replace the component name with the desired 
+component name in LADOK.
 <<helper functions>>=
 report_alt_components() {
   local course="$1"
@@ -222,20 +255,19 @@ report_alt_components() {
   # Get the course results from Canvas.
   canvaslms results -c "$course" -A "$component" $summary_opt \
   | <<change course column to only course code>> \
-  | <<rename the component column to the desired component>> \
-  | <<[[tee]] the component results to use for course grades>> \
-  | ladok report -fv # Report them to LADOK.
+  | <<rename the component column to the desired component>>
 }
 @
 
 However, let's also add a version where the component name is the same.
+This will be used most of the time.
 <<helper functions>>=
 report_components() {
   local course="$1"
   local component="$2"
   local summary_module="$3"
 
-  report_components "$course" "$component" "$component" "$summary_module"
+  report_alt_components "$course" "$component" "$component" "$summary_module"
 }
 @
 
@@ -257,102 +289,122 @@ awk -F '\t' -v OFS='\t' -v comp="$desired_component" '{ $2=comp; print }'
 Now we can set the course grades based on the reported components.
 We'll have to report one course at a time since the course grade is based on 
 different components in different courses.
+
+We'll use the LADOK data to solve this.
+This means that when the code above is run, it outputs what [[ladok report]] 
+should put in LADOK.
+That means that if anyone there completes the course, we will not see it here.
+However, that's only good: we can't use those results anyway until they're 
+certified/attested in LADOK.
+
+We simply do this for \emph{all rounds}:
+We look for students who have no grade on the course,
+then we look if they have a grade on the component,
+and if they do, we report that as the course grade.
+We'll fail for those who have not yet finished the other components of the 
+course or those whose results are not yet attested,
+but that's acceptable.
+Then we get an overview of who has leftovers.
+However, we can actually filter those out by looking at the latest date of any 
+component---which we'll need anyway for the date of the course.
 <<main script>>=
-report_course "DD131[57] HT${YEARS}" \
-              LAB3
-report_course "DD2520 VT${YEARS}" \
-              LAB1
+report_course DD1315 LAB3
+report_course DD1317 LAB3
+report_course DD2520 LAB1
 @ We don't need to report the course grade for the other courses since they 
 have only one component.
 For courses with only one component, LADOK will automatically set the course 
 grade based on the grade of the single component.
 
-Setting the course grade can be done in several ways.
-The first option is to look at what results are already attested in LADOK.
-Unfortunately, this requires the round code---which we don't have access 
-to\footnote{%
-  For a brief period, IT included the round code in the course title in Canvas 
-  at KTH.
-  That was beneficial in many ways, but unfortunately it faced a backlash from 
-  teachers and it was undone.
-}.
-However, we can get this data from the [[canvaslms results]] line in 
-[[report_components]].
-That's why we want to [[tee]] that data out of that pipeline.
-
-When we [[tee]] the data out, we want to use the [[-a]] option to append if the 
-file already exists.
-The reason for this is that we want all results for the course in one file.
-But sometimes we might have to run the script several times---once for each 
-component.
-<<[[tee]] the component results to use for course grades>>=
-tee -a "${DATA_DIR}/${course}-results.csv"
-<<constants>>=
-DATA_DIR=`mktemp -d`
-@
-
-We'll provide a function that takes a course and a component and returns the 
-results for that course and component.
-If no component is given, we use all components.
-If we don't have results from before, we report those components to get the 
-data.
-<<helper functions>>=
-component_grades() {
-  local course="$1"
-  local component="${2:-[A-Z]{3}[0-9]+}"
-  local grades="${DATA_DIR}/${course}-results.csv"
-
-  if [[ ! -f "$grades" ]]; then
-    report_components "$course" "$component"
-  fi
-  cat "$grades" \
-  | grep -E "\s${component}\s" \
-  | sort -u
-}
-@ The data we get here has the following columns (tab separated):
+This approach makes for a simpler implementation of [[report_course]].
+We simply extract the course data using [[ladok course -l]] and then filter it 
+using [[awk]].
+The output data from [[ladok course -l]] has the following columns (tab 
+separated):
 \begin{minted}{text}
-course    component   student   grade   date   graders
+course_code  round_code  component  student  grade  date
 \end{minted}
+The [[-l]] option gives us the student's LADOK identifier instead of name.
 
-Now we can use this file when reporting the course grades.
-If the file doesn't exist, we simply run [[report_components]].
-If the results are not yet attested (certified), the [[ladok report]] command 
-will simply give an error that all components of the course are not yet 
-attested.
+The course grade is given by the component being the same as the course code.
+If the course grade is empty but the grade of the component we're interested in 
+is not empty, we report the component grade as the course grade.
+So we can filter out whoever has no course grade ([[-]] in the grade column).
+Then we filter out who of those have a grade on the component.
 
-Now it's just to sort out the students and then for each student get the grade 
-of the component, get the latest grade date of all components and finally 
-report to LADOK.
+As for the grade, we need the newest grade on any component for a student.
+This also allows us to filter out students who have not yet finished all 
+components of the course.
+The dates are in ISO format (YYYY-MM-DD), so sorting them lexicographically 
+works.
+If there is no result on a component, the date is blank.
+
+Finally, we report those to LADOK.
 <<helper functions>>=
 report_course() {
   local course="$1"
   local component="$2"
 
-  for student in $(component_grades "$course" \
-                   | cut -f 3)
-  do
-    local grade=$(component_grades "$course" "$component" \
-                  | grep "$student" \
-                  | cut -f 4)
-    local grade_date=$(component_grades "$course" \
-                       | grep "$student" \
-                       | cut -f 5 \
-                       | sort \
-                       | tail -n 1)
+  ladok course -l "$course" \
+  | awk -F '\t' -v OFS='\t' \
+        -v comp="$component" \
+        -v course="$course" \
+    '{
+       <<store course and component grades and dates>>
+     }
+     END {
+           <<print students with component grade but no course grade>>
+         }'
+}
+@
 
-    if [ "$grade" = "" ]; then
-      continue
-    fi
+We check for the course grade and store if it exists.
+<<store course and component grades and dates>>=
+if ($3 == $1) {
+  course_grade[$4]=$5
+}
+@
 
-    local course_code=$(component_grades "$course" "$component" \
-                        | grep "$student" \
-                        | cut -f 1 \
-                        | sort -u)
+Then we check for the component grade and store it if it exists.
+<<store course and component grades and dates>>=
+else if ($3 == comp) {
+  component_grade[$4]=$5
+}
+@
 
-    # `component code = course code` yields final grade on course.
-    ladok report -fv "$course_code" "$course_code" \
-                     "$student" "$grade" "$grade_date"
-  done
+We also store the latest date for \emph{any} component.
+Here we also want to unset the grade date if there is a date that is 
+blank---since that means one component is not yet finished.
+However, we should only do that for components, not the course grade.
+
+If we find a blank date, we set the date to [[-]].
+This way we can be sure to distinguish between the first and second time we 
+look at dates.
+We do the same for assignments.
+<<store course and component grades and dates>>=
+if ($3 != $1) {
+  if ($5 == "-" || $5 == "" || $6 == "")
+    component_date[$4] = "-"
+  else if (component_date[$4] != "-" && $6 > component_date[$4])
+    component_date[$4] = $6
+}
+@
+
+Now we want to print the students who have a component grade but no course.
+But only if they also have a valid date (not [[-]]).
+And we want to print them in the format required by [[ladok report]]:
+\begin{minted}{text}
+course_code  course_code  student  grade  date
+\end{minted}
+<<print students with component grade but no course grade>>=
+for (student in component_grade) { \
+  if (course_grade[student] == "-" \
+      && component_grade[student] != "-" \
+      && component_date[student] != "-")
+  {
+    print course, course, student, component_grade[student], \
+                                   component_date[student]
+  }
 }
 @
 
