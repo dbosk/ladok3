@@ -1818,7 +1818,7 @@ class CourseResult(LadokRemoteData):
     """Returns True if the grade has been finalized (klarmarkerad) in LADOK"""
     try:
       return self.__finalized
-    except AttributeError:
+    except AttributeError: # can occur with an old cache
       return self.__attested
 
   def __str__(self):
