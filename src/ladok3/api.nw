@@ -2821,3 +2821,371 @@ print(json.dumps(ladok3.clean_data(ladok.omradesbehorighet_JSON()), indent=2))
 print(r"\end{minted}")
 \end{pycode}
 
+
+\chapter{Program cohort access and examination results}
+
+Two new capabilities allow the extraction of cohort-level data that
+complements the existing per-student and per-course-round queries.
+
+\begin{enumerate}
+\item \textbf{Program cohort}: listing the students admitted to a
+  \emph{program round} (\emph{utbildningstillfälle}) for a given
+  admission semester (e.g.\ HT25 = autumn 2025).  In LADOK's internal
+  terminology the enrolment is a
+  \emph{kurspaketeringstillfälle} (course-package round), but it is
+  identified by the program-round UID returned by the
+  \texttt{utbildningsinformation} service.
+
+\item \textbf{Examination occasion results}: listing every student
+  registered for an \emph{aktivitetstillfälle} together with their
+  reported result.
+\end{enumerate}
+
+These UIDs from the test environment are used in the tests below.
+<<[[test api.py]]>>=
+# CTFYS HT25 program round (utbildningsinformation service)
+CTFYS_round_id  = "c651ef07-2031-11f0-a301-a2036b2340f3"
+# SH1014 written exam on 2026-01-07 and its associated course round
+SH1014_occasion_id = "01fe3c80-324b-11f0-8a2b-a6b448f445fa"
+SH1014_round_id    = "9ade5891-bba7-11ef-9553-beecfac44351"
+# Student with multiple SH1014/TEN1 attempts: first F (2025-01-07), then C (2026-01-07)
+SH1014_retake_student_uid = "134e3c18-0e50-11ed-8f4d-87c157374df8"
+@
+
+
+\section{[[program_rounds_JSON]]}
+
+To identify which program round corresponds to a given admission semester
+we first need all rounds for a program code.  The
+[[utbildningsinformation]] service provides this via a GET to the
+[[utbildningstillfalle/filtrera]] endpoint.
+
+Each item in the returned [[Resultat]] list includes:
+\begin{description}
+\item[[[Uid]]] The round's unique identifier, used to fetch participants.
+\item[[[SammanslagenTillfallesperiod]]] Contains [[Startdatum]] and
+  [[Slutdatum]] — used to identify the admission semester.
+\item[[[Utbildningstillfalleskod]]] The short round code, e.g.\ [[OP116]].
+\item[[[StartperiodID]]] An integer identifying the starting period.
+\end{description}
+
+The caller can filter [[Resultat]] by [[Startdatum]] to pick the round
+for a particular semester (e.g.\ HT25 = month $\ge 7$ of year 2025).
+<<LadokSession data methods>>=
+def program_rounds_JSON(self, program_code):
+  """Return all program rounds for a program code.
+
+  Returns the full API response dict with keys 'Resultat' (list of
+  rounds) and 'TotaltAntalPoster'.  Each round contains 'Uid',
+  'SammanslagenTillfallesperiod', 'Utbildningstillfalleskod', etc.
+
+  Args:
+    program_code: program code string, e.g. 'CTFYS'
+  """
+  data = self.get_query(
+    f"/utbildningsinformation/internal/utbildningstillfalle/filtrera"
+    f"?utbildningskod={program_code}&sprakkod=sv&page=1&limit=100",
+    "application/vnd.ladok-utbildningsinformation+json"
+  )
+  return data
+@
+
+The test verifies that [[CTFYS_round_id]] appears among the returned
+program rounds.
+<<test functions>>=
+def test_program_rounds_JSON():
+  data = ladok.program_rounds_JSON("CTFYS")
+  assert "Resultat" in data
+  assert len(data["Resultat"]) > 0
+  round_uids = [r["Uid"] for r in data["Resultat"]]
+  assert CTFYS_round_id in round_uids
+@
+
+
+\section{[[program_round_participants_JSON]]}
+
+Given a program-round UID we fetch its participants from the
+[[studiedeltagande]] service.  The endpoint path uses
+[[kurspaketeringstillfalle]] (course-package round) — the internal LADOK
+term for a program-round enrolment — rather than [[utbildningstillfalle]].
+The caller supplies the UID returned by [[program_rounds_JSON]].
+
+The response is paginated.  Use [[TotaltAntalPoster]] to determine how
+many pages to request.
+
+Each item in [[Resultat]] contains:
+\begin{description}
+\item[[[Student]]] Sub-object with [[Uid]], [[Fornamn]], [[Efternamn]],
+  and [[Personnummer]].
+\item[[[TillstandKurspaketering]]] Participation status codes, e.g.\
+  [[pagaende]] (active), [[ej_paborjad]] (admitted, not yet started).
+\item[[[SummeradGodkandOmfattning]]] Approved ECTS credits accumulated
+  so far.
+\end{description}
+<<LadokSession data methods>>=
+def program_round_participants_JSON(self, round_uid, page=1, limit=400):
+  """Return participants enrolled in a program round.
+
+  Returns the full API response dict with keys 'Resultat' (list of
+  participants) and 'TotaltAntalPoster'.
+
+  Args:
+    round_uid: UID of a program round (from program_rounds_JSON)
+    page:  page number, 1-based (default 1)
+    limit: results per page (default 400)
+  """
+  data = self.get_query(
+    f"/studiedeltagande/internal/deltagare/kurspaketeringstillfalle"
+    f"/{round_uid}"
+    f"?page={page}&limit={limit}"
+    f"&orderby=NAMN_ASC&orderby=PERSONNUMMER_ASC",
+    "application/vnd.ladok-studiedeltagande+json"
+  )
+  return data
+@
+
+<<test functions>>=
+def test_program_round_participants_JSON():
+  data = ladok.program_round_participants_JSON(CTFYS_round_id)
+  assert "Resultat" in data
+  assert "TotaltAntalPoster" in data
+  assert data["TotaltAntalPoster"] > 0
+  first = data["Resultat"][0]
+  assert "Student" in first
+  assert "Uid" in first["Student"]
+  assert "Personnummer" in first["Student"]
+@
+
+
+\section{[[examination_occasions_JSON]]}
+
+Examination occasions (\emph{aktivitetstillfälle}) are listed via the
+[[resultat]] service.  A single occasion covers one exam event, e.g.\
+a written examination of course SH1014 on a specific date.
+
+Key fields returned for each occasion:
+\begin{description}
+\item[[[Uid]]] Occasion UID, required for result retrieval.
+\item[[[Datumperiod]]] The examination date(s) as [[Startdatum]] /
+  [[Slutdatum]].
+\item[[[AntalAnmalda]]] Number of registered students.
+\item[[[KurstillfalleUIDer]]] Course-round UIDs associated with this
+  occasion; pass these to [[occasion_results_JSON]].
+\item[[[AktivitetstillfallestypBenamning]]] Human-readable type, e.g.\
+  ``Salsexamination -- tentamen''.
+\end{description}
+<<LadokSession data methods>>=
+def examination_occasions_JSON(self, course_code, page=1, limit=20):
+  """Return examination occasions for a course.
+
+  Returns the full API response dict with keys 'Resultat' (list of
+  occasions) and 'TotaltAntalPoster'.
+
+  Args:
+    course_code: course code string, e.g. 'SH1014'
+    page:  page number, 1-based (default 1)
+    limit: results per page (default 20)
+  """
+  data = self.get_query(
+    f"/resultat/internal/aktivitetstillfalle/filtrera"
+    f"?kurskod={course_code}&page={page}&limit={limit}",
+    "application/vnd.ladok-resultat+json"
+  )
+  return data
+@
+
+<<test functions>>=
+def test_examination_occasions_JSON():
+  data = ladok.examination_occasions_JSON("SH1014")
+  assert "Resultat" in data
+  assert data["TotaltAntalPoster"] > 0
+  occasion_uids = [o["Uid"] for o in data["Resultat"]]
+  assert SH1014_occasion_id in occasion_uids
+@
+
+
+\section{[[occasion_results_JSON]]}
+
+Student results at an examination occasion are fetched by a PUT to
+[[studieresultat/rapportera/aktivitetstillfalle/{uid}/sok]].  Unlike
+the per-component search in [[search_reported_results_JSON]], this
+endpoint requires the course-round UID(s) in the body field
+[[KurstillfallenUID]].
+
+The [[Filtrering]] list selects which result statuses to include:
+\begin{description}
+\item[[[OBEHANDLADE]]] Registered but no grade entered.
+\item[[[UTKAST]]] Draft grade entered, not yet certified.
+\item[[[ATTESTERADE]]] Certified (finalized) results.
+\end{description}
+
+Each item in [[Resultat]] contains:
+\begin{description}
+\item[[[Student]]] Sub-object with [[Uid]], [[Fornamn]], [[Efternamn]].
+\item[[[ResultatPaUtbildningar]]] List of result objects.  When a
+  certified result exists, [[SenastAttesteradeResultat]] holds the grade
+  with sub-fields [[Betygsgradsobjekt.Kod]] (e.g.\ [[A]]--[[F]] or
+  [[P]]/[[F]]) and [[Examinationsdatum]].
+\item[[[Rapporteringskontext]]] Contains [[UtbildningsinstansUID]] — the
+  component-instance UID required if you need to report further results.
+\end{description}
+<<LadokSession data methods>>=
+def occasion_results_JSON(self, occasion_uid, course_round_uids,
+                          filtrering=None, page=1, limit=400):
+  """Return student results for an examination occasion.
+
+  Returns the full API response dict with keys 'Resultat' (list of
+  student-result objects) and 'TotaltAntalPoster'.
+
+  Args:
+    occasion_uid:       UID of the examination occasion
+    course_round_uids:  list of course-round UIDs for the occasion
+                        (taken from the occasion's KurstillfalleUIDer)
+    filtrering:         list of result-status codes to include; defaults
+                        to all three ['OBEHANDLADE','UTKAST','ATTESTERADE']
+    page:  page number, 1-based (default 1)
+    limit: results per page (default 400)
+  """
+  if filtrering is None:
+    filtrering = ["OBEHANDLADE", "UTKAST", "ATTESTERADE"]
+  put_data = {
+    "Filtrering": filtrering,
+    "KurstillfallenUID": course_round_uids,
+    "OrderBy": ["EFTERNAMN_ASC", "FORNAMN_ASC", "PERSONNUMMER_ASC"],
+    "Limit": limit,
+    "Page": page,
+  }
+  data = self.put_query(
+    f"/resultat/internal/studieresultat/rapportera"
+    f"/aktivitetstillfalle/{occasion_uid}/sok",
+    put_data
+  )
+  return data
+@
+
+<<test functions>>=
+def test_occasion_results_JSON():
+  data = ladok.occasion_results_JSON(
+    SH1014_occasion_id, [SH1014_round_id])
+  assert "Resultat" in data
+  assert "TotaltAntalPoster" in data
+  assert data["TotaltAntalPoster"] > 0
+  first = data["Resultat"][0]
+  assert "Student" in first
+  assert "ResultatPaUtbildningar" in first
+@
+
+
+\section{[[student_result_history_JSON]]}
+
+The preceding methods answer the question ``who sat which exam and what
+did they get?''\@ from the perspective of an \emph{occasion}.  But for
+analysing student progress we often need the opposite perspective: given
+a student, what is their \emph{complete} result history across every
+course and every attempt?
+
+The LADOK~GUI presents exactly this on a student's historik~(history)
+tab.  Discovering the underlying endpoint took a detour through the
+hypermedia links embedded in the [[resultatuppfoljning/sok]] response:
+each [[Student]] object carries a link with relation
+[[resultat/historik]] pointing to
+[[/resultat/internal/historik/student/{uid}]].
+
+\subsection*{Structure of the response}
+
+The endpoint returns a single key [[Historikposter]], a flat list of
+result events ordered newest-first.  Each event captures one grade
+action and contains:
+
+\begin{description}
+\item[[[Sammanfattning]]] A human-readable summary in Swedish and
+  English, e.g.\ ``Modern fysik~4.0~hp SH1014 / Tentamen~4.0~hp TEN1''.
+  Course-level entries (finalization of a whole course) have no
+  slash-separated component; component-level entries do.
+\item[[[Examinationsdatum]]] The date the examination took place.
+\item[[[BetyggradID]]] Numeric identifier of the grade; combine with
+  [[BetygsskalaID]] to resolve the letter code (A--F, P/F, etc.).
+\item[[[AvserOmfattning]]] Credits the result covers (0.0 for
+  course-level finalization entries).
+\item[[[Handelse]]] The event type: [[skapad]]~(created),
+  [[borttagen]]~(deleted/retracted), or [[rattad]]~(corrected).
+\item[[[Historiktyp]]] Always [[resultat.domain.historiktyp.resultat]]
+  for grade results.
+\item[[[Attestant]], [[Beslutsfattare]]] Who certified and who decided
+  the grade.
+\item[[[link]]] Contains a [[historik/pakurs]] relation linking to the
+  per-course variant of this endpoint
+  ([[historik/student/{uid}/kurs/{kurs\_uid}]]).
+\end{description}
+
+Crucially, \emph{all} attempts appear, including failed ones and
+subsequently corrected results.  A student who failed TEN1 in January
+2025 and passed in January 2026 will have two separate entries for
+TEN1~--- one with the failing grade and one with the passing grade~---
+plus a third entry for the course-level finalization that only appears
+once the student has passed.
+
+<<LadokSession data methods>>=
+def student_result_history_JSON(self, student_uid):
+  """Return all result history events for a student.
+
+  Uses GET /resultat/internal/historik/student/{uid}.
+
+  Returns a list of Historikposter (history events) covering every
+  course and component the student has received a grade in, newest
+  first.  All attempts are included --- failed grades, corrected
+  results, and retracted entries appear alongside passing grades.
+  """
+  data = self.get_query(
+    f"/resultat/internal/historik/student/{student_uid}")
+  try:
+    return data["Historikposter"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(
+      f"Unexpected response format when fetching result history "
+      f"for student {student_uid}: missing 'Historikposter' key"
+    ) from err
+@
+
+We test with a student who has two TEN1 entries for SH1014: a failing
+grade from January~2025 and a passing~C from January~2026.
+<<test functions>>=
+def test_student_result_history_JSON():
+  history = ladok.student_result_history_JSON(SH1014_retake_student_uid)
+  assert isinstance(history, list)
+  assert len(history) > 0
+  # Every entry must have the core fields
+  for entry in history:
+    assert "Sammanfattning" in entry
+    assert "Examinationsdatum" in entry
+    assert "Historiktyp" in entry
+    assert "Handelse" in entry
+  # Verify that multiple SH1014/TEN1 attempts are present
+  sh1014_ten1 = [
+    e for e in history
+    if "SH1014" in e.get("Sammanfattning", {}).get("sv", "")
+    and "TEN1" in e.get("Sammanfattning", {}).get("sv", "")
+  ]
+  assert len(sh1014_ten1) >= 2, (
+    f"Expected at least 2 SH1014/TEN1 entries (F then C), got {len(sh1014_ten1)}"
+  )
+@
+
+The output for our test student looks like this (showing only the
+SH1014 entries for brevity):
+\begin{pycode}[apitest]
+import json as _json
+# Student with F (2025-01-07) then C (2026-01-07) on SH1014/TEN1
+SH1014_retake_student_uid = "134e3c18-0e50-11ed-8f4d-87c157374df8"
+history = ladok.student_result_history_JSON(SH1014_retake_student_uid)
+ladok3.clean_data(history)
+sh1014 = [
+  e for e in history
+  if "SH1014" in e.get("Sammanfattning", {}).get("sv", "")
+]
+print(r"\begin{minted}{JSON}")
+print(_json.dumps(sh1014, ensure_ascii=False, indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
