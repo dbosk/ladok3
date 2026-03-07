@@ -20,6 +20,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import urllib.parse
 import weblogin.ladok
+import weblogin.microsoft
 
 <<classes>>
 <<functions>>
@@ -32,7 +33,6 @@ These illustrate how to the [[ladok3]] module and provide testing using
 import json
 import ladok3
 import os
-import weblogin.kth
 
 <<test functions>>
 @
@@ -100,21 +100,26 @@ This will guarantee that we're always signed in.
 class LadokSession:
   """This is an interface for reading and writing data from and to LADOK."""
   def __init__(self, institution, vars=None, autologin_handlers=None,
-               test_environment=False):
+               test_environment=False, notification_cmd=None):
     """
     Creates a session with LADOK.
-    - `institution` is the name (str) of the university that will give a unique 
+    - `institution` is the name (str) of the university that will give a unique
       match when searching SeamlessAccess.org (see weblogin.ladok.SSOlogin).
-    - `vars` is a dictionary that is passed to weblogin.ladok.SSOlogin to 
-      supply the login credentials. Usually contains keys 'username' and 
+    - `vars` is a dictionary that is passed to weblogin.ladok.SSOlogin to
+      supply the login credentials. Usually contains keys 'username' and
       'password', see weblogin.ladok.SSOlogin documentation for details.
-    - `autologin_handlers` is a list of weblogin.AutologinHandler objects 
-      specific to the institution. Usually one for the SAML handler and one for 
-      the actual login server. (For KTH it's weblogin.kth.SAMLlogin and 
-      weblogin.kth.UGlogin.) Default value is None, only the 
+    - `autologin_handlers` is a list of weblogin.AutologinHandler objects
+      specific to the institution. Usually one for the SAML handler and one for
+      the actual login server. (For KTH it's weblogin.kth.SAMLlogin and
+      weblogin.kth.UGlogin.) Default value is None, only the
       `weblogin.ladok.SSOlogin` handler will be used.
-    - `test_environment` specifies whether we should use LADOK's test 
+      A `weblogin.microsoft.AzureMFA` handler is always appended automatically
+      to handle Microsoft Authenticator MFA challenges.
+    - `test_environment` specifies whether we should use LADOK's test
       environment instead of the production environment.
+    - `notification_cmd` is an optional command (str) used to notify the user
+      of the MFA number (e.g. 'notify-send'). The environment variable
+      WEBLOGIN_MFA_NOTIFICATION takes precedence if set.
     """
     self.__session = None
     <<construct the session object from the autologin handlers>>
@@ -133,30 +138,20 @@ class LadokSession:
 @
 
 Now let's test this class.
-We will use the KTH version to log in.
-KTH needs the LADOK SSO handler (specifying KTH), the KTH SAML server handler 
-(to handle the SSO request) and the KTH UG server (the actual login server).
+We create a single [[LadokSession]] object at the module level that is shared
+across all tests.
+This minimizes the number of MFA authentications required when running the test
+suite, since each session creation triggers a full login flow.
 <<test functions>>=
 ladok = ladok3.LadokSession(
         os.environ["LADOK_INST"],
         vars={"username": os.environ["LADOK_USER"],
               "password": os.environ["LADOK_PASS"]},
-        test_environment=True) # for experiments
+        test_environment=True,
+        notification_cmd="notify-send")
 
 def test_LadokSession_vars():
   assert ladok.user_info_JSON()
-
-def test_LadokSession_autologin_handlers():
-  ladok_handlers = ladok3.LadokSession(
-          "KTH Royal Institute of Technology",
-          autologin_handlers = [
-            weblogin.kth.SAMLlogin(),
-            weblogin.kth.UGlogin(os.environ["KTH_LOGIN"],
-                                 os.environ["KTH_PASSWD"])
-          ],
-          test_environment=True) # for experiments
-
-  assert ladok_handlers.user_info_JSON()
 @
 
 
@@ -166,11 +161,20 @@ To construct the session, we simply construct a [[weblogin.AutologinSession]]
 object.
 This one requires a list of [[weblogin.AutologinHandler]] objects.
 
-We simply pass the institution to the constructor of the 
+We simply pass the institution to the constructor of the
 [[weblogin.ladok.SSOlogin]] class.
 We add that to the list of autologin handlers supplied by the user.
-Due to the internal workings of [[weblogin.AutologinSession]], we add it first 
+Due to the internal workings of [[weblogin.AutologinSession]], we add it first
 as a, probably negligible, optimization.
+
+Many Swedish universities use Microsoft's identity platform, which may require
+multi-factor authentication (MFA) via Microsoft Authenticator.
+We add a [[weblogin.microsoft.AzureMFA]] handler at the end of the handler list
+to handle this transparently.
+It is placed last because MFA challenges occur after password authentication.
+The handler is passive: if no MFA challenge is encountered, it does nothing.
+Users can configure a custom notification command via the
+[[WEBLOGIN_MFA_NOTIFICATION]] environment variable.
 <<construct the session object from the autologin handlers>>=
 if not vars:
   vars = {}
@@ -180,6 +184,9 @@ if not autologin_handlers:
 autologin_handlers.insert(0,
             weblogin.ladok.SSOlogin(institution, vars=vars,
                                     test_environment=test_environment))
+
+autologin_handlers.append(
+            weblogin.microsoft.AzureMFA(notification_cmd=notification_cmd))
 
 self.__session = weblogin.AutologinSession(autologin_handlers)
 <<configure retry policy for the session>>
