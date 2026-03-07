@@ -363,11 +363,18 @@ login credentials, in order of priority:
    this to work on the WSL platform (and possibly on Windows), you need to 
    install the `keyrings.alt` package: `python3 -m pip install keyrings.alt`.
 
-The keyring is the most secure. However, sometimes one want to try different 
-credentials, so the environment should override the keyring. Also, on WSL the 
-keyring might require you to enter a password in the terminal---this is very 
-inconvenient in scripts. However, when logging in, we first try to store the 
+The keyring is the most secure. However, sometimes one want to try different
+credentials, so the environment should override the keyring. Also, on WSL the
+keyring might require you to enter a password in the terminal---this is very
+inconvenient in scripts. However, when logging in, we first try to store the
 credentials in the keyring.
+
+If your institution uses Microsoft Authenticator for multi-factor authentication
+(MFA), ladok will automatically handle the number-matching challenge. A number
+will be displayed that you need to enter in the Authenticator app on your phone.
+By default, the number is printed to the terminal. You can set the environment
+variable WEBLOGIN_MFA_NOTIFICATION to a command that will display the number as
+a notification, e.g. `export WEBLOGIN_MFA_NOTIFICATION=notify-send`.
 
 <<add subparsers to subp>>=
 login_parser = subp.add_parser("login",
