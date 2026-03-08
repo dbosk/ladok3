@@ -118,10 +118,19 @@ An instance of this class provides the [[session]] attribute, which is an
 authenticated session to LADOK's REST API.
 It uses the [[requests]] module.
 
-We can use the class as follows.
+The simplest way to get a session is to use the module-level
+[[ladok3.session]] attribute, which handles credential loading, session
+caching, and cleanup automatically:
+\begin{minted}[linenos]{python}
+import ladok3
+
+student = ladok3.session.get_student("123456-1234")
+\end{minted}
+
+For more control, we can use the class directly as follows.
 \inputminted{python}{../examples/example_LadokSession.py}
 
-An alternative way would be to use the general authentication procedure that 
+An alternative way would be to use the general authentication procedure that
 seems to work at most Swedish universities.
 \begin{minted}[linenos]{python}
 import ladok3
@@ -140,7 +149,7 @@ import ladok3.cli
 ladok = ladok3.LadokSession(*ladok3.cli.load_credentials(),
                             test_environment=True) # for experiments
 \end{minted}
-Just note that unpacking [[*]] to unpack the tuple that [[load_credentials]] 
+Just note the unpacking [[*]] to unpack the tuple that [[load_credentials]]
 returns.
 
 This chapter covers how the [[LadokSession]] class work.
