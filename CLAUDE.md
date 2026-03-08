@@ -136,16 +136,13 @@ LadokError
 ## Common Patterns
 
 ```python
-# Using CLI credentials (recommended)
+# Simplest: module-level session (recommended)
 import ladok3
-import ladok3.cli
-ls = ladok3.LadokSession(*ladok3.cli.load_credentials())
+student = ladok3.session.get_student("123456-1234")
 
-# Reusing cached session
-_, credentials = ladok3.cli.load_credentials()
-ls = ladok3.cli.restore_ladok_session(credentials)
-# ... work with session ...
-ladok3.cli.store_ladok_session(ls, credentials)
+# With session caching via get_session()
+import ladok3.cli
+ls, credentials = ladok3.cli.get_session()
 
 # Grade reporting
 student = ls.get_student("123456-1234")
