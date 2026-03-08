@@ -22,12 +22,14 @@ import urllib.parse
 import weblogin.ladok
 import weblogin.microsoft
 
+<<lazy session attribute>>
+
 <<classes>>
 <<functions>>
 @
 
 We also provide tests for all functionality in [[<<test ladok3.py>>]].
-These illustrate how to the [[ladok3]] module and provide testing using 
+These illustrate how to the [[ladok3]] module and provide testing using
 [[pytest]].
 <<[[test ladok3.py]]>>=
 import json
@@ -35,6 +37,77 @@ import ladok3
 import os
 
 <<test functions>>
+@
+
+
+\section{Convenient access to a cached session}
+
+For scripts that use the CLI's cached credentials, we provide a
+convenient module-level attribute [[session]].
+This allows a one-liner pattern:
+\begin{minted}{python}
+import ladok3
+student = ladok3.session.get_student("191234561234")
+\end{minted}
+instead of the usual three-line boilerplate of loading credentials
+and restoring a cached session manually.
+
+The session lifecycle---load credentials, try to restore a cached
+session, fall back to creating a fresh one---is shared with the CLI.
+Rather than duplicating that logic here, we delegate to
+[[ladok3.cli.get_session]], which encapsulates the three-step
+process.
+The helper lives in [[cli]] because that module already owns the
+credential-loading and session-caching functions it depends on.
+
+Since LADOK sessions contain OAuth tokens that get refreshed during
+use, we register an [[atexit]] handler to save the session back to
+the cache on process exit.
+This preserves refreshed tokens for the next invocation, just as the
+CLI does after every command.
+
+We use Python's module-level [[__getattr__]] (PEP~562) for lazy
+loading---importing [[ladok3]] alone does \emph{not} require
+credentials; the session is loaded only when [[session]] is first
+accessed.
+We import [[ladok3.cli]] inside [[__getattr__]] rather than at module
+level to avoid circular imports, since [[cli.py]] itself imports
+[[ladok3]].
+<<lazy session attribute>>=
+_session = None
+_credentials = None
+
+def _save_session():
+    if _session is not None and _credentials is not None:
+        import ladok3.cli
+        ladok3.cli.store_ladok_session(
+            _session, _credentials
+        )
+
+def __getattr__(name):
+    global _session, _credentials
+    if name == "session":
+        if _session is None:
+            import atexit
+            import ladok3.cli
+            try:
+                _session, _credentials = (
+                    ladok3.cli.get_session()
+                )
+            except Exception:
+                _session = None
+            if _session is None:
+                raise RuntimeError(
+                    "No LADOK credentials found. "
+                    "Run `ladok login` first, or "
+                    "create a session manually with "
+                    "ladok3.LadokSession(...)."
+                )
+            atexit.register(_save_session)
+        return _session
+    raise AttributeError(
+        f"module 'ladok3' has no attribute {name!r}"
+    )
 @
 
 

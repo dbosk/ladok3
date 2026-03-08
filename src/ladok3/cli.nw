@@ -166,31 +166,55 @@ When we create the LADOK session object, we must supply those credentials to
 the [[weblogin.ladok.SSOlogin]] login handler.
 
 This leads to the following approach.
-[[LADOK_INST]] is simply a string identifying the institution at 
-SeamlessAccess.org (see documentation of [[weblogin]]) and [[LADOK_VARS]] is a 
-dictionary where the keys map to variable names and the values should be 
+[[LADOK_INST]] is simply a string identifying the institution at
+SeamlessAccess.org (see documentation of [[weblogin]]) and [[LADOK_VARS]] is a
+dictionary where the keys map to variable names and the values should be
 substituted in the login forms (see documentation of [[weblogin]]).
 We use [[LADOK_VARS]] as credentials, since it contains the credentials.
-<<create or restore the LadokSession ls>>=
-LADOK_INST, LADOK_VARS = load_credentials(args.config_file)
-try:
-  ls = restore_ladok_session(LADOK_VARS)
-<<handle exceptions during restore of [[ls]]>>
-if not ls:
-  ls = ladok3.LadokSession(LADOK_INST, vars=LADOK_VARS)
-<<save LadokSession ls>>=
-store_ladok_session(ls, LADOK_VARS)
+
+The session lifecycle---load credentials, try to restore a cached session, fall
+back to a fresh [[LadokSession]]---is shared with the module-level
+[[ladok3.session]] attribute.
+We cannot have the CLI use [[ladok3.session]] directly, because the CLI needs
+to pass a custom [[config_file]] path and because the [[login]] command must
+work even without credentials.
+Instead, we factor the shared lifecycle into [[get_session]], which both the CLI
+and [[ladok3.session]] call.
+<<functions>>=
+def get_session(config_file=None):
+  """Load or create a LadokSession from available credentials.
+
+  Tries to restore a cached session first; if unavailable, creates a fresh
+  one from credentials. Returns a tuple of (session, credentials).
+
+  Args:
+      config_file (str or None): Path to configuration file, or None for
+          default.
+
+  Returns:
+      tuple: (LadokSession, credentials) where credentials is a dict.
+
+  Raises:
+      ValueError: If a cached session exists but cannot be decrypted.
+  """
+  institution, credentials = load_credentials(config_file)
+  session = restore_ladok_session(credentials)
+  if not session:
+    session = ladok3.LadokSession(institution, vars=credentials)
+  return session, credentials
 @
 
-Now, if there is an error from [[restore_ladok_session]], we know that there is 
-a session that should be loaded.
-If there is no previous session, it will just return [[None]].
-In the event of an exception, we know that either the credentials aren't 
-available to decrypt it or the file is corrupted.
-In either case, we should tell the user.
-<<handle exceptions during restore of [[ls]]>>=
+The CLI calls [[get_session]] with the user-supplied config file path.
+We catch [[ValueError]] separately because it indicates a corrupted or
+unreadable cache---the user should know about that rather than silently
+creating a new session.
+<<create or restore the LadokSession ls>>=
+try:
+  ls, LADOK_VARS = get_session(args.config_file)
 except ValueError as error:
   err(-1, f"Couldn't restore LADOK session: {error}")
+<<save LadokSession ls>>=
+store_ladok_session(ls, LADOK_VARS)
 @
 
 \subsection{Saving and restoring the [[LadokSession]] object}
