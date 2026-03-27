@@ -199,65 +199,9 @@ def get_session(config_file=None):
   """
   institution, credentials = load_credentials(config_file)
   session = restore_ladok_session(credentials)
-  <<validate or discard restored [[session]]>>
   if not session:
     session = ladok3.LadokSession(institution, vars=credentials)
   return session, credentials
-@
-
-The cache should preserve cookies and other durable session data, but not the
-temporary control-flow state inside authentication handlers. Some
-[[weblogin]] handlers use a private [[__logging_in]] flag to suppress recursive
-login attempts while a login sequence is already in progress. That flag makes
-sense only within one process. If the user starts a command, gets redirected to
-MFA, and then lets the login attempt time out, the process can still exit and
-store the partially-used session in the cache. Restoring that pickled object in
-a later process would revive handlers that still believe they are already
-logging in, causing them to ignore fresh redirects to LADOK's login page.
-
-We therefore sanitize restored sessions before trusting them. First we reset
-every transient [[__logging_in]] flag we can find on the restored autologin
-handlers. Then we probe the session with one small authenticated request. If
-that request fails, we discard the restored cache and fall back to building a
-fresh [[LadokSession]]. This keeps the cache as an optimization rather than a
-source of stale authentication state.
-<<functions>>=
-def reset_autologin_handler_state(ls):
-  """Clear transient autologin state on a restored session.
-
-  Cached handlers may carry process-local re-entrancy flags such as
-  [[__logging_in]]. Those flags must be reset after unpickling so that a new
-  process can handle redirects normally.
-  """
-  try:
-    handlers = ls.session._AutologinSession__handlers
-  except AttributeError:
-    return
-
-  for handler in handlers:
-    for attribute in vars(handler):
-      if attribute.endswith("__logging_in"):
-        setattr(handler, attribute, False)
-
-def restored_session_is_valid(ls):
-  """Return [[True]] if a restored session still authenticates correctly.
-
-  We validate the cache with [[user_info_JSON()]], which is inexpensive and
-  requires an authenticated LADOK session.
-  """
-  try:
-    ls.user_info_JSON()
-  except (weblogin.AuthenticationError, ladok3.LadokError, ValueError) as err:
-    warn(f"cached session expired, ignoring it: {err}")
-    return False
-  return True
-@
-
-<<validate or discard restored [[session]]>>=
-if session:
-  reset_autologin_handler_state(session)
-  if not restored_session_is_valid(session):
-    session = None
 @
 
 The CLI calls [[get_session]] with the user-supplied config file path.
@@ -382,47 +326,6 @@ key = base64.urlsafe_b64encode(kdf.derive(passwd.encode("utf-8")))
 <<get salt and passwd from credentials list>>=
 salt = credentials[0]
 passwd = credentials[1]
-@
-
-Let's verify the cache hygiene helpers in isolation. The first test models the
-stale flag that motivated this change: a restored handler still has its
-[[__logging_in]] re-entrancy guard set. The second test models a cached session
-whose validation request fails; we should reject that cache rather than letting
-later commands trip over HTML login pages.
-
-<<[[test cli.py]]>>=
-import ladok3
-import ladok3.cli
-
-<<test functions>>
-@
-
-<<test functions>>=
-def test_reset_autologin_handler_state_clears_logging_in_flags():
-  class Handler:
-    def __init__(self):
-      self.__logging_in = True
-
-  class Session:
-    def __init__(self):
-      self._AutologinSession__handlers = [Handler()]
-
-  class RestoredSession:
-    def __init__(self):
-      self.session = Session()
-
-  restored = RestoredSession()
-  ladok3.cli.reset_autologin_handler_state(restored)
-
-  handler = restored.session._AutologinSession__handlers[0]
-  assert not handler._Handler__logging_in
-
-def test_restored_session_is_valid_rejects_api_failures():
-  class RestoredSession:
-    def user_info_JSON(self):
-      raise ladok3.LadokAPIError("redirected to login page")
-
-  assert not ladok3.cli.restored_session_is_valid(RestoredSession())
 @
 
 
