@@ -778,4 +778,3 @@ import ladok3.student
 <<add subparsers to subp>>=
 ladok3.student.add_command_options(subp)
 @
-
