@@ -3189,3 +3189,247 @@ print(_json.dumps(sh1014, ensure_ascii=False, indent=2))
 print(r"\end{minted}")
 \end{pycode}
 
+\section{[[grade_scales_all_text]]}
+
+While [[grade_scales_JSON]] returns the standard grade scales as JSON, some
+institution-specific scales (e.g.\ KTH's own 7-point A--F scale) are only
+available when the endpoint is queried with an XML Accept header.  This method
+fetches the raw XML text so that the caller can parse all scales, including
+institution-defined ones.
+
+<<LadokSession data methods>>=
+def grade_scales_all_text(self) -> str:
+  """Fetch ALL grade scales as raw XML, including institution-specific ones.
+
+  Uses GET /kataloginformation/internal/grunddata/betygsskala with an
+  explicit Accept: application/xml header.  Without this, the server
+  returns JSON (the standard 17-scale subset), which omits institution-
+  specific scales such as KTH's A--F scale.
+
+  Returns the raw XML response text for the caller to parse.
+  """
+  hdrs = self.headers.copy()
+  hdrs.pop("Content-Type", None)
+  hdrs["Accept"] = "application/xml, text/xml;q=0.9, */*;q=0.1"
+  r = self.session.get(
+    self.base_gui_proxy_url
+    + "/kataloginformation/internal/grunddata/betygsskala",
+    headers=hdrs,
+  )
+  r.raise_for_status()
+  return r.text
+@
+
+\section{[[program_round_by_uid_JSON]]}
+
+Fetch the full metadata record for a single programme round by its Ladok UUID.
+The response includes [[Benamning]], [[UtbildningsinstansUID]], a hypermedia
+link array (used to follow the [[struktur]] link), and the admission and study
+start periods.
+
+<<LadokSession data methods>>=
+def program_round_by_uid_JSON(self, round_uid):
+  """Fetch full details of a programme round by its Ladok UUID.
+
+  Uses GET /utbildningsinformation/internal/utbildningstillfalle/{uid}.
+  """
+  return self.get_query(
+    f"/utbildningsinformation/internal/utbildningstillfalle/{round_uid}",
+    "application/vnd.ladok-utbildningsinformation+json",
+  )
+@
+
+\section{[[course_round_details_JSON]]}
+
+Fetch the basic metadata record for a course round.  Useful when only the
+round UUID is known (e.g.\ discovered from a student's participation list)
+and the course code, round code, or start date must be resolved.
+
+The course code may appear at [[Utbildningskod]] directly or nested under
+[[Utbildning.Utbildningskod]], depending on the Ladok version.
+
+<<LadokSession data methods>>=
+def course_round_details_JSON(self, round_uid: str) -> dict:
+  """Fetch full details of a single course round by its Ladok UUID.
+
+  Uses GET /resultat/internal/kurstillfalle/{uid}.
+
+  Returns a dict containing at least Uid, TillfallesKod /
+  Utbildningstillfalleskod, and Startdatum.  The course code may appear
+  at Utbildningskod or nested under Utbildning.Utbildningskod.
+  """
+  return self.get_query(
+    f"/resultat/internal/kurstillfalle/{round_uid}",
+    "application/vnd.ladok-resultat+json",
+  )
+@
+
+\section{[[course_round_utbildningsinformation_JSON]]}
+
+Fetch the \emph{utbildningsinformation} record for a course round.  Unlike
+[[course_round_details_JSON]], this endpoint returns the [[Tillfallesperioder]]
+list, which breaks down the course's credit weight across the study sub-periods
+(P1--P4 in the Swedish academic calendar).
+
+<<LadokSession data methods>>=
+def course_round_utbildningsinformation_JSON(self, round_uid: str) -> dict:
+  """Fetch the utbildningsinformation record for a course round.
+
+  Uses GET /utbildningsinformation/internal/utbildningstillfalle/{uid}.
+
+  Returns Tillfallesperioder --- a list of study sub-periods, each with a
+  Lasperiodsfordelning.Fordelningsposter list that maps period codes
+  (e.g. 'P1', 'P2') to their HP contribution.
+  """
+  return self.get_query(
+    f"/utbildningsinformation/internal/utbildningstillfalle/{round_uid}",
+    "application/vnd.ladok-utbildningsinformation+json",
+  )
+@
+
+\section{[[student_program_participations_JSON]]}
+
+Returns all programme-round participations for a student.  Each entry carries
+an [[Utbildningsinformation]] sub-dict with the programme code, round UUID,
+round code, name, and study periods.  Used both to auto-discover master
+programme enrolments and to locate the enrollment-history URI for each
+student--programme pair.
+
+<<LadokSession data methods>>=
+def student_program_participations_JSON(self, student_uid):
+  """Return all programme-round participations for a student.
+
+  Uses GET /studiedeltagande/internal/paborjadutbilding/kurspaketering/
+  student/{uid}.
+
+  Each item in the returned list has an Utbildningsinformation sub-dict
+  with Utbildningskod, UtbildningstillfalleUID, Utbildningstillfalleskod,
+  Benamning, and Perioder.
+  """
+  data = self.get_query(
+    f"/studiedeltagande/internal/paborjadutbilding/kurspaketering"
+    f"/student/{student_uid}",
+    "application/vnd.ladok-studiedeltagande+json",
+  )
+  return data.get("Tillfallesdeltaganden", [])
+@
+
+\section{[[student_course_participations_JSON]]}
+
+Returns all course-round participations for a student.  Used to discover which
+course rounds a student has attended independently of the programme study plan
+--- important for elective courses or courses taken outside the nominal
+curriculum.
+
+The response key varies between Ladok versions; the method falls back from
+[[Tillfallesdeltaganden]] to [[Resultat]] if the former is absent.
+
+<<LadokSession data methods>>=
+def student_course_participations_JSON(self, student_uid: str) -> list:
+  """Return all course-round participations for a student.
+
+  Uses GET /studiedeltagande/internal/deltagare/kurstillfalle/student/{uid}.
+
+  Each item typically contains:
+    - UtbildningstillfalleUID: the course round UUID
+    - Utbildningsinformation.Utbildningskod: the course code
+    - Status.Kod: participation status
+  """
+  data = self.get_query(
+    f"/studiedeltagande/internal/deltagare/kurstillfalle/student/{student_uid}",
+    "application/vnd.ladok-studiedeltagande+json",
+  )
+  return data.get("Tillfallesdeltaganden", data.get("Resultat", []))
+@
+
+\section{[[fetch_linked_uri_JSON]]}
+
+Several Ladok responses include hypermedia links whose [[href]] values are full
+URIs pointing to the API host (e.g.\
+\texttt{https://api.test.ladok.se:443/utbildningsinformation/\ldots}).  This
+helper strips the host component and routes the request through the GUI proxy,
+so the session credentials are applied correctly regardless of whether the
+session uses weblogin or browser cookies.
+
+<<LadokSession data methods>>=
+def fetch_linked_uri_JSON(
+  self,
+  uri: str,
+  content_type: str = "application/vnd.ladok-utbildningsinformation+json",
+) -> dict:
+  """Fetch a full Ladok hypermedia URI via the GUI proxy.
+
+  Strips the scheme and host from uri, then delegates to get_query().
+  Use this when a Ladok response embeds a full URI in a link array, e.g.
+  https://api.test.ladok.se:443/utbildningsinformation/internal/struktur/{uid}.
+  """
+  path = re.sub(r"https?://[^/]+", "", uri)
+  return self.get_query(path, content_type)
+@
+
+\section{[[utbildningsinstans_JSON]]}
+
+Fetches the education-instance (\emph{utbildningsinstans}) record for the given
+UID.  An education instance represents an abstract programme or track
+definition, as opposed to a specific round with an admission year.  The record
+includes [[Utbildningskod]], [[Benamning]], and a hypermedia link array that
+can point to subordinate instances.
+
+<<LadokSession data methods>>=
+def utbildningsinstans_JSON(self, inst_uid):
+  """Fetch an education-instance record by its UID.
+
+  Uses GET /utbildningsinformation/internal/utbildningsinstans/{uid}.
+  """
+  return self.get_query(
+    f"/utbildningsinformation/internal/utbildningsinstans/{inst_uid}",
+    "application/vnd.ladok-utbildningsinformation+json",
+  )
+@
+
+\section{[[utbildningsinstans_underliggande_JSON]]}
+
+Returns the list of subordinate (\emph{underliggande}) education instances for
+a given parent instance.  Used to enumerate the master specialisation options
+and track options that belong to a programme instance.  Each element is a
+minimal \texttt{\{"Uid": "..."\}} dict; call [[utbildningsinstans_JSON]] to
+retrieve the full record.
+
+<<LadokSession data methods>>=
+def utbildningsinstans_underliggande_JSON(self, inst_uid):
+  """Return subordinate education-instance UIDs for a parent instance.
+
+  Uses GET /utbildningsinformation/internal/utbildningsinstans/
+  underliggande?uid={uid}.
+
+  Each element in the returned list is a minimal dict with at least
+  {'Uid': '<uuid>'}.  Fetch the full record with utbildningsinstans_JSON.
+  """
+  data = self.get_query(
+    f"/utbildningsinformation/internal/utbildningsinstans"
+    f"/underliggande?uid={inst_uid}",
+    "application/vnd.ladok-utbildningsinformation+json",
+  )
+  return data.get("Utbildningsinstans", [])
+@
+
+\section{[[utbildningstillfalle_lista_JSON]]}
+
+Returns all programme rounds (\emph{utbildningstillfälle}) for a given
+education instance.  Used when resolving which rounds of a master
+specialisation programme correspond to a given bachelor cohort's admission
+year.
+
+<<LadokSession data methods>>=
+def utbildningstillfalle_lista_JSON(self, inst_uid):
+  """Return all programme rounds for an education instance.
+
+  Uses GET /utbildningsinformation/internal/utbildningstillfalle/lista/{uid}.
+  """
+  data = self.get_query(
+    f"/utbildningsinformation/internal/utbildningstillfalle/lista/{inst_uid}",
+    "application/vnd.ladok-utbildningsinformation+json",
+  )
+  return data.get("Utbildningstillfalle", [])
+@
+
