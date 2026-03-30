@@ -25,6 +25,7 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import getpass
+import io
 import json
 import keyring
 import ladok3
@@ -118,6 +119,7 @@ subp = argp.add_subparsers(
 <<add subparsers to subp>>
 argcomplete.autocomplete(argp)
 args = argp.parse_args()
+<<execute early commands that do not need [[ls]]>>
 <<create or restore the LadokSession ls>>
 <<execute subcommand>>
 <<save LadokSession ls>>
@@ -133,10 +135,17 @@ We note, however, that some subcommands (like [[cache]] or [[login]]) don't
 need the [[ls]].
 The command [[login]] in particular is expected to run before the [[ls]] object 
 can be constructed (no credentials exist).
-The reason this works is that we can create the [[ls]] object with [[None]] for 
-credentials, the failure will not happen until we make the first request.
-The first request is made by the command's function, which in the case of 
+The [[cache clear]] subcommand should also work even when cache restore is what
+is currently broken, so we dispatch it before touching the cached session.
+For the remaining commands, we can create the [[ls]] object with [[None]] for
+credentials; the failure will not happen until we make the first request.
+The first request is made by the command's function, which in the case of
 [[login]] never uses [[ls]].
+<<execute early commands that do not need [[ls]]>>=
+if args.command == "cache" and args.subcommand == "clear":
+  clear_cache(None, args)
+  return
+
 <<execute subcommand>>=
 if "func" in args:
   args.func(ls, args)
@@ -217,6 +226,185 @@ except ValueError as error:
 store_ladok_session(ls, LADOK_VARS)
 @
 
+Let's verify that the tolerant restore path preserves the cache when an optional
+handler class is unavailable, while still leaving core missing classes as hard
+failures.
+
+<<[[test cli.py]]>>=
+import io
+import pickle
+import sys
+import types
+
+import pytest
+
+import ladok3.cli
+
+
+class RestorableHandler:
+  def __init__(self, value):
+    self.value = value
+
+
+class FakeSession:
+  def __init__(self, handlers=None):
+    self._AutologinSession__handlers = list(handlers or [])
+
+
+class FakeLadokSession:
+  def __init__(self, handlers=None):
+    self.session = FakeSession(handlers)
+
+
+<<test functions>>
+@
+
+<<test functions>>=
+def test_tolerant_pickle_loads_replaces_missing_optional_handlers(monkeypatch):
+  handler = RestorableHandler("cached")
+  handler.__class__.__module__ = "optional.handlers"
+  original_optional = sys.modules.get("optional")
+  original_handlers = sys.modules.get("optional.handlers")
+  optional_module = types.ModuleType("optional")
+  handlers_module = types.ModuleType("optional.handlers")
+  handlers_module.RestorableHandler = RestorableHandler
+  optional_module.handlers = handlers_module
+  sys.modules["optional"] = optional_module
+  sys.modules["optional.handlers"] = handlers_module
+  try:
+    payload = pickle.dumps(FakeLadokSession([handler]))
+  finally:
+    if original_optional is None:
+      del sys.modules["optional"]
+    else:
+      sys.modules["optional"] = original_optional
+    if original_handlers is None:
+      del sys.modules["optional.handlers"]
+    else:
+      sys.modules["optional.handlers"] = original_handlers
+
+  restored = ladok3.cli.tolerant_pickle_loads(payload)
+
+  handler = restored.session._AutologinSession__handlers[0]
+  assert isinstance(handler, ladok3.cli.DroppedAutologinHandler)
+  assert handler.missing_module == "optional.handlers"
+  assert handler.missing_name == "RestorableHandler"
+
+
+def test_tolerant_pickle_loads_keeps_core_failures():
+  handler = RestorableHandler("cached")
+  handler.__class__.__module__ = "ladok3.missing"
+  original_module = sys.modules.get("ladok3.missing")
+  missing_module = types.ModuleType("ladok3.missing")
+  missing_module.RestorableHandler = RestorableHandler
+  sys.modules["ladok3.missing"] = missing_module
+  try:
+    payload = pickle.dumps(FakeLadokSession([handler]))
+  finally:
+    if original_module is None:
+      del sys.modules["ladok3.missing"]
+    else:
+      sys.modules["ladok3.missing"] = original_module
+
+  with pytest.raises(ModuleNotFoundError):
+    ladok3.cli.tolerant_pickle_loads(payload)
+
+
+def test_drop_unimportable_handlers_warns_and_prunes(monkeypatch):
+  dropped = ladok3.cli.dropped_handler_class(
+    "optional.handlers", "RestorableHandler")()
+  kept = RestorableHandler("kept")
+  ls = FakeLadokSession([kept, dropped])
+  warnings = []
+
+  monkeypatch.setattr(ladok3.cli, "warn", warnings.append)
+
+  dropped_handlers = ladok3.cli.drop_unimportable_handlers(ls)
+
+  assert dropped_handlers == ["optional.handlers.RestorableHandler"]
+  assert ls.session._AutologinSession__handlers == [kept]
+  assert warnings == [
+    "dropped cached handler optional.handlers.RestorableHandler: "
+    "module unavailable"
+  ]
+
+
+def test_restore_ladok_session_retries_with_tolerant_unpickler(monkeypatch,
+                                                               tmp_path):
+  cache_dir = tmp_path / "cache"
+  cache_dir.mkdir()
+  cache_file = cache_dir / "LadokSession"
+  cache_file.write_bytes(b"encrypted")
+  fake_dirs = types.SimpleNamespace(user_cache_dir=str(cache_dir))
+  warnings = []
+
+  monkeypatch.setattr(ladok3.cli, "dirs", fake_dirs)
+  monkeypatch.setattr(ladok3.cli, "warn", warnings.append)
+  monkeypatch.setattr(ladok3.cli, "PBKDF2HMAC",
+                      lambda **kwargs: types.SimpleNamespace(
+                        derive=lambda password: b"0" * 32))
+  monkeypatch.setattr(ladok3.cli.base64,
+                      "urlsafe_b64encode",
+                      lambda data: b"A" * 44)
+  monkeypatch.setattr(ladok3.cli,
+                      "Fernet",
+                      lambda key: types.SimpleNamespace(
+                        decrypt=lambda data: b"pickle-data"))
+
+  calls = []
+
+  def fake_pickle_loads(data):
+    calls.append(data)
+    raise AttributeError("Can't get attribute 'MissingHandler'")
+
+  restored_ls = FakeLadokSession([
+    ladok3.cli.dropped_handler_class(
+      "optional.handlers", "MissingHandler")()])
+
+  monkeypatch.setattr(ladok3.cli.pickle, "loads", fake_pickle_loads)
+  monkeypatch.setattr(ladok3.cli,
+                      "tolerant_pickle_loads",
+                      lambda data: restored_ls)
+
+  ls = ladok3.cli.restore_ladok_session({
+    "username": "alice",
+    "password": "secret",
+  })
+
+  assert ls is restored_ls
+  assert calls == [b"pickle-data"]
+  assert warnings == [
+    "cache refers to unavailable optional classes, retrying without "
+    "those handlers: Can't get attribute 'MissingHandler'",
+    "dropped cached handler optional.handlers.MissingHandler: "
+    "module unavailable"
+  ]
+
+
+def test_main_clears_cache_before_restoring_session(monkeypatch):
+  called = []
+
+  monkeypatch.setattr(ladok3.cli.argcomplete, "autocomplete", lambda parser: None)
+  monkeypatch.setattr(ladok3.cli.sys,
+                      "argv",
+                      ["ladok", "cache", "clear"])
+  monkeypatch.setattr(ladok3.cli,
+                      "clear_cache",
+                      lambda ls, args: called.append((ls, args.command,
+                                                      args.subcommand)))
+
+  def fail_get_session(config_file=None):
+    raise AssertionError("get_session should not run")
+
+  monkeypatch.setattr(ladok3.cli, "get_session", fail_get_session)
+  monkeypatch.setattr(ladok3.cli, "load_credentials",
+                      lambda filename=None: (None, None))
+
+  ladok3.cli.main()
+
+  assert called == [(None, "cache", "clear")]
+@
+
 \subsection{Saving and restoring the [[LadokSession]] object}
 
 Now we need to implement the [[store_ladok_session]] and 
@@ -268,7 +456,7 @@ def restore_ladok_session(credentials):
       encrypted_ls = file.read()
       <<decrypt encrypted ls>>
       if pickled_ls:
-        return pickle.loads(pickled_ls)
+        <<restore pickled ls>>
 
   return None
 @
@@ -279,6 +467,85 @@ This is to avoid any vulnerabilities with [[pickle]].
 We use the [[cryptography]] module to handle the encryption.
 In particular, we use the [[cryptography.fernet]] protocol which encrypts using 
 AES and signs using HMAC.
+
+One complication remains: a cached session may contain handlers defined in
+optional packages such as [[kthutils]].
+When the current environment does not have that package installed, a plain
+[[pickle.loads()]] aborts before we can even inspect the session.
+We still want the rest of the cached session---most importantly the cookies---so
+we retry with a tolerant unpickler that substitutes unknown non-core classes
+with placeholder handlers.
+After unpickling we drop those placeholders and warn, so the restored session
+can be repickled without depending on unavailable modules.
+
+<<functions>>=
+class DroppedAutologinHandler(weblogin.AutologinHandler):
+  """Placeholder for cached handlers from unavailable optional modules."""
+
+  missing_module = None
+  missing_name = None
+
+  def login(self, session, response, args=None, kwargs=None):
+    return response
+
+  def need_login(self, response):
+    return False
+
+
+_DROPPED_HANDLER_CLASSES = {}
+
+
+def dropped_handler_class(module, name):
+  """Return a placeholder class for an unavailable cached handler."""
+  key = (module, name)
+  if key not in _DROPPED_HANDLER_CLASSES:
+    safe_name = re.sub(r"\W+", "_", f"{module}_{name}")
+    _DROPPED_HANDLER_CLASSES[key] = type(
+      f"Dropped_{safe_name}",
+      (DroppedAutologinHandler,),
+      {"missing_module": module, "missing_name": name})
+  return _DROPPED_HANDLER_CLASSES[key]
+
+
+class TolerantCacheUnpickler(pickle.Unpickler):
+  """Unpickler that tolerates unavailable optional handler classes."""
+
+  CORE_MODULE_PREFIXES = ("ladok3", "weblogin")
+
+  def find_class(self, module, name):
+    try:
+      return super().find_class(module, name)
+    except (AttributeError, ImportError, ModuleNotFoundError):
+      if any(module == prefix or module.startswith(f"{prefix}.")
+             for prefix in self.CORE_MODULE_PREFIXES):
+        raise
+      return dropped_handler_class(module, name)
+
+
+def tolerant_pickle_loads(data):
+  """Load pickle data while replacing unavailable optional handlers."""
+  return TolerantCacheUnpickler(io.BytesIO(data)).load()
+
+
+def drop_unimportable_handlers(ls):
+  """Drop placeholder handlers added during tolerant cache restore."""
+  try:
+    handlers = ls.session._AutologinSession__handlers
+  except AttributeError:
+    return []
+
+  kept_handlers = []
+  dropped_handlers = []
+  for handler in handlers:
+    if isinstance(handler, DroppedAutologinHandler):
+      missing = f"{handler.missing_module}.{handler.missing_name}"
+      warn(f"dropped cached handler {missing}: module unavailable")
+      dropped_handlers.append(missing)
+    else:
+      kept_handlers.append(handler)
+  handlers[:] = kept_handlers
+  return dropped_handlers
+@
 
 We will use the user's LADOK password to generate a cryptographic key.
 Then we do the encryption/decryption.
@@ -297,6 +564,19 @@ try:
 except Exception as err:
   warn(f"cache was corrupted, cannot decrypt: {err}")
   pickled_ls = None
+
+<<restore pickled ls>>=
+try:
+  return pickle.loads(pickled_ls)
+except (AttributeError,
+        ImportError,
+        ModuleNotFoundError,
+        pickle.UnpicklingError) as err:
+  warn("cache refers to unavailable optional classes, retrying without "
+       f"those handlers: {err}")
+  ls = tolerant_pickle_loads(pickled_ls)
+  drop_unimportable_handlers(ls)
+  return ls
 @
 
 To actually do the key derivation, we use the PBKDF2 based on HMAC.
