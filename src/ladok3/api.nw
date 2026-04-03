@@ -2872,19 +2872,22 @@ Each item in the returned [[Resultat]] list includes:
 The caller can filter [[Resultat]] by [[Startdatum]] to pick the round
 for a particular semester (e.g.\ HT25 = month $\ge 7$ of year 2025).
 <<LadokSession data methods>>=
-def program_rounds_JSON(self, program_code):
-  """Return all program rounds for a program code.
+def program_rounds_JSON(self, program_code, page=1, limit=100):
+  """Return one page of program rounds for a program code.
 
   Returns the full API response dict with keys 'Resultat' (list of
   rounds) and 'TotaltAntalPoster'.  Each round contains 'Uid',
   'SammanslagenTillfallesperiod', 'Utbildningstillfalleskod', etc.
+  Use [[TotaltAntalPoster]] to determine whether further pages exist.
 
   Args:
     program_code: program code string, e.g. 'CTFYS'
+    page:  page number, 1-based (default 1)
+    limit: results per page (default 100)
   """
   data = self.get_query(
     f"/utbildningsinformation/internal/utbildningstillfalle/filtrera"
-    f"?utbildningskod={program_code}&sprakkod=sv&page=1&limit=100",
+    f"?utbildningskod={program_code}&sprakkod=sv&page={page}&limit={limit}",
     "application/vnd.ladok-utbildningsinformation+json"
   )
   return data
