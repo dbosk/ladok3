@@ -359,39 +359,92 @@ report_course() {
 @
 
 We check for the course grade and store if it exists.
+However, we must ensure that we don't reset an already existing grade, so we 
+only update if we haven't seen a previous course grade.
 <<store course and component grades and dates>>=
-if ($3 == $1) {
+if ($3 == $1 && course_grade[$4] == "") {
   course_grade[$4]=$5
 }
 @
 
 Then we check for the component grade and store it if it exists.
+However, if we already have a grade, we will not reset it to blank.
+This can happen if the student is registered on several rounds.
 <<store course and component grades and dates>>=
-else if ($3 == comp) {
+else if ($3 == comp && (component_grade[$4] == "-" \
+                        || component_grade[$4] == "" \
+                        || component_grade[$4] == 0)) {
   component_grade[$4]=$5
 }
-@
+@ (We must check for the zero in case [[component_grade[$4]]] is not set, since 
+that will be the default value of an unset variable in [[awk]]).
 
 We also store the latest date for \emph{any} component.
 Here we also want to unset the grade date if there is a date that is 
 blank---since that means one component is not yet finished.
-However, we should only do that for components, not the course grade.
-
-If we find a blank date, we set the date to [[-]].
-This way we can be sure to distinguish between the first and second time we 
-look at dates.
-We do the same for assignments.
+But we should only do that for components, not the course grade.
+However, since a student can be registered on several rounds, for some 
+component, the same component will be blank in one round but not in another.
+(Otherwise the student would have finished the course already.)
+This complicates the algorithm a bit.
 <<store course and component grades and dates>>=
 if ($3 != $1) {
-  if ($5 == "-" || $5 == "" || $6 == "")
-    component_date[$4] = "-"
-  else if (component_date[$4] != "-" && $6 > component_date[$4])
-    component_date[$4] = $6
+  <<update component date or reset if missing>>
 }
 @
 
+Now we must keep track of which components are there.
+The components must be the same for a round, but they can differ between rounds 
+(although they usually don't).
+
+Let's think about the possibilities for a student that has no course grade:
+\begin{enumerate}
+\item The student is only in one round.
+  Then they should have the same number of dates as the number of components.
+\item The student is in at least two rounds:
+  \begin{enumerate}
+  \item The student has finished all components in one round.
+    Then one round will only be blank.
+    Then they should have the same number of dates as the number of components 
+    in that round.
+  \item The student finished one component in one round and the rest in another round.
+    Then both rounds will have blank dates.
+    But they should still have the same number of dates as the number of 
+    components in the union of the components of those rounds.
+  \end{enumerate}
+\end{enumerate}
+I looked at only the reregistered students' results in LADOK for DD2520:
+\begin{minted}{bash}
+ladok course DD2520 | grep -Ff <(
+  ladok course DD2520 | cut -f 4 | sort | uniq -c \
+  | grep -v " *3 " | sed -E "s/ *[0-9]+ //"
+) | sort -k 4
+\end{minted}
+Even for the students who had a date on the course from the year before, all 
+dates belonged to the same round.
+Even for students who had only one date from a previous round, had that grade 
+and date on the latest round they were registered on.
+So LADOK automatically moves a result to a new round when a student is 
+reregistered.
+(Based on this, we assume that a student can't have a date on the same 
+component in two different rounds.)
+
+What we'll do is that we keep track of the latest date for each round for each 
+student.
+If we find a blank date for a round, we set the date for that round to [[-]].
+This way we can be sure to distinguish between the first ([[""]]) and second 
+([["-"]]) time we look at dates.
+<<update component date or reset if missing>>=
+if ($5 == "-" || $5 == "" || $6 == "")
+  component_date[$4][$2] = "-"
+else if (component_date[$4][$2] != "-" && $6 > component_date[$4][$2])
+  component_date[$4][$2] = $6
+@ (Note that this requires us to use GNU AWK for the multidimensional array 
+syntax.)
+
 Now we want to print the students who have a component grade but no course.
-But only if they also have a valid date (not [[-]]).
+But only if they also have a valid date (not [[-]]) in any round.
+If they have a date, it should be only from one round.
 And we want to print them in the format required by [[ladok report]]:
 \begin{minted}{text}
 course_code  course_code  student  grade  date
@@ -399,11 +452,15 @@ course_code  course_code  student  grade  date
 <<print students with component grade but no course grade>>=
 for (student in component_grade) { \
   if (course_grade[student] == "-" \
-      && component_grade[student] != "-" \
-      && component_date[student] != "-")
+      && component_grade[student] != "-")
   {
-    print course, course, student, component_grade[student], \
-                                   component_date[student]
+    for (round in component_date[student]) {
+      if (component_date[student][round] != "-") {
+        print course, course, student, component_grade[student], \
+                                       component_date[student][round]
+        break
+      }
+    }
   }
 }
 @
