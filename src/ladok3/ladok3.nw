@@ -20,21 +20,94 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import urllib.parse
 import weblogin.ladok
+import weblogin.microsoft
+
+<<lazy session attribute>>
 
 <<classes>>
 <<functions>>
 @
 
 We also provide tests for all functionality in [[<<test ladok3.py>>]].
-These illustrate how to the [[ladok3]] module and provide testing using 
+These illustrate how to the [[ladok3]] module and provide testing using
 [[pytest]].
 <<[[test ladok3.py]]>>=
 import json
 import ladok3
 import os
-import weblogin.kth
 
 <<test functions>>
+@
+
+
+\section{Convenient access to a cached session}
+
+For scripts that use the CLI's cached credentials, we provide a
+convenient module-level attribute [[session]].
+This allows a one-liner pattern:
+\begin{minted}{python}
+import ladok3
+student = ladok3.session.get_student("191234561234")
+\end{minted}
+instead of the usual three-line boilerplate of loading credentials
+and restoring a cached session manually.
+
+The session lifecycle---load credentials, try to restore a cached
+session, fall back to creating a fresh one---is shared with the CLI.
+Rather than duplicating that logic here, we delegate to
+[[ladok3.cli.get_session]], which encapsulates the three-step
+process.
+The helper lives in [[cli]] because that module already owns the
+credential-loading and session-caching functions it depends on.
+
+Since LADOK sessions contain OAuth tokens that get refreshed during
+use, we register an [[atexit]] handler to save the session back to
+the cache on process exit.
+This preserves refreshed tokens for the next invocation, just as the
+CLI does after every command.
+
+We use Python's module-level [[__getattr__]] (PEP~562) for lazy
+loading---importing [[ladok3]] alone does \emph{not} require
+credentials; the session is loaded only when [[session]] is first
+accessed.
+We import [[ladok3.cli]] inside [[__getattr__]] rather than at module
+level to avoid circular imports, since [[cli.py]] itself imports
+[[ladok3]].
+<<lazy session attribute>>=
+_session = None
+_credentials = None
+
+def _save_session():
+    if _session is not None and _credentials is not None:
+        import ladok3.cli
+        ladok3.cli.store_ladok_session(
+            _session, _credentials
+        )
+
+def __getattr__(name):
+    global _session, _credentials
+    if name == "session":
+        if _session is None:
+            import atexit
+            import ladok3.cli
+            try:
+                _session, _credentials = (
+                    ladok3.cli.get_session()
+                )
+            except Exception:
+                _session = None
+            if _session is None:
+                raise RuntimeError(
+                    "No LADOK credentials found. "
+                    "Run `ladok login` first, or "
+                    "create a session manually with "
+                    "ladok3.LadokSession(...)."
+                )
+            atexit.register(_save_session)
+        return _session
+    raise AttributeError(
+        f"module 'ladok3' has no attribute {name!r}"
+    )
 @
 
 
@@ -45,10 +118,19 @@ An instance of this class provides the [[session]] attribute, which is an
 authenticated session to LADOK's REST API.
 It uses the [[requests]] module.
 
-We can use the class as follows.
+The simplest way to get a session is to use the module-level
+[[ladok3.session]] attribute, which handles credential loading, session
+caching, and cleanup automatically:
+\begin{minted}[linenos]{python}
+import ladok3
+
+student = ladok3.session.get_student("123456-1234")
+\end{minted}
+
+For more control, we can use the class directly as follows.
 \inputminted{python}{../examples/example_LadokSession.py}
 
-An alternative way would be to use the general authentication procedure that 
+An alternative way would be to use the general authentication procedure that
 seems to work at most Swedish universities.
 \begin{minted}[linenos]{python}
 import ladok3
@@ -67,7 +149,7 @@ import ladok3.cli
 ladok = ladok3.LadokSession(*ladok3.cli.load_credentials(),
                             test_environment=True) # for experiments
 \end{minted}
-Just note that unpacking [[*]] to unpack the tuple that [[load_credentials]] 
+Just note the unpacking [[*]] to unpack the tuple that [[load_credentials]]
 returns.
 
 This chapter covers how the [[LadokSession]] class work.
@@ -100,21 +182,26 @@ This will guarantee that we're always signed in.
 class LadokSession:
   """This is an interface for reading and writing data from and to LADOK."""
   def __init__(self, institution, vars=None, autologin_handlers=None,
-               test_environment=False):
+               test_environment=False, notification_cmd=None):
     """
     Creates a session with LADOK.
-    - `institution` is the name (str) of the university that will give a unique 
+    - `institution` is the name (str) of the university that will give a unique
       match when searching SeamlessAccess.org (see weblogin.ladok.SSOlogin).
-    - `vars` is a dictionary that is passed to weblogin.ladok.SSOlogin to 
-      supply the login credentials. Usually contains keys 'username' and 
+    - `vars` is a dictionary that is passed to weblogin.ladok.SSOlogin to
+      supply the login credentials. Usually contains keys 'username' and
       'password', see weblogin.ladok.SSOlogin documentation for details.
-    - `autologin_handlers` is a list of weblogin.AutologinHandler objects 
-      specific to the institution. Usually one for the SAML handler and one for 
-      the actual login server. (For KTH it's weblogin.kth.SAMLlogin and 
-      weblogin.kth.UGlogin.) Default value is None, only the 
+    - `autologin_handlers` is a list of weblogin.AutologinHandler objects
+      specific to the institution. Usually one for the SAML handler and one for
+      the actual login server. (For KTH it's weblogin.kth.SAMLlogin and
+      weblogin.kth.UGlogin.) Default value is None, only the
       `weblogin.ladok.SSOlogin` handler will be used.
-    - `test_environment` specifies whether we should use LADOK's test 
+      A `weblogin.microsoft.AzureMFA` handler is always appended automatically
+      to handle Microsoft Authenticator MFA challenges.
+    - `test_environment` specifies whether we should use LADOK's test
       environment instead of the production environment.
+    - `notification_cmd` is an optional command (str) used to notify the user
+      of the MFA number (e.g. 'notify-send'). The environment variable
+      WEBLOGIN_MFA_NOTIFICATION takes precedence if set.
     """
     self.__session = None
     <<construct the session object from the autologin handlers>>
@@ -133,30 +220,20 @@ class LadokSession:
 @
 
 Now let's test this class.
-We will use the KTH version to log in.
-KTH needs the LADOK SSO handler (specifying KTH), the KTH SAML server handler 
-(to handle the SSO request) and the KTH UG server (the actual login server).
+We create a single [[LadokSession]] object at the module level that is shared
+across all tests.
+This minimizes the number of MFA authentications required when running the test
+suite, since each session creation triggers a full login flow.
 <<test functions>>=
 ladok = ladok3.LadokSession(
         os.environ["LADOK_INST"],
         vars={"username": os.environ["LADOK_USER"],
               "password": os.environ["LADOK_PASS"]},
-        test_environment=True) # for experiments
+        test_environment=True,
+        notification_cmd="notify-send")
 
 def test_LadokSession_vars():
   assert ladok.user_info_JSON()
-
-def test_LadokSession_autologin_handlers():
-  ladok_handlers = ladok3.LadokSession(
-          "KTH Royal Institute of Technology",
-          autologin_handlers = [
-            weblogin.kth.SAMLlogin(),
-            weblogin.kth.UGlogin(os.environ["KTH_LOGIN"],
-                                 os.environ["KTH_PASSWD"])
-          ],
-          test_environment=True) # for experiments
-
-  assert ladok_handlers.user_info_JSON()
 @
 
 
@@ -166,11 +243,20 @@ To construct the session, we simply construct a [[weblogin.AutologinSession]]
 object.
 This one requires a list of [[weblogin.AutologinHandler]] objects.
 
-We simply pass the institution to the constructor of the 
+We simply pass the institution to the constructor of the
 [[weblogin.ladok.SSOlogin]] class.
 We add that to the list of autologin handlers supplied by the user.
-Due to the internal workings of [[weblogin.AutologinSession]], we add it first 
+Due to the internal workings of [[weblogin.AutologinSession]], we add it first
 as a, probably negligible, optimization.
+
+Many Swedish universities use Microsoft's identity platform, which may require
+multi-factor authentication (MFA) via Microsoft Authenticator.
+We add a [[weblogin.microsoft.AzureMFA]] handler at the end of the handler list
+to handle this transparently.
+It is placed last because MFA challenges occur after password authentication.
+The handler is passive: if no MFA challenge is encountered, it does nothing.
+Users can configure a custom notification command via the
+[[WEBLOGIN_MFA_NOTIFICATION]] environment variable.
 <<construct the session object from the autologin handlers>>=
 if not vars:
   vars = {}
@@ -180,6 +266,9 @@ if not autologin_handlers:
 autologin_handlers.insert(0,
             weblogin.ladok.SSOlogin(institution, vars=vars,
                                     test_environment=test_environment))
+
+autologin_handlers.append(
+            weblogin.microsoft.AzureMFA(notification_cmd=notification_cmd))
 
 self.__session = weblogin.AutologinSession(autologin_handlers)
 <<configure retry policy for the session>>

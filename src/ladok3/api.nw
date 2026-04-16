@@ -18,9 +18,7 @@ import json
 import ladok3
 import ladok3.cli
 import os
-
-ladok = ladok3.LadokSession(*ladok3.cli.load_credentials(),
-                            test_environment=True) # for experiments
+from test_ladok3 import ladok
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
@@ -241,6 +239,52 @@ We note that we must record the time of the last GET request to track the
 freshness of the XSRF token.
 The other requests track that by the use of the XSRF token itself.
 We'll get back to this in \cref{XSRFtoken}.
+
+A successful HTTP status does not guarantee that we actually received LADOK
+JSON. When an authenticated session expires, LADOK may redirect us to an HTML
+login page and still finish with [[200 OK]]. If we were to call
+[[response.json()]] unconditionally in that situation, the user would only see
+a low-level decoding failure. We therefore decode successful responses through a
+small helper that raises [[LadokAPIError]] with the final URL and content type
+when the body is not JSON.
+<<functions>>=
+def response_json_or_error(response, path, method):
+  """Return JSON from [[response]] or raise contextual [[LadokAPIError]]."""
+  try:
+    return response.json()
+  except ValueError as err:
+    content_type = response.headers.get("content-type", "<missing>")
+    body = " ".join(response.text.split())
+    if len(body) > 120:
+      body = body[:117] + "..."
+    raise LadokAPIError(
+      f"{method} request to {path} returned non-JSON response "
+      f"from {response.url} (Content-Type: {content_type}): {body}") from err
+@
+
+Let's verify the improved error reporting with a synthetic HTML login page. The
+helper should raise [[LadokAPIError]] rather than leaking a bare JSON decoding
+exception.
+<<test functions>>=
+def test_response_json_or_error_reports_html_login_pages():
+  class Response:
+    url = "https://start.ladok.se/gui/loggain"
+    headers = {"content-type": "text/html;charset=UTF-8"}
+    text = "<html><title>Ladok - start</title></html>"
+
+    def json(self):
+      raise ValueError("not json")
+
+  try:
+    ladok3.response_json_or_error(Response(), "/studentinformation", "GET")
+  except ladok3.LadokAPIError as err:
+    assert "non-JSON response" in str(err)
+    assert "text/html;charset=UTF-8" in str(err)
+    assert "https://start.ladok.se/gui/loggain" in str(err)
+  else:
+    assert False
+@
+
 <<LadokSession data methods>>=
 def get_query(self, path,
               content_type="application/vnd.ladok-resultat+json"):
@@ -266,9 +310,9 @@ def get_query(self, path,
   response = self.session.get(
     url=self.base_gui_proxy_url + path,
     headers=headers)
-    
+     
   if response.ok:
-    return response.json()
+    return response_json_or_error(response, path, "GET")
   try:
     error_msg = response.json()["Meddelande"]
     raise LadokServerError(error_msg)
@@ -302,9 +346,9 @@ def put_query(self, path, put_data,
     url=self.base_gui_proxy_url + path,
     json=put_data,
     headers=headers)
-    
+     
   if response.ok:
-    return response.json()
+    return response_json_or_error(response, path, "PUT")
   try:
     error_msg = response.json()["Meddelande"]
     raise LadokServerError(error_msg)
@@ -338,9 +382,9 @@ def post_query(self, path, post_data,
     url=self.base_gui_proxy_url + path,
     json=post_data,
     headers=headers)
-    
+     
   if response.ok:
-    return response.json()
+    return response_json_or_error(response, path, "POST")
   try:
     error_msg = response.json()["Meddelande"]
     raise LadokServerError(error_msg)
