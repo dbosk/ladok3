@@ -33,5 +33,13 @@ distclean:
 
 
 
+# Root chunk names use [[filename]] notation for LaTeX rendering.
+# Override NOTANGLE before noweb.mk so the ?= assignments there are no-ops.
+# The NOTANGLE.py += in noweb.mk will still append "&& black $@" correctly.
+NOTANGLE.py=	notangle -R'[[$(notdir $@)]]' $(filter %.nw,$^) > $@ \
+		&& noroots $(filter %.nw,$^)
+NOTANGLE.sh=	notangle -R'[[$(notdir $@)]]' $(filter %.nw,$^) > $@ \
+		&& noroots $(filter %.nw,$^)
+
 INCLUDE_MAKEFILES=../../makefiles
 include ${INCLUDE_MAKEFILES}/noweb.mk
