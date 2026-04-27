@@ -39,6 +39,17 @@ import os
 <<test functions>>
 @
 
+We can also test [[CourseResult]] parsing without a live LADOK session by
+using small local stubs.
+<<[[test course_result.py]]>>=
+import types
+
+import ladok3
+
+<<test course result helpers>>
+<<test course result functions>>
+@
+
 
 \section{Convenient access to a cached session}
 
@@ -1833,14 +1844,7 @@ class CourseResult(LadokRemoteData):
 
       results = kwargs.pop("ResultatPaUtbildning")
 
-      if "Arbetsunderlag" in results:
-        data = results["Arbetsunderlag"]
-      elif "SenastAttesteradeResultat" in results:
-        self.__attested = True
-        self.__finalized = True
-        data = results["SenastAttesteradeResultat"]
-      else:
-        data = kwargs
+      <<choose definitive CourseResult data>>
 
       self.__populate_attributes(**data, components=components)
     else:
@@ -1932,6 +1936,22 @@ LADOK uses [[ProcessStatus]] to indicate the state of a result:
 \end{description}
 An attested result has no [[ProcessStatus]] since it's stored in
 [[SenastAttesteradeResultat]] rather than [[Arbetsunderlag]].
+Sometimes LADOK returns both [[Arbetsunderlag]] and
+[[SenastAttesteradeResultat]] for the same result.
+The attested result is the definitive state in LADOK, while the work copy only
+describes a later attempt to change it.
+We therefore prefer [[SenastAttesteradeResultat]] whenever it is present.
+<<choose definitive CourseResult data>>=
+if "SenastAttesteradeResultat" in results:
+  self.__attested = True
+  self.__finalized = True
+  data = results["SenastAttesteradeResultat"]
+elif "Arbetsunderlag" in results:
+  data = results["Arbetsunderlag"]
+else:
+  data = kwargs
+@
+
 <<populate CourseResult attributes from data>>=
 self.__uid = data.pop("Uid", None)
 self.__instance_id = data.pop("UtbildningsinstansUID")
@@ -1979,6 +1999,75 @@ self.__grade = None
 self.__finalized = False
 self.__modified = False
 self.__last_modified = None
+@
+
+Let's verify that an attested result remains authoritative even when LADOK also
+returns a work copy in [[Arbetsunderlag]].
+<<test course result helpers>>=
+class FakeLadokForCourseResult:
+  def __init__(self):
+    self.__grade_scale = ladok3.GradeScale(
+      ID=1,
+      Kod="PF",
+      Benamning={"sv": "Pass/fail"},
+      Betygsgrader=[
+        {"ID": 10, "Kod": "F", "GiltigSomSlutbetyg": False},
+        {"ID": 11, "Kod": "P", "GiltigSomSlutbetyg": True},
+      ])
+
+  def get_grade_scales(self, /, **kwargs):
+    if kwargs and kwargs.get("id") != self.__grade_scale.id:
+      return []
+    return [self.__grade_scale]
+
+
+def make_course_component_for_test(ladok):
+  return ladok3.CourseComponent(
+    ladok=ladok,
+    course=types.SimpleNamespace(instance_id="course-instance"),
+    UtbildningsinstansUID="component-instance",
+    UtbildningUID="course-education",
+    Utbildningskod="DD1315",
+    Benamning={"sv": "Course grade"},
+    BetygsskalaID=1)
+@
+
+<<test course result functions>>=
+def test_attested_result_wins_over_arbetsunderlag():
+  ladok = FakeLadokForCourseResult()
+  component = make_course_component_for_test(ladok)
+
+  result = ladok3.CourseResult(
+    ladok=ladok,
+    student=object(),
+    components=[component],
+    ResultatPaUtbildning={
+      "Arbetsunderlag": {
+        "Uid": "draft-uid",
+        "UtbildningsinstansUID": "component-instance",
+        "ResultatUID": "draft-result",
+        "StudieresultatUID": "study-result",
+        "ProcessStatus": 1,
+        "Betygsgrad": 10,
+        "BetygsskalaID": 1,
+        "Examinationsdatum": "2024-02-01",
+      },
+      "SenastAttesteradeResultat": {
+        "Uid": "attested-uid",
+        "UtbildningsinstansUID": "component-instance",
+        "ResultatUID": "attested-result",
+        "StudieresultatUID": "study-result",
+        "Betygsgrad": 11,
+        "BetygsskalaID": 1,
+        "Examinationsdatum": "2024-01-15",
+      },
+    })
+
+  assert result.attested == True
+  assert result.finalized == True
+  assert result.grade == "P"
+  assert result.date == "2024-01-15"
+  assert result.component == component
 @
 
 \subsection{Setting the grade}

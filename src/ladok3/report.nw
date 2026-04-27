@@ -57,6 +57,21 @@ def command(ladok, args):
   <<report results depending on args>>
 @
 
+We also provide unit tests for the reporting logic so we can verify the state
+machine without contacting LADOK.
+<<[[test report.py]]>>=
+import datetime
+import types
+
+import pytest
+
+import ladok3
+import ladok3.report
+
+<<test helpers>>
+<<test functions>>
+@
+
 As mentioned above, we provide two ways of doing this.
 <<add report command arguments to report parser>>=
 one_parser = report_parser.add_argument_group(
@@ -240,13 +255,102 @@ if args.verbose:
 @
 
 If the result is attested, we check if the grade we want to report matches.
-If not, we raise an error since we cannot change an attested grade.
+If not, we raise an error since we cannot change an attested grade without
+first removing the attested result in LADOK.
 If it matches, we silently succeed since the desired grade is already set.
 <<handle attested result>>=
 if component.grade != grade:
-  raise ladok3.LadokValidationError(f"attested {component.component} "
-                  f"result {component.grade} ({component.date}) "
-                  f"is different from {grade} ({date}).")
+  raise ladok3.LadokValidationError(
+    f"attested {component.component} result "
+    f"{component.grade} ({component.date}) is different from "
+    f"{grade} ({date}); remove the attested result in LADOK "
+    "before changing the grade.")
+@
+
+We can verify the two important branches locally: draft results remain
+editable, while attested results stay locked and explain how to change them.
+<<test helpers>>=
+class FakeComponent:
+  def __init__(self, *, grade=None, attested=False,
+               finalized=False, date=None):
+    self.component = "DD1315"
+    self.grade = grade
+    self.attested = attested
+    self.finalized = finalized
+    self.date = date
+    self.set_calls = []
+    self.finalize_calls = []
+
+  def set_grade(self, grade, date):
+    self.set_calls.append((grade, date))
+    self.grade = grade
+    self.date = date
+
+  def finalize(self, graders):
+    self.finalize_calls.append(list(graders))
+
+
+class FakeCourse:
+  def __init__(self, component):
+    self.__component = component
+    self.start = datetime.date(2024, 1, 15)
+
+  def results(self, /, **kwargs):
+    return [self.__component]
+
+
+class FakeStudent:
+  def __init__(self, course):
+    self.__course = course
+
+  def courses(self, /, **kwargs):
+    return [self.__course]
+
+  def __str__(self):
+    return "Test Student"
+
+
+class FakeLadok:
+  def __init__(self, student):
+    self.__student = student
+
+  def get_student(self, student_id):
+    return self.__student
+@
+
+<<test functions>>=
+def test_set_grade_updates_draft_result():
+  component = FakeComponent()
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-02-01", ["examiner"])
+
+  assert component.set_calls == [("P", datetime.date(2024, 2, 1))]
+  assert component.finalize_calls == [["examiner"]]
+
+
+def test_set_grade_explains_how_to_change_attested_result():
+  component = FakeComponent(
+    grade="F", attested=True, finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  with pytest.raises(
+      ladok3.LadokValidationError,
+      match="remove the attested result in LADOK"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", ["examiner"])
+
+  assert component.set_calls == []
+  assert component.finalize_calls == []
 @
 
 Now we simply want to set those objects up.
@@ -367,4 +471,3 @@ if args.course_code:
 else:
   report_many_results(ladok, args)
 @
-
