@@ -233,11 +233,11 @@ def set_grade(ladok, args,
     <<handle draft result>>
 @
 
-Both editable and attested results must be compared on the effective result,
-not only on the grade code.
+Draft, finalized, and attested results must be compared on the effective
+result, not only on the grade code.
 LADOK treats the examination date as part of the stored result, so a matching
 grade with a different date still needs an update for drafts and must still be
-rejected for attested results.
+rejected for finalized and attested results.
 We therefore normalize the requested date in the same way as the write path,
 and normalize the current date before we compare them.
 <<normalize requested and current result dates>>=
@@ -262,9 +262,21 @@ if args.verbose:
 
 If the result is already finalized but not attested, it's waiting for the
 examiner to attest it.
-We cannot modify or re-finalize it, so we skip those operations.
-In verbose mode, we inform the user that the result is already finalized.
+We still need to compare the requested grade and date with the finalized
+result.
+If they differ, we must fail explicitly rather than pretending the report
+succeeded.
+The reporter must first change the finalized result back to draft in LADOK.
+If they match, the command remains idempotent and we can just report that the
+result is waiting for attestation in verbose mode.
 <<handle finalized result>>=
+<<normalize requested and current result dates>>
+if component.grade != grade or current_date != date:
+  raise ladok3.LadokValidationError(
+    f"finalized {component.component} result "
+    f"{component.grade} ({component.date}) is different from "
+    f"{grade} ({date}); change the finalized result back to "
+    "draft in LADOK before changing the grade.")
 if args.verbose:
   print(f"{course_code} {student}: {component.component} already finalized, "
         f"waiting for attestation.")
@@ -285,8 +297,9 @@ if component.grade != grade or current_date != date:
     "before changing the grade.")
 @
 
-We can verify the two important branches locally: draft results remain
-editable, while attested results stay locked and explain how to change them.
+We can verify the important local branches here: draft results remain
+editable, matching finalized results stay idempotent, and locked results
+explain how to change them.
 <<test helpers>>=
 class FakeComponent:
   def __init__(self, *, grade=None, attested=False,
@@ -364,6 +377,39 @@ def test_set_grade_updates_draft_result_date_without_grade_change():
     "2024-02-01", [])
 
   assert component.set_calls == [("P", datetime.date(2024, 2, 1))]
+  assert component.finalize_calls == []
+
+
+def test_set_grade_leaves_matching_finalized_result_unchanged():
+  component = FakeComponent(grade="P", finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-01-20", ["examiner"])
+
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+
+
+def test_set_grade_rejects_finalized_date_change():
+  component = FakeComponent(grade="P", finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=False, verbose=0)
+
+  with pytest.raises(
+      ladok3.LadokValidationError,
+      match="change the finalized result back to draft in LADOK"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", [])
+
+  assert component.set_calls == []
   assert component.finalize_calls == []
 
 

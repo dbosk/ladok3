@@ -2018,9 +2018,14 @@ self.__last_modified = None
 
 Let's verify that an attested result remains authoritative even when LADOK also
 returns a work copy in [[Arbetsunderlag]].
+The helper registration below starts from the same sparse registration data we
+get in [[Utbildningsinformation]].
+Real [[CourseRegistration]] objects then pull richer component data through
+[[course_round_components_JSON]], so the fake LADOK session provides that too.
 <<test course result helpers>>=
 class FakeLadokForCourseResult:
-  def __init__(self, student_results_response=None):
+  def __init__(self, student_results_response=None,
+               course_round_components_response=None):
     self.__grade_scale = ladok3.GradeScale(
       ID=1,
       Kod="PF",
@@ -2030,11 +2035,27 @@ class FakeLadokForCourseResult:
         {"ID": 11, "Kod": "P", "GiltigSomSlutbetyg": True},
       ])
     self.__student_results_response = student_results_response
+    if course_round_components_response is None:
+      self.__course_round_components_response = {
+        "UtbildningsinstansUID": "course-instance",
+        "UtbildningUID": "course-education",
+        "Utbildningskod": "DD1315",
+        "Benamning": {"sv": "Course grade", "en": "Course grade"},
+        "Omfattning": 7.5,
+        "Enhet": "hp",
+        "Versionsnummer": "1",
+        "BetygsskalaID": 1,
+      }
+    else:
+      self.__course_round_components_response = course_round_components_response
 
   def get_grade_scales(self, /, **kwargs):
     if kwargs and kwargs.get("id") != self.__grade_scale.id:
       return []
     return [self.__grade_scale]
+
+  def course_round_components_JSON(self, round_id):
+    return self.__course_round_components_response
 
   def student_results_JSON(self, student_id, education_id):
     return self.__student_results_response
@@ -2055,7 +2076,6 @@ def make_course_registration_for_test(ladok):
   return ladok3.CourseRegistration(
     ladok=ladok,
     student=types.SimpleNamespace(ladok_id="student-uid"),
-    Uid="course-instance",
     UtbildningstillfalleUID="round-instance",
     Utbildningstillfalleskod="20241",
     Studieperiod={
@@ -2065,11 +2085,7 @@ def make_course_registration_for_test(ladok):
     UtbildningsinstansUID="course-instance",
     UtbildningUID="course-education",
     Utbildningskod="DD1315",
-    Benamning={"sv": "Course grade", "en": "Course grade"},
-    Omfattning=7.5,
-    Enhet="hp",
-    Versionsnummer="1",
-    BetygsskalaID=1)
+    Benamning={"sv": "Course grade", "en": "Course grade"})
 @
 
 <<test course result functions>>=
