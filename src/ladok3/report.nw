@@ -175,8 +175,9 @@ except Exception:
 @
 
 When we set the grade, there are a few cases that should be handled.
-If the grade isn't attested, we can modify it.
-First, if the grade is different from what we want, we set the new grade.
+If the result isn't attested, we can still modify it.
+We must compare both the requested grade and the effective examination date,
+since LADOK stores both as part of the reported result.
 Then, if we want to finalize, we finalize the grade---this allows us to run
 the command first without [[-f]] (to set the grade) and then with [[-f]] (to
 finalize it) without getting an error.
@@ -191,9 +192,10 @@ Results in LADOK go through three states:
 \end{description}
 If the result is already finalized (but not attested), we skip trying to
 modify or finalize it again---this makes the command idempotent.
-If the result was attested, we check if the grade is different.
-If it's different, we output an error.
-If it's the same, we silently ignore it.
+If the result was attested, we check if the requested grade and date differ
+from the attested result.
+If they do, we output an error.
+If both match, we silently ignore it.
 This is best for bulk reporting, because then we can always try to report for
 all students.
 
@@ -231,10 +233,24 @@ def set_grade(ladok, args,
     <<handle draft result>>
 @
 
+Both editable and attested results must be compared on the effective result,
+not only on the grade code.
+LADOK treats the examination date as part of the stored result, so a matching
+grade with a different date still needs an update for drafts and must still be
+rejected for attested results.
+We therefore normalize the requested date in the same way as the write path,
+and normalize the current date before we compare them.
+<<normalize requested and current result dates>>=
+<<ensure [[date]] is a valid date for [[course]]>>
+current_date = component.date
+if isinstance(current_date, str):
+  current_date = datetime.date.fromisoformat(current_date)
+@
+
 If the result is a draft, we can set and finalize the grade as usual.
 <<handle draft result>>=
-if component.grade != grade:
-  <<ensure [[date]] is a valid date for [[course]]>>
+<<normalize requested and current result dates>>
+if component.grade != grade or current_date != date:
   component.set_grade(grade, date)
 if args.finalize:
   component.finalize(graders)
@@ -254,12 +270,14 @@ if args.verbose:
         f"waiting for attestation.")
 @
 
-If the result is attested, we check if the grade we want to report matches.
+If the result is attested, we check if the grade and date we want to report
+match the attested result.
 If not, we raise an error since we cannot change an attested grade without
 first removing the attested result in LADOK.
-If it matches, we silently succeed since the desired grade is already set.
+If they match, we silently succeed since the desired result is already set.
 <<handle attested result>>=
-if component.grade != grade:
+<<normalize requested and current result dates>>
+if component.grade != grade or current_date != date:
   raise ladok3.LadokValidationError(
     f"attested {component.component} result "
     f"{component.grade} ({component.date}) is different from "
@@ -334,9 +352,43 @@ def test_set_grade_updates_draft_result():
   assert component.finalize_calls == [["examiner"]]
 
 
+def test_set_grade_updates_draft_result_date_without_grade_change():
+  component = FakeComponent(grade="P", date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=False, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-02-01", [])
+
+  assert component.set_calls == [("P", datetime.date(2024, 2, 1))]
+  assert component.finalize_calls == []
+
+
 def test_set_grade_explains_how_to_change_attested_result():
   component = FakeComponent(
     grade="F", attested=True, finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  with pytest.raises(
+      ladok3.LadokValidationError,
+      match="remove the attested result in LADOK"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", ["examiner"])
+
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+
+
+def test_set_grade_rejects_attested_date_change():
+  component = FakeComponent(
+    grade="P", attested=True, finalized=True, date="2024-01-20")
   course = FakeCourse(component)
   student = FakeStudent(course)
   ladok = FakeLadok(student)

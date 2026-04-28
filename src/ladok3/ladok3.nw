@@ -45,6 +45,7 @@ using small local stubs.
 import types
 
 import ladok3
+import pytest
 
 <<test course result helpers>>
 <<test course result functions>>
@@ -1771,6 +1772,14 @@ We can pull these from LADOK as well.
 We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
 From the response we get from LADOK, we construct [[CourseResult]] objects that 
 deal with the details.
+Some entries contain only component metadata and no recorded result yet.
+Those must be skipped so the later
+[[<<add new CourseResult objects for missing components>>]] step can create the
+expected empty placeholder.
+But once LADOK includes [[ResultatPaUtbildning]], we do have an existing
+result.
+If that payload is malformed, we must fail loudly here rather than pretending
+the result is missing and later trying to create a duplicate.
 (It's a bit unclear why [[Kursversioner]] is a list, so far it has always 
 worked to take the first.)
 <<pull existing CourseResult objects from LADOK>>=
@@ -1781,13 +1790,16 @@ response = self.ladok.student_results_JSON(
 self.__results = []
 
 for result in response["VersionensModuler"]:
+  if "ResultatPaUtbildning" not in result:
+    continue
   try:
     self.__results.append(CourseResult(ladok=self.ladok,
                                        components=self.components(),
                                        student=self.__student,
                                        **result))
-  except TypeError:
-    pass
+  except (TypeError, KeyError, IndexError) as err:
+    raise LadokError(f"couldn't parse existing module result: {result}") \
+      from err
 @
 
 As with the components, the course grade itself is a special case.
@@ -1795,13 +1807,16 @@ That data is not in [[VersionensModuler]], but in [[VersionensKurs]].
 But we can do the same with it, just as we could with the components.
 (And this works since it's a component in [[self.components()]].)
 <<pull existing CourseResult objects from LADOK>>=
-try:
-  self.__results.append(CourseResult(ladok=self.ladok,
-                                     components=self.components(),
-                                     student=self.__student,
-                                     **response["VersionensKurs"]))
-except TypeError:
-  pass
+if "ResultatPaUtbildning" in response["VersionensKurs"]:
+  try:
+    self.__results.append(CourseResult(ladok=self.ladok,
+                                       components=self.components(),
+                                       student=self.__student,
+                                       **response["VersionensKurs"]))
+  except (TypeError, KeyError, IndexError) as err:
+    raise LadokError(
+      "couldn't parse existing course result: "
+      f"{response['VersionensKurs']}") from err
 @
 
 Now we can see which components from [[self.components]] are missing from 
@@ -2005,7 +2020,7 @@ Let's verify that an attested result remains authoritative even when LADOK also
 returns a work copy in [[Arbetsunderlag]].
 <<test course result helpers>>=
 class FakeLadokForCourseResult:
-  def __init__(self):
+  def __init__(self, student_results_response=None):
     self.__grade_scale = ladok3.GradeScale(
       ID=1,
       Kod="PF",
@@ -2014,11 +2029,15 @@ class FakeLadokForCourseResult:
         {"ID": 10, "Kod": "F", "GiltigSomSlutbetyg": False},
         {"ID": 11, "Kod": "P", "GiltigSomSlutbetyg": True},
       ])
+    self.__student_results_response = student_results_response
 
   def get_grade_scales(self, /, **kwargs):
     if kwargs and kwargs.get("id") != self.__grade_scale.id:
       return []
     return [self.__grade_scale]
+
+  def student_results_JSON(self, student_id, education_id):
+    return self.__student_results_response
 
 
 def make_course_component_for_test(ladok):
@@ -2029,6 +2048,27 @@ def make_course_component_for_test(ladok):
     UtbildningUID="course-education",
     Utbildningskod="DD1315",
     Benamning={"sv": "Course grade"},
+    BetygsskalaID=1)
+
+
+def make_course_registration_for_test(ladok):
+  return ladok3.CourseRegistration(
+    ladok=ladok,
+    student=types.SimpleNamespace(ladok_id="student-uid"),
+    Uid="course-instance",
+    UtbildningstillfalleUID="round-instance",
+    Utbildningstillfalleskod="20241",
+    Studieperiod={
+      "Startdatum": "2024-01-15",
+      "Slutdatum": "2024-06-05",
+    },
+    UtbildningsinstansUID="course-instance",
+    UtbildningUID="course-education",
+    Utbildningskod="DD1315",
+    Benamning={"sv": "Course grade", "en": "Course grade"},
+    Omfattning=7.5,
+    Enhet="hp",
+    Versionsnummer="1",
     BetygsskalaID=1)
 @
 
@@ -2068,6 +2108,43 @@ def test_attested_result_wins_over_arbetsunderlag():
   assert result.grade == "P"
   assert result.date == "2024-01-15"
   assert result.component == component
+
+
+def test_course_registration_skips_course_entry_without_result():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [],
+        "VersionensKurs": {},
+      }],
+    })
+  course = make_course_registration_for_test(ladok)
+
+  results = course.results(component="DD1315")
+
+  assert len(results) == 1
+  assert results[0].grade == None
+  assert results[0].attested == False
+
+
+def test_course_registration_surfaces_malformed_course_results():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [{
+          "ResultatPaUtbildning": {
+            "Arbetsunderlag": {},
+          },
+        }],
+        "VersionensKurs": {},
+      }],
+    })
+  course = make_course_registration_for_test(ladok)
+
+  with pytest.raises(
+      ladok3.LadokError,
+      match="couldn't parse existing module result"):
+    course.results(component="DD1315")
 @
 
 \subsection{Setting the grade}
