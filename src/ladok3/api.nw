@@ -16,8 +16,10 @@ We will use the following to test the API methods.
 <<[[test api.py]]>>=
 import json
 import ladok3
+import ladok3.report
 import ladok3.cli
 import os
+import pytest
 from test_ladok3 import ladok
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
@@ -1811,6 +1813,36 @@ def test_finalized_CourseResult():
   result = finalized_results[0]
   assert result.finalized == True
   assert result.attested == False
+@
+
+
+We can also verify that the reporting helper refuses to silently accept a
+different result once LADOK has a finalized value waiting for attestation.
+This exercises the live create/finalize cycle while keeping the cleanup flow
+unchanged.
+<<test functions>>=
+def test_report_set_grade_rejects_mismatching_finalized_result():
+  ladok.cache.clear()
+  student = ladok.get_student(datintro_student_uid)
+
+  courses = [c for c in student.courses()
+             if c.instance_id == datintro_instance_id]
+  assert len(courses) > 0, "Student should have course participation"
+  course = courses[0]
+
+  lab_results = [r for r in course.results(component="LAB1")
+                 if r.finalized and not r.attested]
+  assert len(lab_results) > 0, "Should have a finalized LAB1 result"
+
+  result = lab_results[0]
+  args = type("Args", (), {"finalize": False, "verbose": 0})()
+
+  with pytest.raises(
+      ladok3.LadokValidationError,
+      match="change the finalized result back to draft in LADOK"):
+    ladok3.report.set_grade(
+      ladok, args, datintro_student_uid, course.code, result.component.code,
+      str(result.grade), "2022-11-30", [])
 @
 
 The output looks like this.
