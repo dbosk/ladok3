@@ -16,6 +16,7 @@ import json
 import operator
 import re
 import requests
+from collections.abc import Callable
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import urllib.parse
@@ -193,8 +194,10 @@ This will guarantee that we're always signed in.
 <<classes>>=
 class LadokSession:
   """This is an interface for reading and writing data from and to LADOK."""
-  def __init__(self, institution, vars=None, autologin_handlers=None,
-               test_environment=False, notification_cmd=None):
+  def __init__(self, institution: str, vars: dict | None = None,
+               autologin_handlers: list | None = None,
+               test_environment: bool = False,
+               notification_cmd: str | None = None) -> None:
     """
     Creates a session with LADOK.
     - `institution` is the name (str) of the university that will give a unique
@@ -220,12 +223,12 @@ class LadokSession:
     <<LadokSession constructor body>>
 
   @property
-  def session(self):
+  def session(self) -> requests.Session:
     """A guaranteed to be active and logged in requests session to LADOK"""
     return self.__session
 
   @session.setter
-  def session(self, new_value):
+  def session(self, new_value: requests.Session) -> None:
     self.__session = new_value
 
   <<LadokSession data methods>>
