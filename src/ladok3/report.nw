@@ -295,15 +295,11 @@ the refreshed draft or finalized state instead.
 If they match, we silently succeed since the desired result is already set.
 <<handle attested result>>=
 <<normalize requested and current result dates>>
-if not refreshed_attested_result and \
-    (component.grade != grade or current_date != date):
-  refreshed_attested_result = True
-  component.pull()
-  continue
-
-<<handle attested result>>=
-<<normalize requested and current result dates>>
 if component.grade != grade or current_date != date:
+  if not refreshed_attested_result:
+    refreshed_attested_result = True
+    component.pull()
+    continue
   raise ladok3.LadokValidationError(
     f"attested {component.component} result "
     f"{component.grade} ({component.date}) is different from "
