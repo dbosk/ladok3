@@ -1944,9 +1944,7 @@ class CourseResult(LadokRemoteData):
   def pull(self):
     """Refresh the result from LADOK."""
     data, attested = self.__pull_result_data()
-    self.__attested = attested
-    self.__finalized = attested
-    self.__populate_attributes(**data)
+    <<replace CourseResult attributes transactionally>>
 
   def push(self):
     if self.__uid:
@@ -2085,6 +2083,24 @@ raise LadokNotFoundError(
   f"{self.__component.code}: no result found in LADOK for refresh")
 @
 
+Even after LADOK has returned a replacement payload, repopulating the object
+can still fail while resolving auxiliary data such as the grade scale.
+Refresh should therefore either leave us with the new state or with the old
+one, never a mixture of both.
+Because this code only rebinds attributes on the result itself, a shallow
+snapshot of [[self.__dict__]] is enough to roll back a failed refresh.
+<<replace CourseResult attributes transactionally>>=
+state = self.__dict__.copy()
+try:
+  self.__attested = attested
+  self.__finalized = attested
+  self.__populate_attributes(**data)
+except Exception:
+  self.__dict__.clear()
+  self.__dict__.update(state)
+  raise
+@
+
 Let's verify that an attested result remains authoritative even when LADOK also
 returns a work copy in [[Arbetsunderlag]].
 The helper registration below starts from the same sparse registration data we
@@ -2128,6 +2144,9 @@ class FakeLadokForCourseResult:
 
   def student_results_JSON(self, student_id, education_id):
     return self.__student_results_response
+
+  def set_student_results_response(self, response):
+    self.__student_results_response = response
 
 
 def make_course_component_for_test(ladok):
@@ -2346,6 +2365,56 @@ def test_pull_course_result_keeps_state_if_refresh_fails():
   with pytest.raises(
       ladok3.LadokNotFoundError,
       match="DD1315: no result found in LADOK for refresh"):
+    result.pull()
+
+  assert result.attested == True
+  assert result.finalized == True
+  assert result.grade == "P"
+  assert result.date == "2024-01-15"
+
+
+def test_pull_course_result_keeps_state_if_population_fails():
+  ladok = FakeLadokForCourseResult()
+  component = make_course_component_for_test(ladok)
+  component.course.components = lambda **kwargs: [component]
+
+  result = ladok3.CourseResult(
+    ladok=ladok,
+    student=types.SimpleNamespace(ladok_id="student-uid"),
+    components=[component],
+    ResultatPaUtbildning={
+      "SenastAttesteradeResultat": {
+        "Uid": "attested-uid",
+        "UtbildningsinstansUID": "component-instance",
+        "ResultatUID": "attested-result",
+        "StudieresultatUID": "study-result",
+        "Betygsgrad": 11,
+        "BetygsskalaID": 1,
+        "Examinationsdatum": "2024-01-15",
+      },
+    })
+
+  ladok.set_student_results_response({
+    "Kursversioner": [{
+      "VersionensModuler": [{
+        "ResultatPaUtbildning": {
+          "Arbetsunderlag": {
+            "Uid": "draft-uid",
+            "UtbildningsinstansUID": "component-instance",
+            "ResultatUID": "draft-result",
+            "StudieresultatUID": "study-result",
+            "ProcessStatus": 1,
+            "Betygsgrad": 10,
+            "BetygsskalaID": 99,
+            "Examinationsdatum": "2024-02-01",
+          },
+        },
+      }],
+      "VersionensKurs": {},
+    }],
+  })
+
+  with pytest.raises(IndexError):
     result.pull()
 
   assert result.attested == True

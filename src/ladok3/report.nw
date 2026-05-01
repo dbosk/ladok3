@@ -190,11 +190,18 @@ Results in LADOK go through three states:
   finalized again.
 \item[Attested] Fully locked.
 \end{description}
-If the result is already finalized (but not attested), we skip trying to
-modify or finalize it again---this makes the command idempotent.
-If the result was attested, we check if the requested grade and date differ
-from the attested result.
-If they do, we output an error.
+If the result is already finalized (but not attested), we compare the
+requested grade and date with the cached result.
+A mismatch is the signal that someone may already have corrected the result in
+LADOK and that we now want to try again.
+Only then do we refresh that specific result, so we can recover from stale
+cache state without clearing the whole cached session.
+If the refreshed state is still finalized and matches, we skip trying to
+modify or finalize it again---this keeps the command idempotent without
+refreshing every old result.
+If the result was attested, we apply the same mismatch-driven refresh rule to
+the cached attested result.
+If it still differs after that refresh, we output an error.
 If both match, we silently ignore it.
 This is best for bulk reporting, because then we can always try to report for
 all students.
@@ -269,6 +276,8 @@ examiner to attest it.
 We still need to compare the requested grade and date with the finalized
 result.
 Before rejecting a mismatch, we refresh this specific result once.
+That lets the reporter fix the result in LADOK and then try again without
+clearing the whole cached session.
 The cached finalized flag may be stale if someone already moved the result
 back to draft in LADOK.
 When the caller asked us to finalize, we also refresh once before treating the
@@ -303,6 +312,8 @@ match the attested result.
 If not, we raise an error since we cannot change an attested grade without
 first removing the attested result in LADOK.
 Before raising that error, we refresh this specific result once.
+That lets the reporter remove the attested result in LADOK and then try again
+without clearing the whole cached session.
 If the cached attestation is stale, the next loop iteration will continue from
 the refreshed draft or finalized state instead.
 If they match, we silently succeed since the desired result is already set.
