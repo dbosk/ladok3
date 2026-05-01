@@ -225,6 +225,7 @@ def set_grade(ladok, args,
   <<get [[course]] from [[student]] and [[course_code]]>>
   <<get [[component]] from [[course]] and [[component_code]]>>
   refreshed_attested_result = False
+  refreshed_finalized_result = False
 
   while True:
     if component.attested:
@@ -267,13 +268,25 @@ If the result is already finalized but not attested, it's waiting for the
 examiner to attest it.
 We still need to compare the requested grade and date with the finalized
 result.
-If they differ, we must fail explicitly rather than pretending the report
-succeeded.
+Before rejecting a mismatch, we refresh this specific result once.
+The cached finalized flag may be stale if someone already moved the result
+back to draft in LADOK.
+When the caller asked us to finalize, we also refresh once before treating the
+cached finalized state as authoritative, otherwise we might skip a needed
+finalization.
+If the refreshed state is still finalized and differs, we must fail
+explicitly.
 The reporter must first change the finalized result back to draft in LADOK.
-If they match, the command remains idempotent and we can just report that the
-result is waiting for attestation in verbose mode.
+If they match and the refreshed state is still finalized, the command remains
+idempotent and we can just report that the result is waiting for attestation
+in verbose mode.
 <<handle finalized result>>=
 <<normalize requested and current result dates>>
+if (component.grade != grade or current_date != date or args.finalize):
+  if not refreshed_finalized_result:
+    refreshed_finalized_result = True
+    component.pull()
+    continue
 if component.grade != grade or current_date != date:
   raise ladok3.LadokValidationError(
     f"finalized {component.component} result "
@@ -432,8 +445,47 @@ def test_set_grade_rejects_finalized_date_change():
       ladok, args, "191212121212", "DD1315", "DD1315", "P",
       "2024-02-01", [])
 
+  assert component.pull_calls == 1
   assert component.set_calls == []
   assert component.finalize_calls == []
+
+
+def test_set_grade_retries_after_stale_finalized_result():
+  component = FakeComponent(
+    grade="P", finalized=True, date="2024-01-20",
+    pull_updates=[{"attested": False, "finalized": False,
+                   "grade": "P", "date": "2024-01-20"}])
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-02-01", ["examiner"])
+
+  assert component.pull_calls == 1
+  assert component.set_calls == [("P", datetime.date(2024, 2, 1))]
+  assert component.finalize_calls == [["examiner"]]
+
+
+def test_set_grade_finalizes_after_refreshing_matching_finalized_result():
+  component = FakeComponent(
+    grade="P", finalized=True, date="2024-02-01",
+    pull_updates=[{"attested": False, "finalized": False,
+                   "grade": "P", "date": "2024-02-01"}])
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-02-01", ["examiner"])
+
+  assert component.pull_calls == 1
+  assert component.set_calls == []
+  assert component.finalize_calls == [["examiner"]]
 
 
 def test_set_grade_explains_how_to_change_attested_result():
