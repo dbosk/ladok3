@@ -57,6 +57,21 @@ def command(ladok, args):
   <<report results depending on args>>
 @
 
+We also provide unit tests for the reporting logic so we can verify the state
+machine without contacting LADOK.
+<<[[test report.py]]>>=
+import datetime
+import types
+
+import pytest
+
+import ladok3
+import ladok3.report
+
+<<test helpers>>
+<<test functions>>
+@
+
 As mentioned above, we provide two ways of doing this.
 <<add report command arguments to report parser>>=
 one_parser = report_parser.add_argument_group(
@@ -160,8 +175,9 @@ except Exception:
 @
 
 When we set the grade, there are a few cases that should be handled.
-If the grade isn't attested, we can modify it.
-First, if the grade is different from what we want, we set the new grade.
+If the result isn't attested, we can still modify it.
+We must compare both the requested grade and the effective examination date,
+since LADOK stores both as part of the reported result.
 Then, if we want to finalize, we finalize the grade---this allows us to run
 the command first without [[-f]] (to set the grade) and then with [[-f]] (to
 finalize it) without getting an error.
@@ -174,11 +190,19 @@ Results in LADOK go through three states:
   finalized again.
 \item[Attested] Fully locked.
 \end{description}
-If the result is already finalized (but not attested), we skip trying to
-modify or finalize it again---this makes the command idempotent.
-If the result was attested, we check if the grade is different.
-If it's different, we output an error.
-If it's the same, we silently ignore it.
+If the result is already finalized (but not attested), we compare the
+requested grade and date with the cached result.
+A mismatch is the signal that someone may already have corrected the result in
+LADOK and that we now want to try again.
+Only then do we refresh that specific result, so we can recover from stale
+cache state without clearing the whole cached session.
+If the refreshed state is still finalized and matches, we skip trying to
+modify or finalize it again---this keeps the command idempotent without
+refreshing every old result.
+If the result was attested, we apply the same mismatch-driven refresh rule to
+the cached attested result.
+If it still differs after that refresh, we output an error.
+If both match, we silently ignore it.
 This is best for bulk reporting, because then we can always try to report for
 all students.
 
@@ -207,19 +231,37 @@ def set_grade(ladok, args,
   student = ladok.get_student(student_id)
   <<get [[course]] from [[student]] and [[course_code]]>>
   <<get [[component]] from [[course]] and [[component_code]]>>
+  refreshed_attested_result = False
+  refreshed_finalized_result = False
 
-  if component.attested:
-    <<handle attested result>>
-  elif component.finalized:
-    <<handle finalized result>>
-  else:
-    <<handle draft result>>
+  while True:
+    if component.attested:
+      <<handle attested result>>
+    elif component.finalized:
+      <<handle finalized result>>
+    else:
+      <<handle draft result>>
+    break
+@
+
+Draft, finalized, and attested results must be compared on the effective
+result, not only on the grade code.
+LADOK treats the examination date as part of the stored result, so a matching
+grade with a different date still needs an update for drafts and must still be
+rejected for finalized and attested results.
+We therefore normalize the requested date in the same way as the write path,
+and normalize the current date before we compare them.
+<<normalize requested and current result dates>>=
+<<ensure [[date]] is a valid date for [[course]]>>
+current_date = component.date
+if isinstance(current_date, str):
+  current_date = datetime.date.fromisoformat(current_date)
 @
 
 If the result is a draft, we can set and finalize the grade as usual.
 <<handle draft result>>=
-if component.grade != grade:
-  <<ensure [[date]] is a valid date for [[course]]>>
+<<normalize requested and current result dates>>
+if component.grade != grade or current_date != date:
   component.set_grade(grade, date)
 if args.finalize:
   component.finalize(graders)
@@ -231,22 +273,308 @@ if args.verbose:
 
 If the result is already finalized but not attested, it's waiting for the
 examiner to attest it.
-We cannot modify or re-finalize it, so we skip those operations.
-In verbose mode, we inform the user that the result is already finalized.
+We still need to compare the requested grade and date with the finalized
+result.
+Before rejecting a mismatch, we refresh this specific result once.
+That lets the reporter fix the result in LADOK and then try again without
+clearing the whole cached session.
+The cached finalized flag may be stale if someone already moved the result
+back to draft in LADOK.
+When the caller asked us to finalize, we also refresh once before treating the
+cached finalized state as authoritative, otherwise we might skip a needed
+finalization.
+If the refreshed state is still finalized and differs, we must fail
+explicitly.
+The reporter must first change the finalized result back to draft in LADOK.
+If they match and the refreshed state is still finalized, the command remains
+idempotent and we can just report that the result is waiting for attestation
+in verbose mode.
 <<handle finalized result>>=
+<<normalize requested and current result dates>>
+if (component.grade != grade or current_date != date or args.finalize):
+  if not refreshed_finalized_result:
+    refreshed_finalized_result = True
+    component.pull()
+    continue
+if component.grade != grade or current_date != date:
+  raise ladok3.LadokValidationError(
+    f"finalized {component.component} result "
+    f"{component.grade} ({component.date}) is different from "
+    f"{grade} ({date}); change the finalized result back to "
+    "draft in LADOK before changing the grade.")
 if args.verbose:
   print(f"{course_code} {student}: {component.component} already finalized, "
         f"waiting for attestation.")
 @
 
-If the result is attested, we check if the grade we want to report matches.
-If not, we raise an error since we cannot change an attested grade.
-If it matches, we silently succeed since the desired grade is already set.
+If the result is attested, we check if the grade and date we want to report
+match the attested result.
+If not, we raise an error since we cannot change an attested grade without
+first removing the attested result in LADOK.
+Before raising that error, we refresh this specific result once.
+That lets the reporter remove the attested result in LADOK and then try again
+without clearing the whole cached session.
+If the cached attestation is stale, the next loop iteration will continue from
+the refreshed draft or finalized state instead.
+If they match, we silently succeed since the desired result is already set.
 <<handle attested result>>=
-if component.grade != grade:
-  raise ladok3.LadokValidationError(f"attested {component.component} "
-                  f"result {component.grade} ({component.date}) "
-                  f"is different from {grade} ({date}).")
+<<normalize requested and current result dates>>
+if component.grade != grade or current_date != date:
+  if not refreshed_attested_result:
+    refreshed_attested_result = True
+    component.pull()
+    continue
+  raise ladok3.LadokValidationError(
+    f"attested {component.component} result "
+    f"{component.grade} ({component.date}) is different from "
+    f"{grade} ({date}); remove the attested result in LADOK "
+    "before changing the grade.")
+@
+
+We can verify the important local branches here: draft results remain
+editable, matching finalized results stay idempotent, and locked results
+explain how to change them.
+<<test helpers>>=
+class FakeComponent:
+  def __init__(self, *, grade=None, attested=False,
+               finalized=False, date=None, pull_updates=None,
+               pull_exception=None):
+    self.component = "DD1315"
+    self.grade = grade
+    self.attested = attested
+    self.finalized = finalized
+    self.date = date
+    self.pull_updates = pull_updates or []
+    self.pull_exception = pull_exception
+    self.set_calls = []
+    self.finalize_calls = []
+    self.pull_calls = 0
+
+  def set_grade(self, grade, date):
+    self.set_calls.append((grade, date))
+    self.grade = grade
+    self.date = date
+
+  def finalize(self, graders):
+    self.finalize_calls.append(list(graders))
+
+  def pull(self):
+    self.pull_calls += 1
+    if self.pull_exception:
+      raise self.pull_exception
+    if self.pull_updates:
+      update = self.pull_updates.pop(0)
+      for key, value in update.items():
+        setattr(self, key, value)
+
+
+class FakeCourse:
+  def __init__(self, component):
+    self.__component = component
+    self.start = datetime.date(2024, 1, 15)
+
+  def results(self, /, **kwargs):
+    return [self.__component]
+
+
+class FakeStudent:
+  def __init__(self, course):
+    self.__course = course
+
+  def courses(self, /, **kwargs):
+    return [self.__course]
+
+  def __str__(self):
+    return "Test Student"
+
+
+class FakeLadok:
+  def __init__(self, student):
+    self.__student = student
+
+  def get_student(self, student_id):
+    return self.__student
+@
+
+<<test functions>>=
+def test_set_grade_updates_draft_result():
+  component = FakeComponent()
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-02-01", ["examiner"])
+
+  assert component.set_calls == [("P", datetime.date(2024, 2, 1))]
+  assert component.finalize_calls == [["examiner"]]
+
+
+def test_set_grade_updates_draft_result_date_without_grade_change():
+  component = FakeComponent(grade="P", date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=False, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-02-01", [])
+
+  assert component.set_calls == [("P", datetime.date(2024, 2, 1))]
+  assert component.finalize_calls == []
+
+
+def test_set_grade_leaves_matching_finalized_result_unchanged():
+  component = FakeComponent(grade="P", finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-01-20", ["examiner"])
+
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+
+
+def test_set_grade_rejects_finalized_date_change():
+  component = FakeComponent(grade="P", finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=False, verbose=0)
+
+  with pytest.raises(
+      ladok3.LadokValidationError,
+      match="change the finalized result back to draft in LADOK"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", [])
+
+  assert component.pull_calls == 1
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+
+
+def test_set_grade_retries_after_stale_finalized_result():
+  component = FakeComponent(
+    grade="P", finalized=True, date="2024-01-20",
+    pull_updates=[{"attested": False, "finalized": False,
+                   "grade": "P", "date": "2024-01-20"}])
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-02-01", ["examiner"])
+
+  assert component.pull_calls == 1
+  assert component.set_calls == [("P", datetime.date(2024, 2, 1))]
+  assert component.finalize_calls == [["examiner"]]
+
+
+def test_set_grade_finalizes_after_refreshing_matching_finalized_result():
+  component = FakeComponent(
+    grade="P", finalized=True, date="2024-02-01",
+    pull_updates=[{"attested": False, "finalized": False,
+                   "grade": "P", "date": "2024-02-01"}])
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-02-01", ["examiner"])
+
+  assert component.pull_calls == 1
+  assert component.set_calls == []
+  assert component.finalize_calls == [["examiner"]]
+
+
+def test_set_grade_explains_how_to_change_attested_result():
+  component = FakeComponent(
+    grade="F", attested=True, finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  with pytest.raises(
+      ladok3.LadokValidationError,
+      match="remove the attested result in LADOK"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", ["examiner"])
+
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+
+
+def test_set_grade_rejects_attested_date_change():
+  component = FakeComponent(
+    grade="P", attested=True, finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  with pytest.raises(
+      ladok3.LadokValidationError,
+      match="remove the attested result in LADOK"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", ["examiner"])
+
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+
+
+def test_set_grade_retries_after_stale_attested_result():
+  component = FakeComponent(
+    grade="F", attested=True, finalized=True, date="2024-01-20",
+    pull_updates=[{"attested": False, "finalized": False,
+                   "grade": "F", "date": "2024-01-20"}])
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=False, verbose=0)
+
+  ladok3.report.set_grade(
+    ladok, args, "191212121212", "DD1315", "DD1315", "P",
+    "2024-02-01", [])
+
+  assert component.pull_calls == 1
+  assert component.set_calls == [("P", datetime.date(2024, 2, 1))]
+  assert component.finalize_calls == []
+
+
+def test_set_grade_propagates_missing_result_after_refresh():
+  component = FakeComponent(
+    grade="F", attested=True, finalized=True, date="2024-01-20",
+    pull_exception=ladok3.LadokNotFoundError(
+      "DD1315: no result found in LADOK for refresh"))
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=False, verbose=0)
+
+  with pytest.raises(
+      ladok3.LadokNotFoundError,
+      match="DD1315: no result found in LADOK for refresh"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", [])
+
+  assert component.pull_calls == 1
+  assert component.set_calls == []
 @
 
 Now we simply want to set those objects up.
@@ -367,4 +695,3 @@ if args.course_code:
 else:
   report_many_results(ladok, args)
 @
-
