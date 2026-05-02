@@ -13,7 +13,7 @@ We will design the test functions in such a way that we can reuse them to show
 the example outputs from the API requests.
 
 We will use the following to test the API methods.
-<<[[test api.py]]>>=
+<<test [[api.py]]>>=
 import json
 import ladok3
 import ladok3.report
@@ -3066,7 +3066,7 @@ complements the existing per-student and per-course-round queries.
 \end{enumerate}
 
 These UIDs from the test environment are used in the tests below.
-<<[[test api.py]]>>=
+<<test [[api.py]]>>=
 # CTFYS HT25 program round (utbildningsinformation service)
 CTFYS_round_id  = "c651ef07-2031-11f0-a301-a2036b2340f3"
 # SH1014 written exam on 2026-01-07 and its associated course round
