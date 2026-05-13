@@ -105,8 +105,9 @@ We'll use [[argparse]] to parse the command-line options.
 <<process command-line options>>=
 argp = argparse.ArgumentParser(
   description="This is a CLI-ification of LADOK3's web GUI.",
-  epilog="Copyright (c) 2020 Alexander Baltatzis, Gerald Q. Maguire Jr.; "
-         "2021--2026 Daniel Bosk. "
+  epilog="Copyright (c) 2020 Alexander Baltatzis, Gerald Q. Maguire Jr.;\n"
+         "              2021--2026 Daniel Bosk;\n"
+         "              2026 Christian Ohm.\n"
          "Licensed under MIT. "
          "Web: https://github.com/dbosk/ladok3"
 )

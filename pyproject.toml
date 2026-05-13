@@ -8,7 +8,8 @@ keywords = ["ladok3", "ladok"]
 authors = [
   {name = "Daniel Bosk", email = "daniel@bosk.se"},
   {name = "Gerald Q. Maguire Jr"},
-  {name = "Alexander Baltatzis"}
+  {name = "Alexander Baltatzis"},
+  {name = "Christian Ohm"}
 ]
 maintainers = [
   {name = "Daniel Bosk", email = "dbosk@kth.se"}
