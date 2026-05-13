@@ -408,7 +408,7 @@ optional handler class is unavailable, while still leaving core missing
 classes as hard failures. We also verify that the commands dispatched before
 session creation really bypass [[get_session]].
 
-<<[[test cli.py]]>>=
+<<test [[cli.py]]>>=
 import io
 import pickle
 import sys

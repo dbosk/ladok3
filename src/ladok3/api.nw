@@ -13,7 +13,7 @@ We will design the test functions in such a way that we can reuse them to show
 the example outputs from the API requests.
 
 We will use the following to test the API methods.
-<<[[test api.py]]>>=
+<<test [[api.py]]>>=
 import json
 import ladok3
 import ladok3.report
@@ -249,8 +249,20 @@ login page and still finish with [[200 OK]]. If we were to call
 a low-level decoding failure. We therefore decode successful responses through a
 small helper that raises [[LadokAPIError]] with the final URL and content type
 when the body is not JSON.
+
+The raw-text case needs one extra wrinkle.  The [[weblogin]] session wrapper is
+helpful for JSON endpoints because it can inspect HTML responses and trigger a
+login flow when LADOK silently redirects us.  But the same wrapper also feeds
+all text responses to its HTML detectors, and XML with an encoding declaration
+causes [[lxml.html]] to raise before our code gets the body.  We therefore let
+[[get_query_text]] force authentication with an ordinary JSON request first,
+then make the raw request through [[requests.Session.request(self.session,
+...)]]: that still uses the 
+same authenticated [[self.session]] object (same cookies, same MFA-backed
+login), but bypasses [[AutologinSession.request]]'s HTML detection layer.
 <<functions>>=
-def response_json_or_error(response, path, method):
+def response_json_or_error(
+    response: requests.Response, path: str, method: str) -> dict | list:
   """Return JSON from [[response]] or raise contextual [[LadokAPIError]]."""
   try:
     return response.json()
@@ -268,7 +280,7 @@ Let's verify the improved error reporting with a synthetic HTML login page. The
 helper should raise [[LadokAPIError]] rather than leaking a bare JSON decoding
 exception.
 <<test functions>>=
-def test_response_json_or_error_reports_html_login_pages():
+def test_response_json_or_error_reports_html_login_pages() -> None:
   class Response:
     url = "https://start.ladok.se/gui/loggain"
     headers = {"content-type": "text/html;charset=UTF-8"}
@@ -288,8 +300,9 @@ def test_response_json_or_error_reports_html_login_pages():
 @
 
 <<LadokSession data methods>>=
-def get_query(self, path,
-              content_type="application/vnd.ladok-resultat+json"):
+def get_query(self, path: str,
+              content_type: str = "application/vnd.ladok-resultat+json"
+              ) -> dict | list:
   """
   Make GET query to LADOK server and return JSON data.
   
@@ -322,8 +335,56 @@ def get_query(self, path,
     error_msg = response.text
   raise LadokAPIError(f"GET request to {path} failed: {error_msg}")
 
-def put_query(self, path, put_data,
-              content_type="application/vnd.ladok-resultat+json"):
+def get_query_text(self, path: str, accept: str) -> str:
+  """
+  Make GET query to LADOK and return the raw response text.
+
+  Use this when an endpoint serves a non-JSON representation (e.g.\
+  XML) that we want to hand to the caller for parsing.  The Accept
+  header is set explicitly because [[self.headers]] only advertises
+  the JSON variants.
+
+  Args:
+    path:   API endpoint path
+    accept: HTTP Accept header value, e.g.
+            'application/xml, text/xml;q=0.9'
+
+  Returns:
+    response.text from the LADOK response
+
+  Raises:
+    LadokServerError: If the server returns an error message
+    LadokAPIError: If the request fails or returns an error status
+  """
+  headers = self.headers.copy()
+  headers.pop("Content-Type", None)
+  headers["Accept"] = accept
+
+  self.user_info_JSON()
+  <<record time of request>>
+
+  response = requests.Session.request(
+    self.session,
+    "GET",
+    url=self.base_gui_proxy_url + path,
+    headers=headers)
+
+  if response.ok:
+    if "html" in response.headers.get("content-type", "").lower():
+      raise LadokAPIError(
+        f"GET request to {path} returned unexpected HTML from "
+        f"{response.url}")
+    return response.text
+  try:
+    error_msg = response.json()["Meddelande"]
+    raise LadokServerError(error_msg)
+  except:
+    error_msg = response.text
+  raise LadokAPIError(f"GET request to {path} failed: {error_msg}")
+
+def put_query(self, path: str, put_data: dict | list,
+              content_type: str = "application/vnd.ladok-resultat+json"
+              ) -> dict | list:
   """
   Make PUT query to LADOK server and return JSON data.
   
@@ -358,8 +419,9 @@ def put_query(self, path, put_data,
     error_msg = response.text
   raise LadokAPIError(f"PUT request to {path} failed: {error_msg}")
 
-def post_query(self, path, post_data,
-               content_type="application/vnd.ladok-resultat+json"):
+def post_query(self, path: str, post_data: dict | list,
+               content_type: str = "application/vnd.ladok-resultat+json"
+               ) -> dict | list:
   """
   Make POST query to LADOK server and return JSON data.
   
@@ -394,7 +456,7 @@ def post_query(self, path, post_data,
     error_msg = response.text
   raise LadokAPIError(f"POST request to {path} failed: {error_msg}")
 
-def del_query(self, path):
+def del_query(self, path: str) -> bool | dict | list | requests.Response:
   """
   Returns DELETE query response for path on the LADOK server.
 
@@ -442,7 +504,7 @@ Also, if too long time passes between requests, the existing XSRF token will be
 invalidated by LADOK.
 <<LadokSession data methods>>=
 @property
-def xsrf_token(self):
+def xsrf_token(self) -> str:
   """
   Get a fresh XSRF token for authenticated requests.
 
@@ -489,6 +551,69 @@ else:
 @
 
 
+\subsection{Paginating across multiple result pages}\label{Pagination}
+
+Many LADOK endpoints return a fixed-size page of results plus a
+[[TotaltAntalPoster]] field giving the total count.  If a caller wants
+\emph{all} results --- e.g.\ all course rounds for a course code, all
+participants in a programme round, all examination occasions for a
+course --- they have to walk every page.
+
+The naive workaround is to ask for an enormous [[limit]] (we used 400
+in places below).  That stops working the moment a query genuinely
+crosses the limit, and it fails silently: the caller gets the first 400
+items and never finds out the rest exist.  We instead provide a
+[[_all_pages]] helper that walks pages until the running total matches
+the server's [[TotaltAntalPoster]], so the caller-facing methods can
+stay parameterless and always return the complete list.
+
+The helper takes a [[request_fn(page, limit)]] callable rather than a
+URL and content-type pair.  This lets it work with both [[get_query]]
+(URL query-string pagination) and [[put_query]] (body-field
+pagination, used by [[occasion_results_JSON]]) without having to
+duplicate the looping logic --- the closure captures whatever
+endpoint-specific machinery the caller needs.
+
+If the response is missing either [[key]] or [[TotaltAntalPoster]], we
+raise [[LadokAPIError]] in the same \enquote{fail loud on schema
+drift} style as the rest of this module: a paginated endpoint that
+suddenly stops returning [[TotaltAntalPoster]] is exactly the kind of
+change the caller needs to see, not silently swallow.
+
+<<LadokSession data methods>>=
+def _all_pages(self,
+               request_fn: Callable[[int, int], dict],
+               key: str = "Resultat",
+               page_size: int = 400) -> list:
+  """Concatenate every page of a paginated LADOK endpoint.
+
+  request_fn(page, limit) must return the raw response dict
+  containing `key` (a list of items) and 'TotaltAntalPoster' (total
+  number of items across all pages, 1-based page numbering).
+
+  Returns the flat list of items.  Raises LadokAPIError if any page
+  is missing the expected keys.
+  """
+  items = []
+  page = 1
+  while True:
+    data = request_fn(page, page_size)
+    try:
+      chunk = data[key]
+      total = data["TotaltAntalPoster"]
+    except KeyError as err:
+      err.add_note(f"Response data: {data}")
+      raise LadokAPIError(
+        f"Paginated response missing '{key}' or "
+        f"'TotaltAntalPoster' on page {page}"
+      ) from err
+    items.extend(chunk)
+    if len(items) >= total or not chunk:
+      return items
+    page += 1
+@
+
+
 \section{Cleaning data for printing}
 
 We sometimes want to print the data, for instance, example output in this 
@@ -497,7 +622,7 @@ For this reason we introduce some cleaning functions.
 These recursively transcends the JSON structure removing the data that should 
 be removed.
 <<functions>>=
-def clean_data(json_obj):
+def clean_data(json_obj: dict | list) -> dict | list:
   """
   Clean a JSON object by removing internal links and pseudonymizing personal data.
 
@@ -515,7 +640,7 @@ def clean_data(json_obj):
 The [[remove_links]] functions removes the [[link]] key--value pairs.
 The [[link]] values contains URLs for all requests that data are based on.
 <<functions>>=
-def remove_links(json_obj):
+def remove_links(json_obj: dict | list) -> None:
   """
   Recursively removes all "link" keys and values
   """
@@ -532,7 +657,7 @@ def remove_links(json_obj):
 The [[pseudonymize]] function replaces names and personnummer with dummy 
 entries.
 <<functions>>=
-def pseudonymize(json_obj):
+def pseudonymize(json_obj: dict | list) -> None:
   """
   Recursively pseudonymizes a JSON data record
   """
@@ -570,9 +695,13 @@ def pseudonymize(json_obj):
 To request the grading scales from LADOK, we request all of them and return a 
 list of JSON data objects containing the grading scale data.
 <<LadokSession data methods>>=
-def grade_scales_JSON(self):
+def grade_scales_JSON(self) -> list:
   """
   Fetch all grading scales from LADOK.
+
+  This returns the JSON variant's standard subset.  Use
+  [[grade_scales_all_text()]] when the caller needs the broader XML response,
+  including institution-specific scales.
 
   Returns:
       list: A list of JSON objects containing grading scale data from LADOK.
@@ -597,7 +726,7 @@ We add the following test.
 If we can convert the return value do JSON, it's probably correct.
 (No this isn't the best of tests.)
 <<test functions>>=
-def test_grade_scales_JSON():
+def test_grade_scales_JSON() -> None:
   assert ladok.grade_scales_JSON()
 @
 
@@ -633,7 +762,7 @@ of Chip.)
 # lang               - language code 'en' or 'sv', defaults to 'sv'
 #
 # RETURNERAR en dictionary med för- och efternamn and more
-def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
+def get_student_data_JSON(self, person_nr_raw: str, lang: str = 'sv') -> dict:
   """
   Get student data from LADOK using a Swedish personal number (personnummer).
 
@@ -678,7 +807,7 @@ def get_student_data_JSON(self, person_nr_raw, lang = 'sv'):
 
 To test this function, we do the following.
 <<test functions>>=
-def test_get_student_data_JSON():
+def test_get_student_data_JSON() -> None:
   assert ladok.get_student_data_JSON("8506097891")
 @
 
@@ -692,7 +821,7 @@ directly.
 # uid                - Ladok ID
 #
 # RETURNERAR en dictionary med för- och efternamn and more
-def get_student_data_by_uid_JSON(self, uid):
+def get_student_data_by_uid_JSON(self, uid: str) -> dict:
   """
   Get student data from LADOK using a LADOK UID.
 
@@ -714,7 +843,7 @@ def get_student_data_by_uid_JSON(self, uid):
 
 To test this function, we do the following.
 <<test functions>>=
-def test_get_student_data_by_uid_JSON():
+def test_get_student_data_by_uid_JSON() -> None:
   assert ladok.get_student_data_by_uid_JSON(student_uid)
 @
 
@@ -733,7 +862,7 @@ We want to get the contact info for a student from LADOK.
 This data includes email, postal address and phone number.
 It also includes when they were last updated.
 <<LadokSession data methods>>=
-def get_student_contact_data_JSON(self, student_id):
+def get_student_contact_data_JSON(self, student_id: str) -> dict:
   """
   Returns contact data for student with student_id, returns JSON
   """
@@ -752,7 +881,7 @@ def get_student_contact_data_JSON(self, student_id):
 
 We test this function.
 <<test functions>>=
-def test_get_student_contact_data_JSON():
+def test_get_student_contact_data_JSON() -> None:
   assert ladok.get_student_contact_data_JSON(student_uid)
 @
 
@@ -770,7 +899,7 @@ print(r"\end{minted}")
 We want to check if any student is suspended from studies.
 We can get a list of all suspension periods from LADOK.
 <<LadokSession data methods>>=
-def get_student_suspensions_JSON(self, student_id):
+def get_student_suspensions_JSON(self, student_id: str) -> dict:
   """
   Returns suspensions from studies for student with student_id,
   returns JSON
@@ -790,7 +919,7 @@ def get_student_suspensions_JSON(self, student_id):
 
 We test this function.
 <<test functions>>=
-def test_get_student_suspensions_JSON():
+def test_get_student_suspensions_JSON() -> None:
   assert ladok.get_student_suspensions_JSON(student_uid)
 @
 
@@ -809,7 +938,7 @@ print(r"\end{minted}")
 This methods returns \emph{all} registrations for a student, \ie registrations 
 on courses and programmes.
 <<LadokSession data methods>>=
-def registrations_JSON(self, student_id):
+def registrations_JSON(self, student_id: str) -> list:
   """
   Return all registrations for student with ID student_id.
   """
@@ -829,7 +958,7 @@ def registrations_JSON(self, student_id):
 
 We provide the following test.
 <<test functions>>=
-def test_registrations_JSON():
+def test_registrations_JSON() -> None:
   results = ladok.registrations_JSON(student_uid)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -851,9 +980,10 @@ student.
 This way we can check if a student has been registered several times on a 
 course.
 <<LadokSession data methods>>=
-def registrations_on_course_JSON(self, course_education_id, student_id):
+def registrations_on_course_JSON(
+    self, course_education_id: str, student_id: str) -> list:
   """
-  Return a list of registrations on course with education_id for student with 
+  Return a list of registrations on course with education_id for student with
   student_id. JSON format.
   """
   data = self.get_query(
@@ -873,7 +1003,7 @@ def registrations_on_course_JSON(self, course_education_id, student_id):
 
 We add the following test.
 <<test functions>>=
-def test_registrations_on_course_JSON():
+def test_registrations_on_course_JSON() -> None:
   results = ladok.registrations_on_course_JSON(dasak_education_id, student_uid)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -893,9 +1023,9 @@ We also want to get a student's study structure, that is programmes that they
 are admitted to.
 <<LadokSession data methods>>=
 # added by GQMJr
-def studystructure_student_JSON(self, uid):
+def studystructure_student_JSON(self, uid: str) -> dict:
   """
-  Returns a dictionary of student information. This contains programmes that 
+  Returns a dictionary of student information. This contains programmes that
   the student is admitted to.
   """
   r = self.session.get(
@@ -910,7 +1040,7 @@ def studystructure_student_JSON(self, uid):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_studystructure_student_JSON():
+def test_studystructure_student_JSON() -> None:
   r = ladok.studystructure_student_JSON(student_uid)
   assert type(r) == dict
 @
@@ -931,7 +1061,7 @@ print(r"\end{minted}")
 
 We want to search for course rounds by one or more keys.
 <<LadokSession data methods>>=
-def search_course_rounds_JSON(self, /, **kwargs):
+def search_course_rounds_JSON(self, /, **kwargs) -> list:
   """Query LADOK about course rounds, possible keys:
   code, round_code, name
   """
@@ -958,7 +1088,7 @@ def search_course_rounds_JSON(self, /, **kwargs):
 
 We add the following test.
 <<test functions>>=
-def test_search_course_rounds_JSON():
+def test_search_course_rounds_JSON() -> None:
   results = ladok.search_course_rounds_JSON(code="DD1317")
   assert results
 @
@@ -978,7 +1108,7 @@ print(r"\end{minted}")
 
 This method fetches all course rounds that uses the given course instance.
 <<LadokSession data methods>>=
-def course_rounds_JSON(self, course_instance_id):
+def course_rounds_JSON(self, course_instance_id: str) -> list:
   """Requires course instance ID"""
   data = self.get_query(
     f"/resultat/internal/kurstillfalle/kursinstans/{course_instance_id}"
@@ -994,7 +1124,7 @@ def course_rounds_JSON(self, course_instance_id):
 
 We test this method as follows.
 <<test functions>>=
-def test_course_rounds_JSON():
+def test_course_rounds_JSON() -> None:
   results = ladok.course_rounds_JSON(dasak_instance_id)
   assert json.dumps(results[:1]+results[-1:], indent=2, ensure_ascii=False)
 @
@@ -1016,7 +1146,7 @@ This method fetches the data for a given course instance.
 It requires the course instance ID.
 (This is a slightly rewritten version of Maguire's original method.)
 <<LadokSession data methods>>=
-def course_instance_JSON(self, instance_id):
+def course_instance_JSON(self, instance_id: str) -> dict:
   """
   Returns course instance data for a course with instance ID instance_id
   """
@@ -1034,7 +1164,7 @@ def course_instance_JSON(self, instance_id):
 
 We add the following test.
 <<test functions>>=
-def test_course_instance_JSON():
+def test_course_instance_JSON() -> None:
   results = ladok.course_instance_JSON(dasak_instance_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -1055,10 +1185,10 @@ print(r"\end{minted}")
 We can get a list of course instances for a given course code.
 <<LadokSession data methods>>=
 # added by GQMJr
-def course_instances_JSON(self, course_code, lang = 'sv'):
+def course_instances_JSON(self, course_code: str, lang: str = 'sv') -> dict:
   """
   Returns a list of dictionaries with course instances for a given course code.
-  The course code is a string such as "DD1310". The language code is 'en' or 
+  The course code is a string such as "DD1310". The language code is 'en' or
   'sv'.
 
   Note that there seems to be a limit of 403 for the number of pages.
@@ -1075,7 +1205,7 @@ def course_instances_JSON(self, course_code, lang = 'sv'):
 Let's add a test.
 This should return a list of dictionaries.
 <<test functions>>=
-def test_course_instances_JSON():
+def test_course_instances_JSON() -> None:
   r = ladok.course_instances_JSON('DD2395')
   assert type(r) == dict
 @
@@ -1095,14 +1225,15 @@ This function gets a course instance by the combination of course code (\eg
 DD1310) and the five digit round code (\eg 50429).
 <<LadokSession data methods>>=
 # added by GQMJr
-def instance_info(self, course_code, instance_code, lang = 'sv'):
+def instance_info(
+    self, course_code: str, instance_code: str, lang: str = 'sv') -> dict:
   """
   Returns a dictionary of course instance information.
 
   course_code        - course code, such as "DD1310"
-  
+
   instance_code      - instance of the course ('TillfallesKod')
-  
+
   lang               - language code 'en' or 'sv', defaults to 'sv'
   """
   r = self.session.get(
@@ -1123,7 +1254,7 @@ def instance_info(self, course_code, instance_code, lang = 'sv'):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_instance_info():
+def test_instance_info() -> None:
   r = ladok.instance_info('DD1310', '50429')
   assert type(r) == dict
 @
@@ -1144,10 +1275,10 @@ course's LADOK ID.
 This ID can be found as the [[sis_course_id]] in Canvas.
 <<LadokSession data methods>>=
 # added by GQMJr
-def instance_info_uid(self, instance_uid):
+def instance_info_uid(self, instance_uid: str) -> dict:
   """
   Returns a dictionary of course instance information.
-  
+
   instance_uid: course's Uid (from course_integration_id or
                 sis_course_id in Canvas)
   """
@@ -1163,7 +1294,7 @@ def instance_info_uid(self, instance_uid):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_instance_info_uid():
+def test_instance_info_uid() -> None:
   r = ladok.instance_info_uid(dasak_round_id)
   assert type(r) == dict
 @
@@ -1191,7 +1322,7 @@ It requires the course round ID.
 This one includes data such as the number of registered students as well, 
 unlike the method in the next section.
 <<LadokSession data methods>>=
-def course_round_components_JSON(self, round_id):
+def course_round_components_JSON(self, round_id: str) -> list:
   """
   Fetch course components for a given course round.
 
@@ -1219,7 +1350,7 @@ def course_round_components_JSON(self, round_id):
 
 We add the following test.
 <<test functions>>=
-def test_course_round_components_JSON():
+def test_course_round_components_JSON() -> None:
   components = ladok.course_round_components_JSON(dasak_round_id)
   assert json.dumps(components, indent=2, ensure_ascii=False)
 @
@@ -1243,7 +1374,7 @@ print(r"\end{minted}")
 This method fetches the course components for a course instance, \ie a version 
 of the syllabus.
 <<LadokSession data methods>>=
-def course_instance_components_JSON(self, course_instance_id):
+def course_instance_components_JSON(self, course_instance_id: str) -> dict:
   """
   Fetch course components for a given course instance.
 
@@ -1271,7 +1402,7 @@ def course_instance_components_JSON(self, course_instance_id):
 
 We add the following test code.
 <<test functions>>=
-def test_course_instance_components_JSON():
+def test_course_instance_components_JSON() -> None:
   components = ladok.course_instance_components_JSON(dasak_instance_id)
   assert json.dumps(components, indent=2, ensure_ascii=False)
 @
@@ -1305,7 +1436,8 @@ One method gives more data than the other.
 This method searches for student results for a given component on a given 
 course round.
 <<LadokSession data methods>>=
-def search_reported_results_JSON(self, course_round_id, component_instance_id):
+def search_reported_results_JSON(
+    self, course_round_id: str, component_instance_id: str) -> list:
   """Requires:
   course_round_id: round_id for a course,
   component_instance_id: instance_id for a component of the course.
@@ -1339,7 +1471,7 @@ def search_reported_results_JSON(self, course_round_id, component_instance_id):
 
 We write the following test.
 <<test functions>>=
-def test_search_reported_results_JSON():
+def test_search_reported_results_JSON() -> None:
   results = ladok.search_reported_results_JSON(dasak_round_id,
     LAB1_instance_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
@@ -1362,7 +1494,8 @@ print(r"\end{minted}")
 
 Another method, which gives slightly different results is the following.
 <<LadokSession data methods>>=
-def search_course_results_JSON(self, course_round_id, component_instance_id):
+def search_course_results_JSON(
+    self, course_round_id: str, component_instance_id: str) -> list:
   """
   Retrieve course results for a specific component in a course round.
 
@@ -1399,7 +1532,7 @@ def search_course_results_JSON(self, course_round_id, component_instance_id):
 
 We test this by the following.
 <<test functions>>=
-def test_search_course_results_JSON():
+def test_search_course_results_JSON() -> None:
   results = ladok.search_course_results_JSON(dasak_round_id, LAB1_instance_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -1423,7 +1556,8 @@ print(r"\end{minted}")
 This method pulls results for an individual student for a particular course.
 LADOK changed this API request in 2022.
 <<LadokSession data methods>>=
-def student_results_JSON(self, student_id, course_education_id):
+def student_results_JSON(
+    self, student_id: str, course_education_id: str) -> dict:
   """Returns the results for a student on a course"""
   try:
     return self.get_query(
@@ -1441,7 +1575,7 @@ def student_results_JSON(self, student_id, course_education_id):
  
 We test this in the following way.
 <<test functions>>=
-def test_student_results_JSON():
+def test_student_results_JSON() -> None:
   results = ladok.student_results_JSON(student_uid, dasak_education_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -1476,9 +1610,9 @@ Note also that we can use [[course_instance_id]] as [[component_id]], this will
 set the result on the whole course.
 <<LadokSession data methods>>=
 def create_result_JSON(self,
-      student_id, course_instance_id, component_id,
-      grade_id, date,
-      project_title=None):
+      student_id: str, course_instance_id: str, component_id: str,
+      grade_id: int, date: str,
+      project_title: str | None = None) -> dict:
   """
   Creates a new result
   """
@@ -1512,7 +1646,7 @@ datintro_LAB1_id = "385a4428-73d8-11e8-b4e0-063f9afb40e3"
 result_uid = None
 result_last_modified = None
 
-def test_create_result_JSON():
+def test_create_result_JSON() -> None:
   result = ladok.create_result_JSON(
     datintro_student_uid, datintro_instance_id, datintro_LAB1_id,
     131663, "2022-11-29")
@@ -1551,7 +1685,9 @@ Note also that we use the [[ResultatUID]] and not the [[StudieresultatUID]] as
 we did for [[create_result_JSON]].
 <<LadokSession data methods>>=
 def update_result_JSON(self,
-      result_id, grade_id, date, last_modified, notes=[]):
+      result_id: str, grade_id: int, date: str,
+      last_modified: str,
+      notes: list | None = None) -> dict:
   """Update an existing result draft in LADOK.
   
   Note: Cannot be used to update finalized results. Uses ResultatUID, not StudieresultatUID.
@@ -1569,6 +1705,8 @@ def update_result_JSON(self,
   Raises:
       Exception: If the update request fails or is rejected by LADOK.
   """
+  if notes is None:
+    notes = []
   try:
     return self.put_query(
       f"/resultat/internal/resultat/uppdatera/{result_id}",
@@ -1588,7 +1726,7 @@ def update_result_JSON(self,
 
 We test this in the following way.
 <<test functions>>=
-def test_update_result_JSON():
+def test_update_result_JSON() -> None:
   global result_uid
   global result_last_modified
 
@@ -1625,7 +1763,7 @@ To finalize a result, we must know two things: who is reporting and who can
 attest.
 We start with who can attest.
 <<LadokSession data methods>>=
-def result_attestants_JSON(self, result_id):
+def result_attestants_JSON(self, result_id: str) -> list:
   """Returns a list of result attestants"""
   data = self.put_query(
     "/resultat/internal/anvandare/resultatrattighet/attestanter/kurstillfallesrapportering",
@@ -1646,7 +1784,7 @@ the path.
 
 We can test this in the following way.
 <<test functions>>=
-def test_result_attestants_JSON():
+def test_result_attestants_JSON() -> None:
   global result_uid
   try:
     attestants = ladok.result_attestants_JSON(result_uid)
@@ -1667,7 +1805,7 @@ print(r"\end{minted}")
 Now, we get a list of who can report (basically anyone registered in the entire 
 organization).
 <<LadokSession data methods>>=
-def result_reporters_JSON(self, organization_id):
+def result_reporters_JSON(self, organization_id: str) -> list:
   """Returns a list of who can report results in an organization"""
   data = self.get_query(
     "/kataloginformation/internal/anvandare/organisation/" +
@@ -1685,7 +1823,7 @@ def result_reporters_JSON(self, organization_id):
 
 We test this method as follows.
 <<test functions>>=
-def test_result_reporters_JSON():
+def test_result_reporters_JSON() -> None:
   reporters = ladok.result_reporters_JSON(KTH_org_id)
   assert json.dumps(reporters, indent=2, ensure_ascii=False)
 @
@@ -1706,7 +1844,7 @@ print(r"\end{minted}")
 Usually, we want to set the reporter to the logged-in user.
 We can use the following API call to get information about the logged-in user.
 <<LadokSession data methods>>=
-def user_info_JSON(self):
+def user_info_JSON(self) -> dict:
   """
   Get information about the currently logged-in user.
   
@@ -1730,7 +1868,7 @@ def user_info_JSON(self):
 
 We test this as follows.
 <<test functions>>=
-def test_user_info_JSON():
+def test_user_info_JSON() -> None:
   me_teacher = ladok.user_info_JSON()
   assert json.dumps(me_teacher, indent=2, ensure_ascii=False)
 @
@@ -1753,9 +1891,14 @@ that person.
 (LADOK changed this API request in 2022.)
 <<LadokSession data methods>>=
 def finalize_result_JSON(self,
-    result_id, last_modified, reporter_id, attestant_ids=[],
-    others=[]):
+    result_id: str, last_modified: str, reporter_id: str,
+    attestant_ids: list | None = None,
+    others: list | None = None) -> dict:
   """Marks a result as finalized (klarmarkera)"""
+  if attestant_ids is None:
+    attestant_ids = []
+  if others is None:
+    others = []
   try:
     return self.put_query(
       f"/resultat/internal/resultat/klarmarkera/{result_id}",
@@ -1778,7 +1921,7 @@ We test this in the following way.
 <<test functions>>=
 reporter_id = "21f4667a-e864-11ea-adbf-a14961264cf0"
 
-def test_finalize_result_JSON():
+def test_finalize_result_JSON() -> None:
   global result_uid
   global result_last_modified
 
@@ -1794,7 +1937,7 @@ def test_finalize_result_JSON():
 We also want to verify that the [[CourseResult]] class correctly reflects the
 finalized state through its [[finalized]] property.
 <<test functions>>=
-def test_finalized_CourseResult():
+def test_finalized_CourseResult() -> None:
   """Verify CourseResult.finalized property after finalization."""
   student = ladok.get_student(datintro_student_uid)
 
@@ -1821,7 +1964,7 @@ different result once LADOK has a finalized value waiting for attestation.
 This exercises the live create/finalize cycle while keeping the cleanup flow
 unchanged.
 <<test functions>>=
-def test_report_set_grade_rejects_mismatching_finalized_result():
+def test_report_set_grade_rejects_mismatching_finalized_result() -> None:
   ladok.cache.clear()
   student = ladok.get_student(datintro_student_uid)
 
@@ -1865,7 +2008,11 @@ The only difference from the call above (\cref{UpdateResult}) is that the URL
 uses [[uppdateraklarmarkerat]] instead of just [[uppdatera]].
 <<LadokSession data methods>>=
 def update_finalized_result_JSON(self,
-      result_id, grade_id, date, last_modified, notes=[]):
+      result_id: str, grade_id: int, date: str,
+      last_modified: str,
+      notes: list | None = None) -> dict:
+  if notes is None:
+    notes = []
   try:
     return self.put_query(
       f"/resultat/internal/resultat/uppdateraklarmarkerat/{result_id}",
@@ -1886,7 +2033,7 @@ def update_finalized_result_JSON(self,
 
 We test this in the following way.
 <<test functions>>=
-def test_update_finalized_result_JSON():
+def test_update_finalized_result_JSON() -> None:
   global result_uid
   global result_last_modified
 
@@ -1913,7 +2060,8 @@ print(r"\end{minted}")
 
 We can also change a result from finalized back to draft status.
 <<LadokSession data methods>>=
-def finalized_result_to_draft_JSON(self, result_id, last_modified):
+def finalized_result_to_draft_JSON(
+    self, result_id: str, last_modified: str) -> dict:
   try:
     return self.put_query(
       f"/resultat/internal/resultat/tillbakatillutkast/{result_id}",
@@ -1932,7 +2080,7 @@ def finalized_result_to_draft_JSON(self, result_id, last_modified):
 
 We test this in the following way.
 <<test functions>>=
-def test_finalized_result_to_draft_JSON():
+def test_finalized_result_to_draft_JSON() -> None:
   global result_uid
   global result_last_modified
 
@@ -1957,7 +2105,7 @@ print(r"\end{minted}")
 
 We can also change a result from finalized back to draft status.
 <<LadokSession data methods>>=
-def remove_result_draft_JSON(self, result_id):
+def remove_result_draft_JSON(self, result_id: str) -> None:
   try:
     data = self.del_query(
       f"/resultat/internal/resultat/tabort/{result_id}"
@@ -1973,7 +2121,7 @@ def remove_result_draft_JSON(self, result_id):
 
 We test this in the following way.
 <<test functions>>=
-def test_remove_result_draft_JSON():
+def test_remove_result_draft_JSON() -> None:
   global result_uid
 
   ladok.remove_result_draft_JSON(result_uid)
@@ -1993,8 +2141,8 @@ the course round).
 The essential difference is keyword arguments to filter which students to 
 include.)
 <<LadokSession data methods>>=
-def participants_JSON(self, course_round_id, /, **kwargs):
-  """Returns JSON record containing participants in a course identified by 
+def participants_JSON(self, course_round_id: str, /, **kwargs) -> list:
+  """Returns JSON record containing participants in a course identified by
   round ID.
   Filters in kwargs: not_started, ongoing, registered, finished, cancelled"""
   participants_types = []
@@ -2041,7 +2189,7 @@ def participants_JSON(self, course_round_id, /, **kwargs):
 
 We test this as follows.
 <<test functions>>=
-def test_participants_JSON():
+def test_participants_JSON() -> None:
   results = ladok.participants_JSON(dasak_round_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -2071,7 +2219,7 @@ reformatting of the code.
 We can get a list of our rights in LADOK.
 <<LadokSession data methods>>=
 # added by GQMJr
-def grading_rights(self):
+def grading_rights(self) -> list:
   """
   Returns a list of dictionaries with the grading rights of the logged in user.
   """
@@ -2087,7 +2235,7 @@ def grading_rights(self):
 Let's add a test.
 This should return a list of dictionaries.
 <<test functions>>=
-def test_grading_rights():
+def test_grading_rights() -> None:
   r = ladok.grading_rights()
   assert type(r) == list
   assert type(r[0]) == dict
@@ -2106,9 +2254,9 @@ print(r"\end{minted}")
 We can get information about the organization.
 <<LadokSession data methods>>=
 # added by GQMJr
-def organization_info_JSON(self):
+def organization_info_JSON(self) -> dict:
   """
-  Returns a dictionary of organization information for the entire institution 
+  Returns a dictionary of organization information for the entire institution
   of the logged in user.
   """
   r = self.session.get(
@@ -2122,7 +2270,7 @@ def organization_info_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_organization_info_JSON():
+def test_organization_info_JSON() -> None:
   r = ladok.organization_info_JSON()
   assert type(r) == dict
 @
@@ -2139,7 +2287,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def larosatesinformation_JSON(self):
+def larosatesinformation_JSON(self) -> dict:
   """
   Returns a dictionary of the university or college information.
   """
@@ -2153,7 +2301,7 @@ def larosatesinformation_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_larosatesinformation_JSON():
+def test_larosatesinformation_JSON() -> None:
   r = ladok.larosatesinformation_JSON()
   assert type(r) == dict
 @
@@ -2171,7 +2319,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def undervisningssprak_JSON(self):
+def undervisningssprak_JSON(self) -> dict:
   """
   Returns a dictionary of teaching languages.
   """
@@ -2185,7 +2333,7 @@ def undervisningssprak_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_undervisningssprak_JSON():
+def test_undervisningssprak_JSON() -> None:
   r = ladok.undervisningssprak_JSON()
   assert type(r) == dict
 @
@@ -2202,7 +2350,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def i18n_translation_JSON(self, lang = 'sv'):
+def i18n_translation_JSON(self, lang: str = 'sv') -> dict:
   """
   Returns a dictionary of i18n translations used in Ladok3.
   """
@@ -2216,7 +2364,7 @@ def i18n_translation_JSON(self, lang = 'sv'):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_i18n_translation_JSON():
+def test_i18n_translation_JSON() -> None:
   r = ladok.i18n_translation_JSON()
   assert type(r) == dict
 @
@@ -2234,7 +2382,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def svenskorter_JSON(self):
+def svenskorter_JSON(self) -> dict:
   """
   Returns a dictionary of Swedish places with their KommunID.
   """
@@ -2247,7 +2395,7 @@ def svenskorter_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_svenskorter_JSON():
+def test_svenskorter_JSON() -> None:
   r = ladok.svenskorter_JSON()
   assert type(r) == dict
 @
@@ -2265,7 +2413,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def kommuner_JSON(self):
+def kommuner_JSON(self) -> dict:
   """
   Returns a dictionary of Swedish municipalities.
   """
@@ -2278,7 +2426,7 @@ def kommuner_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_kommuner_JSON():
+def test_kommuner_JSON() -> None:
   r = ladok.kommuner_JSON()
   assert type(r) == dict
 @
@@ -2295,7 +2443,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def lander_JSON(self):
+def lander_JSON(self) -> dict:
   """
   Returns a dictionary of countries.
   """
@@ -2308,7 +2456,7 @@ def lander_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_lander_JSON():
+def test_lander_JSON() -> None:
   r = ladok.lander_JSON()
   assert type(r) == dict
 @
@@ -2326,7 +2474,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def undervisningstid_JSON(self):
+def undervisningstid_JSON(self) -> dict:
   """
   Returns a dictionary of teaching times.
   """
@@ -2340,7 +2488,7 @@ def undervisningstid_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_undervisningstid_JSON():
+def test_undervisningstid_JSON() -> None:
   r = ladok.undervisningstid_JSON()
   assert type(r) == dict
 @
@@ -2358,7 +2506,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # RETURNERAR JSON of Successive Specializations
-def successivfordjupning_JSON(self):
+def successivfordjupning_JSON(self) -> dict:
   """
   Returns a dictionary of Successive Specializations.
   """
@@ -2372,7 +2520,7 @@ def successivfordjupning_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_successivfordjupning_JSON():
+def test_successivfordjupning_JSON() -> None:
   r = ladok.successivfordjupning_JSON()
   assert type(r) == dict
 @
@@ -2390,7 +2538,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def undervisningsform_JSON(self):
+def undervisningsform_JSON(self) -> dict:
   """
   Returns forms of education.
   """
@@ -2404,7 +2552,7 @@ def undervisningsform_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_undervisningsform_JSON():
+def test_undervisningsform_JSON() -> None:
   r = ladok.undervisningsform_JSON()
   assert type(r) == dict
 @
@@ -2422,7 +2570,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def LokalaPerioder_JSON(self):
+def LokalaPerioder_JSON(self) -> dict:
   """
   Returns local periods.
   """
@@ -2435,7 +2583,7 @@ def LokalaPerioder_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_LokalaPerioder_JSON():
+def test_LokalaPerioder_JSON() -> None:
   r = ladok.LokalaPerioder_JSON()
   assert type(r) == dict
 @
@@ -2453,7 +2601,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def nivainomstudieordning_JSON(self):
+def nivainomstudieordning_JSON(self) -> dict:
   """
   Returns education levels.
   """
@@ -2467,7 +2615,7 @@ def nivainomstudieordning_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_nivainomstudieordning_JSON():
+def test_nivainomstudieordning_JSON() -> None:
   r = ladok.nivainomstudieordning_JSON()
   assert type(r) == dict
 @
@@ -2486,7 +2634,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def amnesgrupp_JSON(self):
+def amnesgrupp_JSON(self) -> dict:
   """
   Returns subject area groups.
   """
@@ -2499,7 +2647,7 @@ def amnesgrupp_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_amnesgrupp_JSON():
+def test_amnesgrupp_JSON() -> None:
   r = ladok.amnesgrupp_JSON()
   assert type(r) == dict
 @
@@ -2518,7 +2666,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def studietakt_JSON(self):
+def studietakt_JSON(self) -> dict:
   """
   Returns study paces.
   """
@@ -2531,7 +2679,7 @@ def studietakt_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_studietakt_JSON():
+def test_studietakt_JSON() -> None:
   r = ladok.studietakt_JSON()
   assert type(r) == dict
 @
@@ -2550,7 +2698,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def finansieringsform_JSON(self):
+def finansieringsform_JSON(self) -> dict:
   """
   Returns forms of financing.
   """
@@ -2564,7 +2712,7 @@ def finansieringsform_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_finansieringsform_JSON():
+def test_finansieringsform_JSON() -> None:
   r = ladok.finansieringsform_JSON()
   assert type(r) == dict
 @
@@ -2581,7 +2729,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def utbildningsomrade_JSON(self):
+def utbildningsomrade_JSON(self) -> dict:
   """
   Returns subject areas.
   """
@@ -2595,7 +2743,7 @@ def utbildningsomrade_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_utbildningsomrade_JSON():
+def test_utbildningsomrade_JSON() -> None:
   r = ladok.utbildningsomrade_JSON()
   assert type(r) == dict
 @
@@ -2612,7 +2760,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def kravpatidigarestudier_JSON(self):
+def kravpatidigarestudier_JSON(self) -> dict:
   """
   Returns requirements for earlier studies.
   """
@@ -2626,7 +2774,7 @@ def kravpatidigarestudier_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_kravpatidigarestudier_JSON():
+def test_kravpatidigarestudier_JSON() -> None:
   r = ladok.kravpatidigarestudier_JSON()
   assert type(r) == dict
 @
@@ -2645,7 +2793,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def studieordning_JSON(self):
+def studieordning_JSON(self) -> dict:
   """
   Returns study regulations.
   """
@@ -2659,7 +2807,7 @@ def studieordning_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_studieordning_JSON():
+def test_studieordning_JSON() -> None:
   r = ladok.studieordning_JSON()
   assert type(r) == dict
 @
@@ -2677,7 +2825,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def enhet_JSON(self):
+def enhet_JSON(self) -> dict:
   """
   Returns credit units.
   """
@@ -2690,7 +2838,7 @@ def enhet_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_enhet_JSON():
+def test_enhet_JSON() -> None:
   r = ladok.enhet_JSON()
   assert type(r) == dict
 @
@@ -2707,7 +2855,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def studielokalisering_JSON(self):
+def studielokalisering_JSON(self) -> dict:
   """
   Returns study locations.
   """
@@ -2721,7 +2869,7 @@ def studielokalisering_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_studielokalisering_JSON():
+def test_studielokalisering_JSON() -> None:
   r = ladok.studielokalisering_JSON()
   assert type(r) == dict
 @
@@ -2738,7 +2886,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def antagningsomgang_JSON(self):
+def antagningsomgang_JSON(self) -> dict:
   """
   Returns the admission round.
   """
@@ -2752,7 +2900,7 @@ def antagningsomgang_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_antagningsomgang_JSON():
+def test_antagningsomgang_JSON() -> None:
   r = ladok.antagningsomgang_JSON()
   assert type(r) == dict
 @
@@ -2769,7 +2917,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def utbildningstyp_JSON(self):
+def utbildningstyp_JSON(self) -> dict:
   """
   Returns types of education.
 
@@ -2787,7 +2935,7 @@ def utbildningstyp_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_utbildningstyp_JSON():
+def test_utbildningstyp_JSON() -> None:
   r = ladok.utbildningstyp_JSON()
   assert type(r) == dict
 @
@@ -2804,7 +2952,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def aktivitetstillfallestyp_JSON(self):
+def aktivitetstillfallestyp_JSON(self) -> dict:
   """
   Returns the activity types.
   """
@@ -2818,7 +2966,7 @@ def aktivitetstillfallestyp_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_aktivitetstillfallestyp_JSON():
+def test_aktivitetstillfallestyp_JSON() -> None:
   r = ladok.aktivitetstillfallestyp_JSON()
   assert type(r) == dict
 @
@@ -2836,7 +2984,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def catalog_service_index_JSON(self):
+def catalog_service_index_JSON(self) -> dict:
   """
   Returns the catalog service index.
   """
@@ -2849,7 +2997,7 @@ def catalog_service_index_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_catalog_service_index_JSON():
+def test_catalog_service_index_JSON() -> None:
   r = ladok.catalog_service_index_JSON()
   assert type(r) == dict
 @
@@ -2867,7 +3015,7 @@ print(r"\end{minted}")
 
 <<LadokSession data methods>>=
 # added by GQMJr
-def omradesbehorighet_JSON(self):
+def omradesbehorighet_JSON(self) -> dict:
   """
   Returns områdesbehörighet. See
 
@@ -2885,7 +3033,7 @@ def omradesbehorighet_JSON(self):
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_omradesbehorighet_JSON():
+def test_omradesbehorighet_JSON() -> None:
   r = ladok.omradesbehorighet_JSON()
   assert type(r) == dict
 @
@@ -2896,3 +3044,843 @@ print(r"\begin{minted}{JSON}")
 print(json.dumps(ladok3.clean_data(ladok.omradesbehorighet_JSON()), indent=2))
 print(r"\end{minted}")
 \end{pycode}
+
+
+\chapter{Program cohort access and examination results}
+
+Two new capabilities allow the extraction of cohort-level data that
+complements the existing per-student and per-course-round queries.
+
+\begin{enumerate}
+\item \textbf{Program cohort}: listing the students admitted to a
+  \emph{program round} (\emph{utbildningstillfälle}) for a given
+  admission semester (e.g.\ HT25 = autumn 2025).  In LADOK's internal
+  terminology the enrolment is a
+  \emph{kurspaketeringstillfälle} (course-package round), but it is
+  identified by the program-round UID returned by the
+  \texttt{utbildningsinformation} service.
+
+\item \textbf{Examination occasion results}: listing every student
+  registered for an \emph{aktivitetstillfälle} together with their
+  reported result.
+\end{enumerate}
+
+These UIDs from the test environment are used in the tests below.
+<<test [[api.py]]>>=
+# CTFYS HT25 program round (utbildningsinformation service)
+CTFYS_round_id  = "c651ef07-2031-11f0-a301-a2036b2340f3"
+# SH1014 written exam on 2026-01-07 and its associated course round
+SH1014_occasion_id = "01fe3c80-324b-11f0-8a2b-a6b448f445fa"
+SH1014_round_id    = "9ade5891-bba7-11ef-9553-beecfac44351"
+# Student with multiple SH1014/TEN1 attempts: first F (2025-01-07), then C (2026-01-07)
+SH1014_retake_student_uid = "134e3c18-0e50-11ed-8f4d-87c157374df8"
+@
+
+
+\section{[[program_rounds_JSON]]}
+
+To identify which program round corresponds to a given admission semester
+we first need all rounds for a program code.  The
+[[utbildningsinformation]] service provides this via a GET to the
+[[utbildningstillfalle/filtrera]] endpoint.
+
+Each item in the returned [[Resultat]] list includes:
+\begin{description}
+\item[[[Uid]]] The round's unique identifier, used to fetch participants.
+\item[[[SammanslagenTillfallesperiod]]] Contains [[Startdatum]] and
+  [[Slutdatum]] — used to identify the admission semester.
+\item[[[Utbildningstillfalleskod]]] The short round code, e.g.\ [[OP116]].
+\item[[[StartperiodID]]] An integer identifying the starting period.
+\end{description}
+
+The caller can filter the returned list by [[Startdatum]] to pick the
+round for a particular semester (e.g.\ HT25 = month $\ge 7$ of year
+2025).  We use [[_all_pages]] (\cref{Pagination}) so the full list is
+returned regardless of how many programme rounds the code has had ---
+no caller has to think about page numbers.
+
+<<LadokSession data methods>>=
+def program_rounds_JSON(self, program_code: str) -> list:
+  """Return all programme rounds for a programme code.
+
+  Each round contains 'Uid', 'SammanslagenTillfallesperiod',
+  'Utbildningstillfalleskod', etc.  Filter by 'SammanslagenTillfallesperiod.
+  Startdatum' to pick the round for a particular admission semester.
+  """
+  return self._all_pages(lambda page, limit: self.get_query(
+    f"/utbildningsinformation/internal/utbildningstillfalle/filtrera"
+    f"?utbildningskod={program_code}&sprakkod=sv"
+    f"&page={page}&limit={limit}",
+    "application/vnd.ladok-utbildningsinformation+json"
+  ))
+@
+
+The test verifies that [[CTFYS_round_id]] appears among the returned
+programme rounds.
+<<test functions>>=
+def test_program_rounds_JSON() -> None:
+  rounds = ladok.program_rounds_JSON("CTFYS")
+  assert len(rounds) > 0
+  round_uids = [r["Uid"] for r in rounds]
+  assert CTFYS_round_id in round_uids
+@
+
+
+\section{[[program_round_participants_JSON]]}
+
+Given a program-round UID we fetch its participants from the
+[[studiedeltagande]] service.  The endpoint path uses
+[[kurspaketeringstillfalle]] (course-package round) — the internal
+LADOK term for a programme-round enrolment — rather than
+[[utbildningstillfalle]].  The caller supplies the UID returned by
+[[program_rounds_JSON]].  Like that method we walk all pages with
+[[_all_pages]] (\cref{Pagination}); a popular programme has hundreds
+of admitted students per cohort and the default 400-per-page limit is
+not always enough.
+
+Each participant entry contains:
+\begin{description}
+\item[ [[Student]] ] Sub-object with [[Uid]], [[Fornamn]],
+  [[Efternamn]], and [[Personnummer]].
+\item[ [[TillstandKurspaketering]] ] Participation status codes, e.g.\
+  [[pagaende]] (active), [[ej_paborjad]] (admitted, not yet started).
+\item[ [[SummeradGodkandOmfattning]] ] Approved ECTS credits
+  accumulated so far.
+\end{description}
+<<LadokSession data methods>>=
+def program_round_participants_JSON(self, round_uid: str) -> list:
+  """Return all participants enrolled in a programme round.
+
+  round_uid is a UID from program_rounds_JSON.
+  """
+  return self._all_pages(lambda page, limit: self.get_query(
+    f"/studiedeltagande/internal/deltagare/kurspaketeringstillfalle"
+    f"/{round_uid}"
+    f"?page={page}&limit={limit}"
+    f"&orderby=NAMN_ASC&orderby=PERSONNUMMER_ASC",
+    "application/vnd.ladok-studiedeltagande+json"
+  ))
+@
+
+<<test functions>>=
+def test_program_round_participants_JSON() -> None:
+  participants = ladok.program_round_participants_JSON(CTFYS_round_id)
+  assert len(participants) > 0
+  first = participants[0]
+  assert "Student" in first
+  assert "Uid" in first["Student"]
+  assert "Personnummer" in first["Student"]
+@
+
+
+\section{[[examination_occasions_JSON]]}
+
+Examination occasions (\emph{aktivitetstillfälle}) are listed via the
+[[resultat]] service.  A single occasion covers one exam event, e.g.\
+a written examination of course SH1014 on a specific date.  Walking
+all pages with [[_all_pages]] (\cref{Pagination}) matters here because
+courses that have run for a long time accumulate many occasions and a
+fixed page size will hide older ones.
+
+Key fields returned for each occasion:
+\begin{description}
+\item[ [[Uid]] ] Occasion UID, required for result retrieval.
+\item[ [[Datumperiod]] ] The examination date(s) as [[Startdatum]] /
+  [[Slutdatum]].
+\item[ [[AntalAnmalda]] ] Number of registered students.
+\item[ [[KurstillfalleUIDer]] ] Course-round UIDs associated with this
+  occasion; pass these to [[occasion_results_JSON]].
+\item[ [[AktivitetstillfallestypBenamning]] ] Human-readable type,
+  e.g.\ \enquote{Salsexamination -- tentamen}.
+\end{description}
+<<LadokSession data methods>>=
+def examination_occasions_JSON(self, course_code: str) -> list:
+  """Return all examination occasions for a course."""
+  return self._all_pages(lambda page, limit: self.get_query(
+    f"/resultat/internal/aktivitetstillfalle/filtrera"
+    f"?kurskod={course_code}&page={page}&limit={limit}",
+    "application/vnd.ladok-resultat+json"
+  ))
+@
+
+<<test functions>>=
+def test_examination_occasions_JSON() -> None:
+  occasions = ladok.examination_occasions_JSON("SH1014")
+  assert len(occasions) > 0
+  occasion_uids = [o["Uid"] for o in occasions]
+  assert SH1014_occasion_id in occasion_uids
+@
+
+
+\section{[[occasion_results_JSON]]}
+
+Student results at an examination occasion are fetched by a PUT to
+[[studieresultat/rapportera/aktivitetstillfalle/{uid}/sok]].  Unlike
+the per-component search in [[search_reported_results_JSON]], this
+endpoint requires the course-round UID(s) in the body field
+[[KurstillfallenUID]].
+
+The [[Filtrering]] list selects which result statuses to include:
+\begin{description}
+\item[ [[OBEHANDLADE]] ] Registered but no grade entered.
+\item[ [[UTKAST]] ] Draft grade entered, not yet certified.
+\item[ [[ATTESTERADE]] ] Certified (finalized) results.
+\end{description}
+
+This is the only paginated endpoint we use that takes [[Page]] and
+[[Limit]] in a JSON body rather than a URL query string.  The
+[[_all_pages]] helper (\cref{Pagination}) accommodates this without
+any extra plumbing because it takes a [[request_fn(page, limit)]]
+closure rather than a URL --- the closure builds the appropriate
+[[put_data]] dict for each page.
+
+Each item in the returned list contains:
+\begin{description}
+\item[ [[Student]] ] Sub-object with [[Uid]], [[Fornamn]], [[Efternamn]].
+\item[ [[ResultatPaUtbildningar]] ] List of result objects.  When a
+  certified result exists, [[SenastAttesteradeResultat]] holds the grade
+  with sub-fields [[Betygsgradsobjekt.Kod]] (e.g.\ [[A]]--[[F]] or
+  [[P]]/[[F]]) and [[Examinationsdatum]].
+\item[ [[Rapporteringskontext]] ] Contains [[UtbildningsinstansUID]] ---
+  the component-instance UID required if you need to report further
+  results.
+\end{description}
+<<LadokSession data methods>>=
+def occasion_results_JSON(self, occasion_uid: str,
+                          course_round_uids: list[str],
+                          filtrering: list[str] | None = None) -> list:
+  """Return all student results for an examination occasion.
+
+  Args:
+    occasion_uid:       UID of the examination occasion
+    course_round_uids:  list of course-round UIDs for the occasion
+                        (taken from the occasion's KurstillfalleUIDer)
+    filtrering:         list of result-status codes to include; defaults
+                        to all three ['OBEHANDLADE','UTKAST','ATTESTERADE']
+  """
+  if filtrering is None:
+    filtrering = ["OBEHANDLADE", "UTKAST", "ATTESTERADE"]
+  return self._all_pages(lambda page, limit: self.put_query(
+    f"/resultat/internal/studieresultat/rapportera"
+    f"/aktivitetstillfalle/{occasion_uid}/sok",
+    {
+      "Filtrering": filtrering,
+      "KurstillfallenUID": course_round_uids,
+      "OrderBy": ["EFTERNAMN_ASC", "FORNAMN_ASC", "PERSONNUMMER_ASC"],
+      "Limit": limit,
+      "Page": page,
+    }
+  ))
+@
+
+<<test functions>>=
+def test_occasion_results_JSON() -> None:
+  results = ladok.occasion_results_JSON(
+    SH1014_occasion_id, [SH1014_round_id])
+  assert len(results) > 0
+  first = results[0]
+  assert "Student" in first
+  assert "ResultatPaUtbildningar" in first
+@
+
+
+\section{[[student_result_history_JSON]]}
+
+The preceding methods answer the question ``who sat which exam and what
+did they get?''\@ from the perspective of an \emph{occasion}.  But for
+analysing student progress we often need the opposite perspective: given
+a student, what is their \emph{complete} result history across every
+course and every attempt?
+
+The LADOK~GUI presents exactly this on a student's historik~(history)
+tab.  Discovering the underlying endpoint took a detour through the
+hypermedia links embedded in the [[resultatuppfoljning/sok]] response:
+each [[Student]] object carries a link with relation
+[[resultat/historik]] pointing to
+[[/resultat/internal/historik/student/{uid}]].
+
+\subsection*{Structure of the response}
+
+The endpoint returns a single key [[Historikposter]], a flat list of
+result events ordered newest-first.  Each event captures one grade
+action and contains:
+
+\begin{description}
+\item[[[Sammanfattning]]] A human-readable summary in Swedish and
+  English, e.g.\ ``Modern fysik~4.0~hp SH1014 / Tentamen~4.0~hp TEN1''.
+  Course-level entries (finalization of a whole course) have no
+  slash-separated component; component-level entries do.
+\item[[[Examinationsdatum]]] The date the examination took place.
+\item[[[BetyggradID]]] Numeric identifier of the grade; combine with
+  [[BetygsskalaID]] to resolve the letter code (A--F, P/F, etc.).
+\item[[[AvserOmfattning]]] Credits the result covers (0.0 for
+  course-level finalization entries).
+\item[[[Handelse]]] The event type: [[skapad]]~(created),
+  [[borttagen]]~(deleted/retracted), or [[rattad]]~(corrected).
+\item[[[Historiktyp]]] Always [[resultat.domain.historiktyp.resultat]]
+  for grade results.
+\item[[[Attestant]], [[Beslutsfattare]]] Who certified and who decided
+  the grade.
+\item[[[link]]] Contains a [[historik/pakurs]] relation linking to the
+  per-course variant of this endpoint
+  ([[historik/student/{uid}/kurs/{kurs\_uid}]]).
+\end{description}
+
+Crucially, \emph{all} attempts appear, including failed ones and
+subsequently corrected results.  A student who failed TEN1 in January
+2025 and passed in January 2026 will have two separate entries for
+TEN1~--- one with the failing grade and one with the passing grade~---
+plus a third entry for the course-level finalization that only appears
+once the student has passed.
+
+<<LadokSession data methods>>=
+def student_result_history_JSON(self, student_uid: str) -> list:
+  """Return all result history events for a student.
+
+  Uses GET /resultat/internal/historik/student/{uid}.
+
+  Returns a list of Historikposter (history events) covering every
+  course and component the student has received a grade in, newest
+  first.  All attempts are included --- failed grades, corrected
+  results, and retracted entries appear alongside passing grades.
+  """
+  data = self.get_query(
+    f"/resultat/internal/historik/student/{student_uid}")
+  try:
+    return data["Historikposter"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(
+      f"Unexpected response format when fetching result history "
+      f"for student {student_uid}: missing 'Historikposter' key"
+    ) from err
+@
+
+We test with a student who has two TEN1 entries for SH1014: a failing
+grade from January~2025 and a passing~C from January~2026.
+<<test functions>>=
+def test_student_result_history_JSON() -> None:
+  history = ladok.student_result_history_JSON(SH1014_retake_student_uid)
+  assert isinstance(history, list)
+  assert len(history) > 0
+  # Every entry must have the core fields
+  for entry in history:
+    assert "Sammanfattning" in entry
+    assert "Examinationsdatum" in entry
+    assert "Historiktyp" in entry
+    assert "Handelse" in entry
+  # Verify that multiple SH1014/TEN1 attempts are present
+  sh1014_ten1 = [
+    e for e in history
+    if "SH1014" in e.get("Sammanfattning", {}).get("sv", "")
+    and "TEN1" in e.get("Sammanfattning", {}).get("sv", "")
+  ]
+  assert len(sh1014_ten1) >= 2, (
+    f"Expected at least 2 SH1014/TEN1 entries (F then C), got {len(sh1014_ten1)}"
+  )
+@
+
+The output for our test student looks like this (showing only the
+SH1014 entries for brevity):
+\begin{pycode}[apitest]
+import json as _json
+# Student with F (2025-01-07) then C (2026-01-07) on SH1014/TEN1
+SH1014_retake_student_uid = "134e3c18-0e50-11ed-8f4d-87c157374df8"
+history = ladok.student_result_history_JSON(SH1014_retake_student_uid)
+ladok3.clean_data(history)
+sh1014 = [
+  e for e in history
+  if "SH1014" in e.get("Sammanfattning", {}).get("sv", "")
+]
+print(r"\begin{minted}{JSON}")
+print(_json.dumps(sh1014, ensure_ascii=False, indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+\section{[[grade_scales_all_text]]}
+
+[[grade_scales_JSON]] (\cref{GradeScalesJSON}) returns the standard
+grade scales the LADOK JSON variant exposes --- but not all of them.
+Empirically, the same endpoint
+[[/kataloginformation/internal/grunddata/betygsskala]] queried with an
+XML [[Accept]] header returns a strictly larger set: it includes
+institution-specific scales such as KTH's seven-point A--F scale that
+the JSON variant omits.  Why the JSON representation filters and the
+XML one doesn't is undocumented, and the situation may change ---
+future maintainers should periodically retry the JSON endpoint and
+collapse the two methods into one if the asymmetry goes away.
+
+We deliberately return the raw response \emph{text} rather than parse
+the XML here.  Parsing belongs in the caller because (a) consumers of
+this method already need to walk a heterogeneous mix of standard and
+institution-specific scales, and (b) we don't want to add an
+[[xml.etree]] dependency to this module just to expose one endpoint
+variant.  The thin [[get_query_text]] helper carries the request,
+re-using [[get_query]]'s session and error mapping so a failure here
+raises the same [[LadokServerError]] / [[LadokAPIError]] callers
+already handle.
+
+<<LadokSession data methods>>=
+def grade_scales_all_text(self) -> str:
+  """Fetch ALL grade scales as raw XML, including institution-specific ones.
+
+  Uses GET /kataloginformation/internal/grunddata/betygsskala with an
+  explicit Accept: application/xml header.  Without this, the server
+  returns JSON (the standard 17-scale subset), which omits institution-
+  specific scales such as KTH's A--F scale.
+
+  Returns the raw XML response text for the caller to parse.  Use
+  grade_scales_JSON() if you only need the standard subset and want
+  it pre-parsed.
+  """
+  return self.get_query_text(
+    "/kataloginformation/internal/grunddata/betygsskala",
+    accept="application/xml, text/xml;q=0.9, */*;q=0.1",
+  )
+@
+
+We sanity-check that the response is XML rather than empty or HTML
+(an HTML response would indicate the session has been redirected to a
+login page, which [[get_query_text]] doesn't otherwise detect).
+
+<<test functions>>=
+def test_grade_scales_all_text() -> None:
+  text = ladok.grade_scales_all_text()
+  assert text
+  assert "<?xml" in text or "<betygsskala" in text.lower() \
+      or "<Betygsskala" in text
+@
+
+\section{Shared helper: [[_utbildningstillfalle_JSON]]}
+
+In LADOK, [[utbildningstillfalle]] (\enquote{education round}) is the
+umbrella term that covers both \emph{course} rounds
+([[kurstillfalle]]) and \emph{programme} rounds
+([[kurspaketeringstillfalle]]) --- both kinds are stored as
+[[utbildningstillfalle]] records by the
+[[utbildningsinformation]] service, and one endpoint serves both:
+\[
+  \texttt{GET /utbildningsinformation/internal/utbildningstillfalle/\{uid\}}.
+\]
+The two public wrappers below ([[program_round_by_uid_JSON]] and
+[[course_round_utbildningsinformation_JSON]]) call this same endpoint;
+their value is in the \emph{intent} they expose at the call site --- a
+reader who sees [[program_round_by_uid_JSON(uid)]] knows the caller
+expects programme-round metadata, not just \enquote{some
+utbildningstillfälle record}.  We keep the wrappers thin so the URL
+and Accept-header live in exactly one place; if LADOK ever
+restructures this endpoint, only the helper changes.
+
+<<LadokSession data methods>>=
+def _utbildningstillfalle_JSON(self, uid: str) -> dict:
+  """Fetch an utbildningstillfalle record (course or programme round).
+
+  Internal helper.  Uses GET
+  /utbildningsinformation/internal/utbildningstillfalle/{uid}.
+
+  Most callers should use the intent-revealing wrappers
+  program_round_by_uid_JSON or course_round_utbildningsinformation_JSON
+  instead of calling this directly.
+  """
+  return self.get_query(
+    f"/utbildningsinformation/internal/utbildningstillfalle/{uid}",
+    "application/vnd.ladok-utbildningsinformation+json",
+  )
+@
+
+
+\section{[[program_round_by_uid_JSON]]}
+
+Fetch the full metadata record for a single programme round by its Ladok UUID.
+The response includes [[Benamning]], [[UtbildningsinstansUID]], a hypermedia
+link array (used to follow the [[struktur]] link), and the admission and study
+start periods.
+
+<<LadokSession data methods>>=
+def program_round_by_uid_JSON(self, round_uid: str) -> dict:
+  """Fetch full details of a programme round by its Ladok UUID.
+
+  Uses GET /utbildningsinformation/internal/utbildningstillfalle/{uid}.
+  """
+  return self._utbildningstillfalle_JSON(round_uid)
+@
+
+This test also covers [[_utbildningstillfalle_JSON]] indirectly --- the
+wrapper is one line, so any failure in the helper's URL or content-type
+shows up here first.
+
+<<test functions>>=
+def test_program_round_by_uid_JSON() -> None:
+  record = ladok.program_round_by_uid_JSON(CTFYS_round_id)
+  assert record["Uid"] == CTFYS_round_id
+  assert "UtbildningsinstansUID" in record
+@
+
+\section{[[course_round_details_JSON]]}
+
+Fetch the basic metadata record for a course round.  Useful when only the
+round UUID is known (e.g.\ discovered from a student's participation list)
+and the course code, round code, or start date must be resolved.
+
+The course code may appear at [[Utbildningskod]] directly or nested under
+[[Utbildning.Utbildningskod]], depending on the Ladok version.
+
+<<LadokSession data methods>>=
+def course_round_details_JSON(self, round_uid: str) -> dict:
+  """Fetch full details of a single course round by its Ladok UUID.
+
+  Uses GET /resultat/internal/kurstillfalle/{uid}.
+
+  Returns a dict containing at least Uid, TillfallesKod /
+  Utbildningstillfalleskod, and Startdatum.  The course code may appear
+  at Utbildningskod or nested under Utbildning.Utbildningskod.
+  """
+  return self.get_query(
+    f"/resultat/internal/kurstillfalle/{round_uid}",
+    "application/vnd.ladok-resultat+json",
+  )
+@
+
+The test uses [[SH1014_round_id]] (a course round of SH1014, the same
+round whose examination occasion we use elsewhere).
+<<test functions>>=
+def test_course_round_details_JSON() -> None:
+  record = ladok.course_round_details_JSON(SH1014_round_id)
+  assert record["Uid"] == SH1014_round_id
+@
+
+\section{[[course_round_utbildningsinformation_JSON]]}
+
+Fetch the \emph{utbildningsinformation} record for a course round.  This
+calls the same endpoint as [[program_round_by_uid_JSON]] (via the shared
+[[_utbildningstillfalle_JSON]] helper) --- a course round and a
+programme round are both [[utbildningstillfalle]] records.  The reason
+for the separate wrapper is that the typical caller \emph{wants} a
+course round here and \emph{reads} the [[Tillfallesperioder]] list it
+returns, breaking the course's credit weight down across the study
+sub-periods (P1--P4 in the Swedish academic calendar).  Unlike
+[[course_round_details_JSON]] (which calls [[/resultat/]] for the
+result-flavoured view), this endpoint exposes the period structure.
+
+<<LadokSession data methods>>=
+def course_round_utbildningsinformation_JSON(self, round_uid: str) -> dict:
+  """Fetch the utbildningsinformation record for a course round.
+
+  Uses GET /utbildningsinformation/internal/utbildningstillfalle/{uid}.
+
+  Returns Tillfallesperioder --- a list of study sub-periods, each with a
+  Lasperiodsfordelning.Fordelningsposter list that maps period codes
+  (e.g. 'P1', 'P2') to their HP contribution.
+  """
+  return self._utbildningstillfalle_JSON(round_uid)
+@
+
+The presence of [[Tillfallesperioder]] is what distinguishes this view
+from [[course_round_details_JSON]] --- so we assert on that key.
+<<test functions>>=
+def test_course_round_utbildningsinformation_JSON() -> None:
+  record = ladok.course_round_utbildningsinformation_JSON(SH1014_round_id)
+  assert record["Uid"] == SH1014_round_id
+  assert "Tillfallesperioder" in record
+@
+
+\section{[[student_program_participations_JSON]]}
+
+Returns all programme-round participations for a student.  Each entry carries
+an [[Utbildningsinformation]] sub-dict with the programme code, round UUID,
+round code, name, and study periods.  Used both to auto-discover master
+programme enrolments and to locate the enrollment-history URI for each
+student--programme pair.
+
+We unwrap the [[Tillfallesdeltaganden]] list and raise [[LadokAPIError]]
+if it is absent: every other [[*_JSON]] method in this module follows
+the same \enquote{fail loud on schema drift} pattern (see
+[[grade_scales_JSON]] and [[course_rounds_JSON]]) so that callers see a
+clear error if LADOK changes the response shape, rather than silently
+receiving an empty list and assuming the student has no enrolments.
+
+<<LadokSession data methods>>=
+def student_program_participations_JSON(self, student_uid: str) -> list:
+  """Return all programme-round participations for a student.
+
+  Uses GET /studiedeltagande/internal/paborjadutbilding/kurspaketering/
+  student/{uid}.
+
+  Each item in the returned list has an Utbildningsinformation sub-dict
+  with Utbildningskod, UtbildningstillfalleUID, Utbildningstillfalleskod,
+  Benamning, and Perioder.
+  """
+  data = self.get_query(
+    f"/studiedeltagande/internal/paborjadutbilding/kurspaketering"
+    f"/student/{student_uid}",
+    "application/vnd.ladok-studiedeltagande+json",
+  )
+  try:
+    return data["Tillfallesdeltaganden"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(
+      f"Unexpected response format when fetching programme "
+      f"participations for student {student_uid}: missing "
+      f"'Tillfallesdeltaganden' key"
+    ) from err
+@
+
+We use [[SH1014_retake_student_uid]] for this test --- a student we
+know has at least programme enrolment.
+<<test functions>>=
+def test_student_program_participations_JSON() -> None:
+  participations = ladok.student_program_participations_JSON(
+    SH1014_retake_student_uid)
+  assert isinstance(participations, list)
+@
+
+\section{[[student_course_participations_JSON]]}
+
+Returns all course-round participations for a student.  Used to discover which
+course rounds a student has attended independently of the programme study plan
+--- important for elective courses or courses taken outside the nominal
+curriculum.
+
+The obvious design would mirror [[student_program_participations_JSON]] with a
+course-specific endpoint.  In practice the test environment returns
+[[404 Not Found]] for the dedicated
+[[/studiedeltagande/internal/deltagare/kurstillfalle/student/{uid}]] path.
+Rather than keep a broken endpoint just because its URL sounds right, we reuse
+[[registrations_JSON]], which already returns the full participation objects,
+and keep only entries whose
+[[Utbildningsinformation.Utbildningstillfallestyp.Grundtyp]] is [[KURS]].
+That still fails loudly on schema drift: if the discriminator disappears, the
+caller sees a [[LadokAPIError]] with the offending registration attached.
+
+<<LadokSession data methods>>=
+def student_course_participations_JSON(self, student_uid: str) -> list:
+  """Return all course-round participations for a student.
+
+  Uses [[registrations_JSON()]] as the source and keeps only course entries.
+
+  Each item typically contains:
+    - Utbildningsinformation.UtbildningstillfalleUID: the course round UUID
+    - Utbildningsinformation.Utbildningskod: the course code
+    - TillstandKurs: participation state summary
+  """
+  participations = []
+  for registration in self.registrations_JSON(student_uid):
+    try:
+      grundtyp = registration["Utbildningsinformation"][
+        "Utbildningstillfallestyp"]["Grundtyp"]
+    except KeyError as err:
+      err.add_note(f"Registration data: {registration}")
+      raise LadokAPIError(
+        f"Unexpected registration format when fetching course "
+        f"participations for student {student_uid}: missing "
+        f"'Utbildningsinformation.Utbildningstillfallestyp.Grundtyp'"
+      ) from err
+    if grundtyp == "KURS":
+      participations.append(registration)
+  return participations
+@
+
+The retake student took SH1014 multiple times, so we expect their
+course-round participations to include at least one entry.
+<<test functions>>=
+def test_student_course_participations_JSON() -> None:
+  participations = ladok.student_course_participations_JSON(
+    SH1014_retake_student_uid)
+  assert isinstance(participations, list)
+  assert len(participations) > 0
+  assert all(
+    p["Utbildningsinformation"]["Utbildningstillfallestyp"]["Grundtyp"]
+    == "KURS"
+    for p in participations)
+@
+
+\section{[[fetch_linked_uri_JSON]]}
+
+Several Ladok responses include hypermedia links whose [[href]] values are full
+URIs pointing to the API host (e.g.\
+\texttt{https://api.test.ladok.se:443/utbildningsinformation/\ldots}).  This
+helper strips the scheme and host so the request can be routed through the
+GUI proxy, which is what carries our session credentials --- the API host
+itself doesn't see them.
+
+We validate the input rather than letting string surgery silently chew on
+arbitrary text.  The reason: if [[uri]] is malformed or points at some host
+other than LADOK's API, the caller would proxy a request for data that did not
+come from LADOK at all.  By rejecting non-URI input up front and insisting that
+the host matches the current environment's LADOK API host, we keep the helper
+as narrow as the situations that actually call it.
+
+The default content-type is left to [[get_query]] (which negotiates
+JSON broadly via [[self.headers]]).  Earlier we hard-coded
+[[utbildningsinformation+json]], but the helper is meant to follow
+\emph{any} hypermedia link --- baking one service's content-type in
+silently mis-described links from the [[resultat]] or [[studiedeltagande]]
+services and is exactly the kind of \enquote{convenient default} that
+hides bugs.  Callers who really do know the content-type should pass
+it explicitly.
+
+<<LadokSession data methods>>=
+def fetch_linked_uri_JSON(self, uri: str,
+                          content_type: str | None = None) -> dict | list:
+  """Fetch a Ladok hypermedia URI via the GUI proxy.
+
+  Strips the scheme and host from uri, then delegates to get_query().
+  Use this when a Ladok response embeds a full URI in a link array, e.g.
+  https://api.test.ladok.se:443/utbildningsinformation/internal/struktur/{uid}.
+
+  Raises LadokValidationError if uri is not an http(s) URI for the current
+  LADOK API host.
+  """
+  parsed = urllib.parse.urlparse(uri)
+  if parsed.scheme not in ("http", "https") or not parsed.path:
+    raise LadokValidationError(
+      f"fetch_linked_uri_JSON: not an http(s) URI with a path: {uri!r}")
+  expected_host = urllib.parse.urlparse(
+    self.base_url.replace("start.", "api.", 1)).hostname
+  if parsed.hostname != expected_host:
+    raise LadokValidationError(
+      f"fetch_linked_uri_JSON: unexpected host {parsed.hostname!r}, "
+      f"expected {expected_host!r}")
+  path = parsed.path
+  if parsed.query:
+    path += f"?{parsed.query}"
+  if content_type is None:
+    return self.get_query(path)
+  return self.get_query(path, content_type)
+@
+
+The validation test ensures a non-URI input is rejected up front
+(rather than silently issuing a partial-path GET).  The happy-path
+test constructs a URI in the same shape as a real LADOK hypermedia
+link and verifies it resolves through the proxy.
+<<test functions>>=
+def test_fetch_linked_uri_JSON_rejects_non_uri() -> None:
+  with pytest.raises(ladok3.LadokValidationError):
+    ladok.fetch_linked_uri_JSON("not a uri")
+
+def test_fetch_linked_uri_JSON_rejects_wrong_host() -> None:
+  with pytest.raises(ladok3.LadokValidationError):
+    ladok.fetch_linked_uri_JSON(
+      f"https://example.com/utbildningsinformation/internal/"
+      f"utbildningsinstans/{dasak_instance_id}")
+
+def test_fetch_linked_uri_JSON_follows_link() -> None:
+  uri = ("https://api.test.ladok.se:443/utbildningsinformation"
+         f"/internal/utbildningsinstans/{dasak_instance_id}")
+  record = ladok.fetch_linked_uri_JSON(
+    uri, content_type="application/vnd.ladok-utbildningsinformation+json")
+  assert record["Uid"] == dasak_instance_id
+@
+
+\section{[[utbildningsinstans_JSON]]}
+
+Fetches the education-instance (\emph{utbildningsinstans}) record for the given
+UID.  An education instance represents an abstract programme or track
+definition, as opposed to a specific round with an admission year.  The record
+includes [[Utbildningskod]], [[Benamning]], and a hypermedia link array that
+can point to subordinate instances.
+
+<<LadokSession data methods>>=
+def utbildningsinstans_JSON(self, inst_uid: str) -> dict:
+  """Fetch an education-instance record by its UID.
+
+  Uses GET /utbildningsinformation/internal/utbildningsinstans/{uid}.
+  """
+  return self.get_query(
+    f"/utbildningsinformation/internal/utbildningsinstans/{inst_uid}",
+    "application/vnd.ladok-utbildningsinformation+json",
+  )
+@
+
+<<test functions>>=
+def test_utbildningsinstans_JSON() -> None:
+  record = ladok.utbildningsinstans_JSON(dasak_instance_id)
+  assert record["Uid"] == dasak_instance_id
+@
+
+\section{[[utbildningsinstans_underliggande_JSON]]}
+
+Returns the list of subordinate (\emph{underliggande}) education instances for
+a given parent instance.  Used to enumerate the master specialisation options
+and track options that belong to a programme instance.  Each element is a
+minimal \texttt{\{"Uid": "..."\}} dict; call [[utbildningsinstans_JSON]] to
+retrieve the full record.
+
+<<LadokSession data methods>>=
+def utbildningsinstans_underliggande_JSON(self, inst_uid: str) -> list:
+  """Return subordinate education-instance UIDs for a parent instance.
+
+  Uses GET /utbildningsinformation/internal/utbildningsinstans/
+  underliggande?uid={uid}.
+
+  Each element in the returned list is a minimal dict with at least
+  {'Uid': '<uuid>'}.  Fetch the full record with utbildningsinstans_JSON.
+  """
+  data = self.get_query(
+    f"/utbildningsinformation/internal/utbildningsinstans"
+    f"/underliggande?uid={inst_uid}",
+    "application/vnd.ladok-utbildningsinformation+json",
+  )
+  try:
+    return data["Utbildningsinstans"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(
+      f"Unexpected response format when fetching subordinate "
+      f"education instances for {inst_uid}: missing "
+      f"'Utbildningsinstans' key"
+    ) from err
+@
+
+A leaf course instance has no subordinates and returns an empty list;
+a programme instance returns its tracks/specialisations.  We don't
+assert a particular length --- only that the response unwraps cleanly
+to a list.
+<<test functions>>=
+def test_utbildningsinstans_underliggande_JSON() -> None:
+  subs = ladok.utbildningsinstans_underliggande_JSON(dasak_instance_id)
+  assert isinstance(subs, list)
+@
+
+\section{[[utbildningstillfalle_lista_JSON]]}
+
+Returns all programme rounds (\emph{utbildningstillfälle}) for a given
+education instance.  Used when resolving which rounds of a master
+specialisation programme correspond to a given bachelor cohort's admission
+year.
+
+<<LadokSession data methods>>=
+def utbildningstillfalle_lista_JSON(self, inst_uid: str) -> list:
+  """Return all programme rounds for an education instance.
+
+  Uses GET /utbildningsinformation/internal/utbildningstillfalle/lista/{uid}.
+  """
+  data = self.get_query(
+    f"/utbildningsinformation/internal/utbildningstillfalle/lista/{inst_uid}",
+    "application/vnd.ladok-utbildningsinformation+json",
+  )
+  try:
+    return data["Utbildningstillfalle"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(
+      f"Unexpected response format when listing programme rounds "
+      f"for instance {inst_uid}: missing 'Utbildningstillfalle' key"
+    ) from err
+@
+
+To exercise this method we need an [[utbildningsinstans]] UID for a
+programme (one that has rounds).  We discover it from
+[[program_round_by_uid_JSON]] for the CTFYS test cohort: the round
+record carries an [[UtbildningsinstansUID]] pointing back at its
+parent instance, and listing the rounds of that instance must include
+the round we started from.
+<<test functions>>=
+def test_utbildningstillfalle_lista_JSON() -> None:
+  round_record = ladok.program_round_by_uid_JSON(CTFYS_round_id)
+  inst_uid = round_record["UtbildningsinstansUID"]
+  rounds = ladok.utbildningstillfalle_lista_JSON(inst_uid)
+  assert isinstance(rounds, list)
+  assert any(r.get("Uid") == CTFYS_round_id for r in rounds)
+@

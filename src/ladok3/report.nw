@@ -59,7 +59,7 @@ def command(ladok, args):
 
 We also provide unit tests for the reporting logic so we can verify the state
 machine without contacting LADOK.
-<<[[test report.py]]>>=
+<<test [[report.py]]>>=
 import datetime
 import types
 

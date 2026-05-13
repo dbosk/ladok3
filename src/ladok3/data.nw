@@ -11,15 +11,21 @@ between (similar) courses?
 \item How do throughput distributions vary between years?
 \end{enumerate}
 
-We provide the module [[data]] ([[<<data.py>>]]) to extract the necessary data 
-from LADOK (\cref{DataCommand}).
-This is a subcommand for the [[ladok]] command-line interface.
+We provide the module [[data]] ([[<<data.py>>]]) to extract the necessary data
+from LADOK through the command-line interface.
+It provides two related subcommands:
+\begin{description}
+\item[ [[ladok course]] ] Export all results for one course.
+\item[ [[ladok program]] ] Export the results for the students in one or more
+  program rounds across the courses they actually took.
+\end{description}
 It can be used like this:
 \begin{minted}{bash}
 ladok course DD1315 > DD1315.csv
+ladok program CTFYS --round HT25 > CTFYS-HT25.csv
 \end{minted}
-This program will produce CSV-formated data to answer the questions above.
-The data is formated like this:
+These commands produce CSV-formatted data to answer the questions above.
+The [[course]] subcommand writes:
 \begin{itemize}
 \item course,
 \item round,
@@ -28,37 +34,41 @@ The data is formated like this:
 \item grade,
 \item either absolute date or normalized to the course start and finish.
 \end{itemize}
+The [[program]] subcommand prepends a first [[Program]] column whose value
+identifies the cohort as the program code together with the program round code
+and start year.
 
 
-\section{The [[course]] subcommand}\label{DataCommand}
+\section{The [[course]] and [[program]] subcommands}\label{DataCommand}
 
-This is a subcommand run as part of the [[ladok3.cli]] module.
-We provide a function [[add_command_options]] that adds the subcommand options 
-to a given parser.
+These subcommands run as part of the [[ladok3.cli]] module.
+We provide a function [[add_command_options]] that adds their parser options to
+a given parser.
 We need access to LADOK through the [[ladok3]] module.
 We will also write data to disk in CSV form, so we need the [[csv]] module.
 <<[[data.py]]>>=
 import csv
 import datetime
 import ladok3
-import os
 import sys
 
 <<functions>>
 
 def add_command_options(parser):
-  """Add the 'course' subcommand options to the argument parser.
+  """Add the 'course' and 'program' subcommands to the argument parser.
   
-  Creates a subparser for the course data extraction command with all
-  necessary arguments for filtering and output formatting.
+  Creates the subparsers for the data extraction commands together with the
+  filtering and output options they need.
   
   Args:
       parser (ArgumentParser): The parent parser to add the subcommand to.
   """
   <<add data parser to parser>>
   <<add data command arguments to data parser>>
+  <<add program parser to parser>>
+  <<add program command arguments to program parser>>
 
-def command(ladok, args):
+def course_command(ladok, args):
   """Execute the course data extraction command.
   
   Args:
@@ -66,12 +76,278 @@ def command(ladok, args):
       args: Parsed command line arguments containing course and filter options.
   """
   <<produce data about course specified in args>>
+
+def program_command(ladok, args):
+  """Execute the program data extraction command.
+  
+  Args:
+      ladok (LadokSession): The LADOK session for data access.
+      args: Parsed command line arguments containing program and filter options.
+  """
+  <<produce data about program specified in args>>
 @
 
-\subsection{Setting up the data command options}
+Programme exports should survive odd cohort entries that LADOK will not resolve
+as real student-course results.  We keep a local [[warn]] helper with the same
+stderr format as the CLI module, without introducing a circular import back to
+[[ladok3.cli]].
+<<functions>>=
+def warn(msg):
+  """Print warning message to stderr."""
+  print(f"{sys.argv[0]}: {msg}", file=sys.stderr)
+@
 
-We add a subparser.
-We set it up to use the function [[command]].
+We also provide focused unit tests for the filtering and program-export
+helpers.
+<<test [[data.py]]>>=
+import datetime
+from types import SimpleNamespace
+
+import ladok3
+import ladok3.data
+
+<<test helpers>>
+<<test functions>>
+@
+
+The program-export tests use light-weight fakes so they can exercise the helper
+logic without contacting LADOK.
+<<test helpers>>=
+class FakeGrade:
+  def __init__(self, code):
+    self.code = code
+
+
+class FakeResult:
+  def __init__(self, component, grade=None, date=None):
+    self.component = component
+    self.grade = FakeGrade(grade) if grade is not None else None
+    self.date = date
+
+
+class FakeCourse:
+  def __init__(self, code, round_code, start, end, components, results,
+               education_id="education"):
+    self.code = code
+    self.round_code = round_code
+    self.start = start
+    self.end = end
+    self._components = components
+    self._results = results
+    self.education_id = education_id
+
+  def components(self):
+    return self._components
+
+  def results(self):
+    return self._results
+
+
+class FakeLadokForProgramData:
+  def __init__(self, program_participants=None, course_participations=None,
+               registrations=None):
+    self._program_participants = program_participants or []
+    self._course_participations = course_participations or {}
+    self._registrations = registrations or []
+
+  def program_round_participants_JSON(self, round_uid):
+    return self._program_participants
+
+  def get_student(self, uid):
+    return SimpleNamespace(
+      ladok_id=uid,
+      personnummer=f"{uid}-pnr",
+      __str__=lambda self: f"student {uid}")
+
+  def student_course_participations_JSON(self, student_uid):
+    return self._course_participations.get(student_uid, [])
+
+  def registrations_on_course_JSON(self, education_id, student_id):
+    return self._registrations
+
+
+class FakeCourseRegistration:
+  def __init__(self, /, **kwargs):
+    self.code = kwargs["Utbildningskod"]
+    self.round_code = kwargs["Utbildningstillfalleskod"]
+    dates = kwargs["Studieperiod"]
+    self.start = datetime.date.fromisoformat(dates["Startdatum"])
+    self.end = datetime.date.fromisoformat(dates["Slutdatum"])
+    self.education_id = kwargs["UtbildningUID"]
+    self._components = kwargs["components"]
+    self._results = kwargs["results"]
+
+  def components(self):
+    return self._components
+
+  def results(self):
+    return self._results
+@
+
+We keep the tests focused on the new helpers: cohort labels, round filtering,
+historical course reconstruction, and exported rows.
+<<test functions>>=
+def test_filter_program_rounds_keeps_selected_round_codes():
+  rounds = [
+    {"Utbildningstillfalleskod": "HT25"},
+    {"Utbildningstillfalleskod": "HT24"},
+  ]
+
+  filtered = list(ladok3.data.filter_program_rounds(rounds, ["HT25"]))
+
+  assert filtered == [{"Utbildningstillfalleskod": "HT25"}]
+
+
+def test_format_program_round_includes_program_round_and_year():
+  label = ladok3.data.format_program_round("CTFYS", {
+    "Utbildningstillfalleskod": "HT25",
+    "SammanslagenTillfallesperiod": {"Startdatum": "2025-08-25"},
+  })
+
+  assert label == "CTFYS HT25 2025"
+
+
+def test_program_header_prepends_program_column():
+  assert ladok3.data.program_header() == [
+    "Program", "Course", "Round", "Component", "Student", "Grade",
+    "Time"
+  ]
+
+
+def test_program_round_courses_uses_historical_course_participations(monkeypatch):
+  component = SimpleNamespace(code="TEN1")
+  result = FakeResult(component, "P", "2025-10-01")
+  ladok = FakeLadokForProgramData(course_participations={
+    "student-1": [{
+      "Utbildningsinformation": {
+        "Utbildningskod": "DD1315",
+        "Utbildningstillfalleskod": "HT25",
+        "UtbildningUID": "education-1",
+        "Studieperiod": {
+          "Startdatum": "2025-08-25",
+          "Slutdatum": "2025-10-15",
+        },
+        "components": [component],
+        "results": [result],
+      }
+    }]
+  })
+  student = SimpleNamespace(ladok_id="student-1")
+
+  monkeypatch.setattr(ladok3, "CourseRegistration", FakeCourseRegistration)
+
+  courses = ladok3.data.program_round_courses(ladok, student)
+
+  assert len(courses) == 1
+  assert courses[0].code == "DD1315"
+  assert courses[0].round_code == "HT25"
+
+
+def test_extract_data_for_course_registration_yields_component_grade_and_date():
+  component = SimpleNamespace(code="TEN1")
+  course = FakeCourse(
+    code="DD1315",
+    round_code="HT25",
+    start=datetime.date(2025, 8, 25),
+    end=datetime.date(2025, 10, 15),
+    components=[component],
+    results=[FakeResult(component, "P", "2025-10-01")],
+  )
+  args = SimpleNamespace(normalize_date=False, time_limit=None,
+                         components=None)
+
+  rows = list(ladok3.data.extract_data_for_course_registration(course, args))
+
+  assert rows == [(component, "P", "2025-10-01")]
+
+
+def test_extract_data_for_course_registration_filters_components():
+  exam = SimpleNamespace(code="TEN1")
+  lab = SimpleNamespace(code="LAB1")
+  course = FakeCourse(
+    code="DD1315",
+    round_code="HT25",
+    start=datetime.date(2025, 8, 25),
+    end=datetime.date(2025, 10, 15),
+    components=[exam, lab],
+    results=[
+      FakeResult(exam, "P", "2025-10-01"),
+      FakeResult(lab, "P", "2025-09-01"),
+    ],
+  )
+  args = SimpleNamespace(normalize_date=False, time_limit=None,
+                         components=["LAB1"])
+
+  rows = list(ladok3.data.extract_data_for_course_registration(course, args))
+
+  assert rows == [(lab, "P", "2025-09-01")]
+
+
+def test_program_row_prepends_program_label():
+  course = SimpleNamespace(code="DD1315", round_code="HT25")
+  row = ladok3.data.program_row(
+    "CTFYS HT25 2025", course, "student", "TEN1", "P", "2025-10-01")
+
+  assert row == [
+    "CTFYS HT25 2025", "DD1315", "HT25", "TEN1", "student", "P",
+    "2025-10-01"
+  ]
+
+
+def test_extract_data_for_program_round_warns_and_skips_failed_course(
+    monkeypatch):
+  class FailingCourse(FakeCourse):
+    def results(self):
+      raise ladok3.LadokAPIError("not in course")
+
+  component = SimpleNamespace(code="TEN1")
+  student = SimpleNamespace(ladok_id="student-1")
+  bad_course = FailingCourse(
+    code="DD1315",
+    round_code="HT25",
+    start=datetime.date(2025, 8, 25),
+    end=datetime.date(2025, 10, 15),
+    components=[component],
+    results=[],
+  )
+  good_course = FakeCourse(
+    code="DD1320",
+    round_code="HT25",
+    start=datetime.date(2025, 8, 25),
+    end=datetime.date(2025, 10, 15),
+    components=[component],
+    results=[FakeResult(component, "P", "2025-10-01")],
+  )
+  args = SimpleNamespace(
+    students=None,
+    courses=None,
+    ladok_id=False,
+    exclude_reregistered=False,
+    components=None,
+    normalize_date=False,
+    time_limit=None,
+  )
+  warnings = []
+
+  monkeypatch.setattr(ladok3.data, "program_round_participants",
+                      lambda ladok, program_round: [student])
+  monkeypatch.setattr(ladok3.data, "program_round_courses",
+                      lambda ladok, student: [bad_course, good_course])
+  monkeypatch.setattr(ladok3.data, "warn", warnings.append)
+
+  rows = list(ladok3.data.extract_data_for_program_round(
+    object(), {"Uid": "program-round"}, args))
+
+  assert rows == [(good_course, student, component, "P", "2025-10-01")]
+  assert warnings == [
+    "skipping course DD1315 (HT25) for student student-1: not in course"
+  ]
+@
+
+\subsection{Setting up the [[course]] command options}
+
+We add a subparser for [[ladok course]].
+We set it up to use the function [[course_command]].
 <<add data parser to parser>>=
 data_parser = parser.add_parser("course",
   help="Returns course results data in CSV form",
@@ -81,11 +357,29 @@ By default, all students are included.
 Use --exclude-reregistered to exclude students who reregistered.
 Use --exclude-credit-transfers to exclude students with credit transfers.
 """.strip())
-data_parser.set_defaults(func=command)
+data_parser.set_defaults(func=course_command)
 @
 
 
-\section{Producing data}
+\subsection{Setting up the [[program]] command options}
+
+The [[program]] subcommand exports the course results for one or more cohorts.
+The cohort is defined by a program code and, optionally, one or more program
+round codes.
+We set up that parser to use [[program_command]].
+<<add program parser to parser>>=
+program_parser = parser.add_parser("program",
+  help="Returns program cohort results data in CSV form",
+  description="""
+Returns the results in CSV form for the students in one or more program rounds.
+Each row describes a course result for a student in the cohort.
+Use --round to restrict the export to particular program round codes.
+""".strip())
+program_parser.set_defaults(func=program_command)
+@
+
+
+\section{Producing course data}
 
 We fetch the data from LADOK and print it in CSV format to standard out 
 ([[sys.stdout]]).
@@ -97,17 +391,13 @@ course_rounds = filter_rounds(
                         args.rounds)
 
 if args.header:
-  data_writer.writerow([
-    "Course", "Round", "Component", "Student", "Grade", "Time"
-  ])
+  data_writer.writerow(course_header())
 for course_round in course_rounds:
   data = extract_data_for_round(ladok, course_round, args)
 
   for student, component, grade, time in data:
-    data_writer.writerow(
-      [course_round.code, course_round.round_code, component,
-        student, grade, time]
-    )
+    data_writer.writerow(course_row(course_round, student, component,
+                                    grade, time))
 @ We must take a course code and a delimiter as arguments.
 We also want to know if we want a header or not.
 <<add data command arguments to data parser>>=
@@ -124,6 +414,101 @@ data_parser.add_argument("-H", "--header", action="store_true",
                          help="Print a header line with the column names.")
 @
 
+\section{Producing program data}
+
+The [[program]] exporter uses the same row shape as [[course]], but prepends a
+cohort label.
+That label includes the program code, the program round code, and the start
+year, because round codes alone do not always distinguish cohorts clearly.
+<<produce data about program specified in args>>=
+data_writer = csv.writer(sys.stdout, delimiter=args.delimiter)
+program_rounds = filter_program_rounds(
+  ladok.program_rounds_JSON(args.program_code),
+  args.rounds)
+
+if args.header:
+  data_writer.writerow(program_header())
+for program_round in program_rounds:
+  program = format_program_round(args.program_code, program_round)
+  data = extract_data_for_program_round(ladok, program_round, args)
+
+  for course, student, component, grade, time in data:
+    data_writer.writerow(program_row(program, course, student, component,
+                                     grade, time))
+@
+
+The [[program]] command keeps the same output-format and filtering options that
+still make sense for a cohort export.
+It replaces the course code with a program code and adds a separate course-code
+filter.
+<<add program command arguments to program parser>>=
+program_parser.add_argument("program_code",
+  help="The program code of the program for which to export data")
+
+program_parser.add_argument("-d", "--delimiter",
+  default="\t",
+  help="The delimiter for the CSV output; "
+    "default is a tab character to be compatible with POSIX commands, "
+    "use `-d,` or `-d ,` to get comma-separated values.")
+
+program_parser.add_argument("-H", "--header", action="store_true",
+                            help="Print a header line with the column names.")
+
+program_parser.add_argument("-r", "--round", dest="rounds", nargs="+",
+  help="The program round codes for the rounds to include, "
+    "otherwise all rounds will be included.")
+
+program_parser.add_argument("-l", "--ladok-id", action="store_true",
+  help="Use the LADOK ID for the student, otherwise the student name and "
+       "personnummer will be used.")
+
+program_parser.add_argument("-n", "--normalize-date", action="store_true",
+  help="Normalize the date to the start of the course, otherwise the date "
+       "is printed as is.")
+
+program_parser.add_argument("-t", "--time-limit", type=float,
+  help="The time (normalized) for cutting off results, use `-t 1.0` to cut "
+       "off at course end.")
+
+program_parser.add_argument("-s", "--students", nargs="+",
+  help="List of personnummer for students to include, otherwise all "
+       "students will be included.")
+
+program_parser.add_argument("-c", "--components", nargs="+",
+  help="List of component codes for components to include, otherwise all "
+       "components will be included.")
+
+program_parser.add_argument("-C", "--courses", nargs="+",
+  help="List of course codes for courses to include, otherwise all courses "
+    "will be included.")
+
+program_parser.add_argument("-x", "--exclude-reregistered",
+  action="store_true",
+  help="Exclude students who are reregistered on a course round (i.e., only "
+       "include students registered for the first time).")
+@
+
+The headers and row builders keep the command logic narrow: the command path
+decides which objects to export, while these helpers define how the CSV should
+look.
+<<functions>>=
+def course_header():
+  """Return the CSV header for course exports."""
+  return ["Course", "Round", "Component", "Student", "Grade", "Time"]
+
+def program_header():
+  """Return the CSV header for program exports."""
+  return ["Program"] + course_header()
+
+def course_row(course, student, component, grade, time):
+  """Return one CSV row for a course export."""
+  return [course.code, course.round_code, component, student, grade, time]
+
+def program_row(program, course, student, component, grade, time):
+  """Return one CSV row for a program export."""
+  return [program] + course_row(course, student, component, grade, time)
+@
+
 We filter the rounds.
 <<functions>>=
 def filter_rounds(all_rounds, desired_rounds):
@@ -134,6 +519,21 @@ def filter_rounds(all_rounds, desired_rounds):
     lambda x: x.round_code in desired_rounds,
     all_rounds
   )
+
+def filter_program_rounds(all_rounds, desired_rounds):
+  """Return only the program rounds with round code in desired_rounds."""
+  if not desired_rounds:
+    return all_rounds
+  return filter(
+    lambda x: x["Utbildningstillfalleskod"] in desired_rounds,
+    all_rounds
+  )
+
+def format_program_round(program_code, program_round):
+  """Return a cohort label for a program round."""
+  start = datetime.date.fromisoformat(
+    program_round["SammanslagenTillfallesperiod"]["Startdatum"])
+  return f"{program_code} {program_round['Utbildningstillfalleskod']} {start.year}"
 @ We need a list of desired rounds.
 <<add data command arguments to data parser>>=
 data_parser.add_argument("-r", "--rounds", nargs="+",
@@ -149,6 +549,9 @@ This is done by the function~[[extract_data_for_round]].
 We need access to LADOK through the [[ladok]] object of type [[LadokSession]].
 We also need the course round through the [[course_round]] object of type 
 [[CourseRound]].
+Programme exports meet a looser kind of input: a cohort can mention a course
+entry that LADOK later refuses to resolve as a real student-course relation.
+That should not abort the whole export, so we warn and skip that one course.
 <<functions>>=
 def extract_data_for_round(ladok, course_round, args):
   """Extract student result data for a specific course round.
@@ -193,6 +596,102 @@ def extract_data_for_round(ladok, course_round, args):
         <<extract grade and normalized date from result data>>
 
       <<yield [[student, component, grade]] and date>>
+
+def extract_data_for_program_round(ladok, program_round, args):
+  """Extract course result data for one program round.
+
+  Enumerates the students in the selected cohort and then walks their course
+  participations so completed courses remain part of the export.
+  """
+  students = filter_students(
+    program_round_participants(ladok, program_round),
+    args.students)
+
+  for student in students:
+    for course in filter_courses(program_round_courses(ladok, student),
+                                 args.courses):
+      try:
+        results = course.results()
+      except ladok3.LadokAPIError as err:
+        warn(f"skipping course {course.code} ({course.round_code}) "
+             f"for student {student.ladok_id}: {err}")
+        continue
+
+      if not should_include(ladok, student, course, results,
+                            args.exclude_reregistered):
+        continue
+
+      for component, grade, time in extract_data_for_course_registration(
+          course, args):
+        yield course, student.ladok_id if args.ladok_id else student, \
+          component, grade, time
+@
+
+The program exporter needs to recover real [[Student]] and
+[[CourseRegistration]] objects from the lower-level JSON responses.
+That keeps the rest of the export logic on the same abstractions as the rest of
+the codebase.
+<<functions>>=
+def program_round_participants(ladok, program_round):
+  """Return Student objects for a program round."""
+  participants = ladok.program_round_participants_JSON(program_round["Uid"])
+  return [ladok.get_student(participant["Student"]["Uid"])
+          for participant in participants]
+
+def program_round_courses(ladok, student):
+  """Return all historical course registrations for a student."""
+  courses = []
+  for registration in ladok.student_course_participations_JSON(student.ladok_id):
+    try:
+      course_data = registration["Utbildningsinformation"]
+    except KeyError:
+      continue
+    courses.append(ladok3.CourseRegistration(
+      ladok=ladok,
+      student=student,
+      **course_data))
+  return courses
+
+def filter_courses(all_courses, desired_courses):
+  """Return only the course registrations with codes in desired_courses."""
+  if not desired_courses:
+    return all_courses
+  return filter(
+    lambda x: x.code in desired_courses,
+    all_courses
+  )
+
+def extract_data_for_course_registration(course, args):
+  """Extract result data for one student's course registration."""
+  course_start = course.start
+  course_length = course.end - course_start
+
+  for component in filter_components(course.components(), args.components):
+    result_data = filter_course_registration_result(course, component)
+    if not result_data:
+      grade = "-"
+      normalized_date = None
+    else:
+      <<extract grade and normalized date from result data>>
+
+    yield component, grade, \
+      normalized_date if args.normalize_date \
+                      else result_data["Examinationsdatum"] if result_data \
+                                                            else None
+
+def filter_course_registration_result(course, component):
+  """Return result data for one component in a course registration."""
+  component_results = ladok3.filter_on_keys(course.results(), component=component)
+  if not component_results:
+    return None
+
+  result = component_results[0]
+  if not result.grade or not result.date:
+    return None
+  return {
+    "Betygsgradsobjekt": {"Kod": result.grade.code},
+    "Examinationsdatum": result.date,
+  }
 @
 
 We want to yield the data in CSV form, so we simply yield a tuple.
@@ -445,4 +944,3 @@ def has_credit_transfer(results):
 
   return False
 @
-

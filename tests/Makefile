@@ -1,11 +1,16 @@
+# The $(eval $(call def_target, ...)) loop below registers the per-file
+# tangling rules at parse time, which makes the first generated rule
+# (test_api.py) the default goal unless we pin it explicitly.
+.DEFAULT_GOAL := all
+
 define find_tests
-find ../src -type f | xargs grep "<<\[\[test [^.]*\.py\]\]>>" | \
-	sed -En "s/^(.*):.*<<\[\[test ([^.]*).py\]\]>>.*/test_\2.py:\1/p" | sort -u
+find ../src -type f | xargs grep "<<test \[\[[^.]*\.py\]\]>>" | \
+	sed -En "s/^(.*):.*<<test \[\[([^.]*)\.py\]\]>>.*/test_\2.py:\1/p" | sort -u
 endef
 
 define def_target
 $(shell echo $1 | cut -d: -f1): $(shell echo $1 | cut -d: -f2)
-	notangle ${NOTANGLEFLAGS.py} "-R[[$$(shell echo $$@ | sed 's/_/ /')]]" $$^ > $$@
+	notangle ${NOTANGLEFLAGS.py} "-Rtest [[$$(shell echo $$@ | sed 's/^test_//')]]" $$^ > $$@
 endef
 
 #PYTESTFLAGS+=--pdb
