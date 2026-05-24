@@ -50,7 +50,10 @@ We will also write data to disk in CSV form, so we need the [[csv]] module.
 import csv
 import datetime
 import ladok3
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
 
 <<functions>>
 
@@ -87,14 +90,19 @@ def program_command(ladok, args):
   <<produce data about program specified in args>>
 @
 
-Programme exports should survive odd cohort entries that LADOK will not resolve
-as real student-course results.  We keep a local [[warn]] helper with the same
-stderr format as the CLI module, without introducing a circular import back to
-[[ladok3.cli]].
+Programme exports should survive odd cohort entries that LADOK will not
+resolve as real student-course results.  We keep a local [[warn]] helper
+that routes through this module's [[logger]] rather than importing
+[[ladok3.cli.warn]], because [[ladok3.cli]] already imports
+[[ladok3.data]] (to wire its subparser); the reverse import would
+close that cycle.  Keeping the symbol as a function---instead of
+inlining [[logger.warning(...)]] at every call site---also lets existing
+tests continue to capture warnings with
+[[monkeypatch.setattr(ladok3.data, "warn", warnings.append)]].
 <<functions>>=
 def warn(msg):
-  """Print warning message to stderr."""
-  print(f"{sys.argv[0]}: {msg}", file=sys.stderr)
+  """Log a warning message via this module's logger."""
+  logger.warning(msg)
 @
 
 We also provide focused unit tests for the filtering and program-export

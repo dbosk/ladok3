@@ -27,7 +27,10 @@ We need access to LADOK through the [[ladok3]] module.
 import csv
 import datetime
 import ladok3
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
 
 <<functions>>
 
@@ -140,26 +143,31 @@ many_parser.add_argument("-d", "--delimiter",
     "use `-d,` or `-d ,` to get comma-separated values.")
 @
 
-We also want to handle errors and confirmations.
-When reporting in bulk, we don't want unnecessary errors.
-We also want to have a summary of the changes.
-<<add many results group arguments>>=
-many_parser.add_argument("-v", "--verbose",
-  action="count", default=0,
-  help="Increases the verbosity of the output: -v will print results that "
-    "were reported to standard out. Otherwise only errors are printed.")
+Bulk reporting used to define its own [[-v]] flag here.  We now rely on
+the global [[-v]]/[[-q]] flags defined in [[ladok3.cli]] so that
+verbosity behaves identically across every subcommand: a wrapper script
+that passes [[-v]] once gets [[INFO]]-level reporting from both
+[[ladok report]] and any other [[ladok]] subcommand it invokes, with no
+duplicated flag parsing here.  The per-row stderr message and the
+``reported \dots'' confirmation are now produced via this module's
+[[logger]] (see below).
 @
 
-Then we can actually report the result using the values read from [[stdin]].
+Then we can actually report the result using the values read from
+[[stdin]].  We catch and log [[Exception]] per row because a single bad
+row in a CSV stream---an unknown student, a result that LADOK refuses---
+must not abort the whole batch.  The [[try]]/[[except]] is what gives us
+``error on one row, continue to the next''; we deliberately log the
+failure rather than raise so the [[for]] loop in
+[[report_results_given_in_stdin]] keeps iterating.
 <<report a result read from stdin>>=
 try:
   set_grade(ladok, args,
             student_id, course_code, component_code, grade, date, graders)
 except Exception as err:
   <<try to resolve [[student]] from [[ladok]] using [[student_id]]>>
-  print(f"{course_code} {component_code}={grade} ({date}) {student}: "
-        f"{err}",
-        file=sys.stderr)
+  logger.error(
+    f"{course_code} {component_code}={grade} ({date}) {student}: {err}")
 @
 
 The reason we want to resolve the student from LADOK is that the [[student_id]] 
@@ -259,16 +267,19 @@ if isinstance(current_date, str):
 @
 
 If the result is a draft, we can set and finalize the grade as usual.
+The ``reported \dots'' confirmation is logged at [[INFO]] level so it
+appears with [[ladok -v report]] but stays out of the default output;
+the global [[-v]]/[[-q]] flags decide which subset is shown.
 <<handle draft result>>=
 <<normalize requested and current result dates>>
 if component.grade != grade or current_date != date:
   component.set_grade(grade, date)
 if args.finalize:
   component.finalize(graders)
-if args.verbose:
-  print(f"{course_code} {student}: reported "
-        f"{component.component} = {component.grade} ({date}) "
-        f"by {', '.join(graders)}.")
+logger.info(
+  f"{course_code} {student}: reported "
+  f"{component.component} = {component.grade} ({date}) "
+  f"by {', '.join(graders)}.")
 @
 
 If the result is already finalized but not attested, it's waiting for the
@@ -302,9 +313,9 @@ if component.grade != grade or current_date != date:
     f"{component.grade} ({component.date}) is different from "
     f"{grade} ({date}); change the finalized result back to "
     "draft in LADOK before changing the grade.")
-if args.verbose:
-  print(f"{course_code} {student}: {component.component} already finalized, "
-        f"waiting for attestation.")
+logger.info(
+  f"{course_code} {student}: {component.component} already finalized, "
+  f"waiting for attestation.")
 @
 
 If the result is attested, we check if the grade and date we want to report
@@ -601,11 +612,12 @@ if not isinstance(date, datetime.date):
   date = datetime.date.fromisoformat(date)
 
 if date < course.start:
-  print(f"{course_code} {component_code}={grade} "
-        f"({date}) {student}: "
-        f"Grade date ({date}) is before "
-        f"course start date ({course.start}), "
-        f"using course start date instead.")
+  logger.warning(
+    f"{course_code} {component_code}={grade} "
+    f"({date}) {student}: "
+    f"Grade date ({date}) is before "
+    f"course start date ({course.start}), "
+    f"using course start date instead.")
   date = course.start
 @
 
@@ -641,10 +653,8 @@ we got the arguments.
 <<check that we got all positional arguments>>=
 if not (args.course_code and args.component_code and
   args.student_id and args.grade):
-  print(f"{sys.argv[0]} report: "
-        "not all positional args given: "
-        "course_code, component, student, grade",
-        file=sys.stderr)
+  logger.error("report: not all positional args given: "
+               "course_code, component, student, grade")
   sys.exit(1)
 @
 
@@ -668,8 +678,10 @@ one_parser.add_argument("graders", nargs="*",
        "give each grader as 'First Last <email@institution.se>'.")
 @
 
-Now that we have the arguments, we can just execute the following code using 
-them.
+Now that we have the arguments, we can just execute the following code
+using them.  The single-result path uses the same logger-based error
+reporting as the bulk path, so both modes look identical to a wrapper
+script piping output through the [[logging]] hierarchy.
 <<report results given in args>>=
 <<check that we got all positional arguments>>
 try:
@@ -679,9 +691,9 @@ try:
 except Exception as err:
   student_id = args.student_id
   <<try to resolve [[student]] from [[ladok]] using [[student_id]]>>
-  print(f"{args.course_code} {args.component_code}={args.grade} ({args.date}) "
-        f"{student}: {err}",
-        file=sys.stderr)
+  logger.error(
+    f"{args.course_code} {args.component_code}={args.grade} "
+    f"({args.date}) {student}: {err}")
 @
 
 
