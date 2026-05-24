@@ -64,6 +64,7 @@ We also provide unit tests for the reporting logic so we can verify the state
 machine without contacting LADOK.
 <<test [[report.py]]>>=
 import datetime
+import logging
 import types
 
 import pytest
@@ -207,12 +208,19 @@ cache state without clearing the whole cached session.
 If the refreshed state is still finalized and matches, we skip trying to
 modify or finalize it again---this keeps the command idempotent without
 refreshing every old result.
-If the result was attested, we apply the same mismatch-driven refresh rule to
-the cached attested result.
-If it still differs after that refresh, we output an error.
-If both match, we silently ignore it.
-This is best for bulk reporting, because then we can always try to report for
-all students.
+
+If the result is attested, we treat grade and date asymmetrically.
+A grade mismatch on an attested result is a real conflict the reporter
+must resolve manually in LADOK (the wrong grade was attested), so we
+keep raising [[LadokValidationError]] after the one-shot refresh.
+A date-only mismatch is not: the attested grade is still correct, and
+re-attestation just to fix an examination date is rarely worth the
+manual work.  We therefore log a [[WARNING]] and continue.  The
+warning is silenced by a global [[-q]] when bulk-reporting against a
+roster where date drift is expected.
+If everything matches, we silently ignore the row.
+This is best for bulk reporting, because then we can always try to
+report for all students.
 
 We want to report errors as exceptions.
 <<functions>>=
@@ -318,19 +326,33 @@ logger.info(
   f"waiting for attestation.")
 @
 
-If the result is attested, we check if the grade and date we want to report
-match the attested result.
-If not, we raise an error since we cannot change an attested grade without
-first removing the attested result in LADOK.
-Before raising that error, we refresh this specific result once.
-That lets the reporter remove the attested result in LADOK and then try again
-without clearing the whole cached session.
-If the cached attestation is stale, the next loop iteration will continue from
-the refreshed draft or finalized state instead.
-If they match, we silently succeed since the desired result is already set.
+If the result is attested, we check whether the grade and date we want
+to report match the attested result.  We split the comparison into two
+branches with different policies, as motivated above: grade mismatch is
+fatal, date-only mismatch is a warning.
+
+Before deciding either way we refresh this specific result once, in case
+the cached attestation is stale.  That refresh serves two purposes:
+\begin{enumerate}
+\item It lets the reporter fix the underlying problem in LADOK (remove
+  the attested result, re-attest with the right date) and re-run the
+  command without clearing the whole cached session.
+\item If the cached attestation is stale, the next loop iteration will
+  continue from the refreshed draft or finalized state instead, so we
+  don't warn or raise about state that no longer exists.
+\end{enumerate}
+The two branches share a single [[refreshed_attested_result]] guard so
+that one pull suffices for both checks; we want at most one refresh per
+[[set_grade]] call regardless of which mismatch triggers it.
+
+We check the grade first because it is the more serious signal---if
+both the grade and date differ, the reporter sees the grade error,
+which is the one they need to act on.  If only the date differs, we
+log a [[WARNING]] including the cached examination date so the
+reporter can decide whether the drift is worth a manual fix.
 <<handle attested result>>=
 <<normalize requested and current result dates>>
-if component.grade != grade or current_date != date:
+if component.grade != grade:
   if not refreshed_attested_result:
     refreshed_attested_result = True
     component.pull()
@@ -340,6 +362,15 @@ if component.grade != grade or current_date != date:
     f"{component.grade} ({component.date}) is different from "
     f"{grade} ({date}); remove the attested result in LADOK "
     "before changing the grade.")
+if current_date != date:
+  if not refreshed_attested_result:
+    refreshed_attested_result = True
+    component.pull()
+    continue
+  logger.warning(
+    f"{course_code} {student}: attested {component.component} "
+    f"{component.grade} has examination date {component.date}, "
+    f"not the requested {date}; leaving the attested result as-is.")
 @
 
 We can verify the important local branches here: draft results remain
@@ -529,7 +560,7 @@ def test_set_grade_explains_how_to_change_attested_result():
   assert component.finalize_calls == []
 
 
-def test_set_grade_rejects_attested_date_change():
+def test_set_grade_warns_when_attested_date_differs(caplog):
   component = FakeComponent(
     grade="P", attested=True, finalized=True, date="2024-01-20")
   course = FakeCourse(component)
@@ -537,15 +568,70 @@ def test_set_grade_rejects_attested_date_change():
   ladok = FakeLadok(student)
   args = types.SimpleNamespace(finalize=True, verbose=0)
 
-  with pytest.raises(
-      ladok3.LadokValidationError,
-      match="remove the attested result in LADOK"):
+  with caplog.at_level(logging.WARNING, logger="ladok3.report"):
     ladok3.report.set_grade(
       ladok, args, "191212121212", "DD1315", "DD1315", "P",
       "2024-02-01", ["examiner"])
 
+  assert component.pull_calls == 1
   assert component.set_calls == []
   assert component.finalize_calls == []
+  warnings = [r for r in caplog.records
+              if r.levelno == logging.WARNING
+              and r.name == "ladok3.report"]
+  assert len(warnings) == 1
+  assert "examination date 2024-01-20" in warnings[0].message
+  assert "leaving the attested result as-is" in warnings[0].message
+
+
+def test_set_grade_attested_date_warning_silent_when_refresh_resolves(caplog):
+  component = FakeComponent(
+    grade="P", attested=True, finalized=True, date="2024-01-20",
+    pull_updates=[{"date": "2024-02-01"}])
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  with caplog.at_level(logging.WARNING, logger="ladok3.report"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", ["examiner"])
+
+  assert component.pull_calls == 1
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+  warnings = [r for r in caplog.records
+              if r.levelno == logging.WARNING
+              and r.name == "ladok3.report"]
+  assert warnings == []
+
+
+def test_set_grade_attested_date_warning_suppressed_at_error_level(caplog):
+  component = FakeComponent(
+    grade="P", attested=True, finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  report_logger = logging.getLogger("ladok3.report")
+  previous_level = report_logger.level
+  report_logger.setLevel(logging.ERROR)
+  try:
+    with caplog.at_level(logging.ERROR, logger="ladok3.report"):
+      ladok3.report.set_grade(
+        ladok, args, "191212121212", "DD1315", "DD1315", "P",
+        "2024-02-01", ["examiner"])
+  finally:
+    report_logger.setLevel(previous_level)
+
+  assert component.pull_calls == 1
+  assert component.set_calls == []
+  # The WARNING record is filtered out by the logger level itself
+  # (mimicking what -q does at the CLI), so caplog never sees it.
+  assert [r for r in caplog.records
+          if r.name == "ladok3.report"] == []
 
 
 def test_set_grade_retries_after_stale_attested_result():
