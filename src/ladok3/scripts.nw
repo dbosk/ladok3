@@ -31,7 +31,7 @@ This way we can use the helper functions in our terminal.
 
 The design is that all functions output lines expected by [[ladok report]].
 This way, we can simply pipe the output of the main function to
-[[ladok report -fv]] to report them.
+[[ladok -v report -f]] to report them.
 This also makes it easy to debug the script by running it in the terminal and 
 seeing what it would report.
 <<[[ladok.sh]]>>=
@@ -44,7 +44,7 @@ main() {
 
 # Only run if this is the main script
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  main "$@" | ladok report -fv
+  main "$@" | ladok -v report -f
 fi
 @
 
