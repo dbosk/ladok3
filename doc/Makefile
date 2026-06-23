@@ -27,7 +27,7 @@ ladok3.pdf: ../examples/canvas2ladok.tex
 ladok3.pdf: ../examples/canvas2ladok.py
 ladok3.pdf: ../src/ladok3/scripts.tex
 
-ladok3.pdf: didactic.sty
+ladok3.pdf: didactic.sty noweb_lexer.py
 
 ../%::
 	${MAKE} -C $(dir $@) $(notdir $@)
@@ -48,5 +48,6 @@ distclean:
 
 INCLUDE_MAKEFILES=../makefiles
 include ${INCLUDE_MAKEFILES}/tex.mk
+include ${INCLUDE_MAKEFILES}/noweb.mk
 INCLUDE_DIDACTIC=./didactic
 include ${INCLUDE_DIDACTIC}/didactic.mk
