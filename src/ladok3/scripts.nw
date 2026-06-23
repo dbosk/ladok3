@@ -79,7 +79,7 @@ permission error from Canvas.
 So we'll use two functions, one for spring and one for autumn courses.
 <<constants>>=
 YEAR=$(date +%y)
-LOOKBACK=5
+LOOKBACK=3
 <<helper functions>>=
 years_spring() {
   echo -n "("; \
