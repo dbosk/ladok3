@@ -34,6 +34,30 @@ This way, we can simply pipe the output of the main function to
 [[ladok -v report -f]] to report them.
 This also makes it easy to debug the script by running it in the terminal and 
 seeing what it would report.
+
+At [[-v]], [[ladok report]] logs three kinds of line, but only two of them
+call for action from us.
+It logs an [[INFO]] line for each result that is now finalised and waiting
+for us to attest it, and an [[ERROR]] line for each result whose
+already-attested grade conflicts with what we want to report---those we must
+de-attest and update manually in LADOK.
+Both belong in the cron mail.
+It also logs a [[WARNING]] when an attested result's examination date has
+drifted from the date we recompute from Canvas; but since the attested grade
+is already correct, that drift needs no action from us.
+For a course with many attested results these drift warnings would flood the
+mail and bury the lines we actually act on, defeating the rule from the start
+of this chapter that the script should only speak up when it needs attention.
+
+We therefore drop just the drift line.
+We match on its message rather than on the [[WARNING]] level on purpose: the
+date-before-course-start warning is also a [[WARNING]], but it signals a
+genuinely suspect date that we want to keep seeing, so a level-based filter
+would be too blunt.
+The drift line is the only [[report]] log line containing the phrase
+\enquote{leaving the attested result as-is}, which makes it a precise anchor.
+Because [[report]] logs to standard error, we merge it into the pipe with
+[[2>&1]] before filtering.
 <<[[ladok.sh]]>>=
 <<constants>>
 <<helper functions>>
@@ -44,8 +68,19 @@ main() {
 
 # Only run if this is the main script
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  main "$@" | ladok -v report -f
+  main "$@" | ladok -v report -f 2>&1 | <<filter out non-actionable date drift>>
 fi
+@
+
+The filter drops the drift line and nothing else.
+This phrase is coupled to the exact wording of the attested date-drift
+warning in [[report.nw]]; if that message ever changes, this pattern must
+change with it.
+We append [[|| true]] because [[grep -v]] exits non-zero when it selects no
+lines---which is exactly the quiet, nothing-to-report run we want---and we
+don't want [[cron]] to treat that healthy run as a failure.
+<<filter out non-actionable date drift>>=
+grep -v "leaving the attested result as-is" || true
 @
 
 We need to report more than once for a course.
