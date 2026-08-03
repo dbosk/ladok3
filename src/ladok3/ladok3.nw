@@ -1775,15 +1775,36 @@ We can pull these from LADOK as well.
 We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
 From the response we get from LADOK, we construct [[CourseResult]] objects that 
 deal with the details.
-Some entries contain only component metadata and no recorded result yet.
-Those must be skipped so the later
+LADOK attaches a [[ResultatPaUtbildning]] wrapper to every module, even to
+modules where the student has no recorded result yet.
+When there is no result, that wrapper carries only a credit-transfer summary
+([[HarTillgodoraknande]], [[TotalTillgodoraknadOmfattning]], and the like) and
+none of the nested entries that hold an actual grade.
+The presence of [[ResultatPaUtbildning]] is therefore not enough to conclude
+that a result exists; we must find one of the definitive nested entries,
+[[SenastAttesteradeResultat]] (attested) or [[Arbetsunderlag]] (a work copy).
+We capture that test once in [[has_recorded_result]] and reuse it on the
+refresh path below, so both paths agree on what counts as a result.
+
+Entries without a recorded result must be skipped so the later
 [[<<add new CourseResult objects for missing components>>]] step can create the
 expected empty placeholder.
-But once LADOK includes [[ResultatPaUtbildning]], we do have an existing
-result.
-If that payload is malformed, we must fail loudly here rather than pretending
-the result is missing and later trying to create a duplicate.
-(It's a bit unclear why [[Kursversioner]] is a list, so far it has always 
+But once a definitive entry is present, we do have an existing result.
+If that payload is then malformed, we must fail loudly here rather than
+pretending the result is missing and later trying to create a duplicate.
+<<functions>>=
+def has_recorded_result(entry):
+  """Return True if a VersionensModuler/VersionensKurs entry carries an
+  actual recorded result---an attested result (SenastAttesteradeResultat) or
+  a work copy (Arbetsunderlag)---as opposed to LADOK's always-present
+  credit-transfer summary, which has neither."""
+  results = entry.get("ResultatPaUtbildning")
+  if not results:
+    return False
+  return "SenastAttesteradeResultat" in results or "Arbetsunderlag" in results
+@
+
+(It's a bit unclear why [[Kursversioner]] is a list, so far it has always
 worked to take the first.)
 <<pull existing CourseResult objects from LADOK>>=
 response = self.ladok.student_results_JSON(
@@ -1793,7 +1814,7 @@ response = self.ladok.student_results_JSON(
 self.__results = []
 
 for result in response["VersionensModuler"]:
-  if "ResultatPaUtbildning" not in result:
+  if not has_recorded_result(result):
     continue
   try:
     self.__results.append(CourseResult(ladok=self.ladok,
@@ -1810,7 +1831,7 @@ That data is not in [[VersionensModuler]], but in [[VersionensKurs]].
 But we can do the same with it, just as we could with the components.
 (And this works since it's a component in [[self.components()]].)
 <<pull existing CourseResult objects from LADOK>>=
-if "ResultatPaUtbildning" in response["VersionensKurs"]:
+if has_recorded_result(response["VersionensKurs"]):
   try:
     self.__results.append(CourseResult(ladok=self.ladok,
                                        components=self.components(),
@@ -2049,6 +2070,10 @@ We therefore choose that nested payload first and match on its
 [[UtbildningsinstansUID]].
 That keeps the retry path in [[report.set_grade]] narrowly scoped to the result
 whose cached attestation might be stale.
+We reuse [[has_recorded_result]] here for the same reason as on the fill
+path: the credit-transfer summary on a sibling module without a result must be
+skipped, not parsed---otherwise refreshing one component would crash on another
+component that happens to have no result yet.
 If LADOK no longer returns any entry for the component, then the cached object
 no longer has a corresponding remote result and we report that explicitly.
 <<fetch current CourseResult data from LADOK>>=
@@ -2058,7 +2083,7 @@ response = self.ladok.student_results_JSON(
 components = self.__component.course.components()
 
 for result in response["VersionensModuler"]:
-  if "ResultatPaUtbildning" not in result:
+  if not has_recorded_result(result):
     continue
   try:
     data, attested = self.__choose_result_data(
@@ -2071,7 +2096,7 @@ for result in response["VersionensModuler"]:
   return dict(data, components=components), attested
 
 course_result = response["VersionensKurs"]
-if "ResultatPaUtbildning" in course_result:
+if has_recorded_result(course_result):
   try:
     data, attested = self.__choose_result_data(
       course_result["ResultatPaUtbildning"])
@@ -2235,8 +2260,46 @@ def test_course_registration_skips_course_entry_without_result():
   assert len(results) == 1
   assert results[0].grade == None
   assert results[0].attested == False
+@
 
+The same must hold when the wrapper is present but carries only a
+credit-transfer summary.
+This is the shape that triggered the original crash: a sibling module had a
+[[ResultatPaUtbildning]] with neither [[Arbetsunderlag]] nor
+[[SenastAttesteradeResultat]], only the always-present credit-transfer fields.
+We skip it and fall back to an empty placeholder instead of failing to parse.
+<<test course result functions>>=
+def test_course_registration_skips_credit_transfer_only_module():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [{
+          "Kod": "OTHER",
+          "UtbildningsinstansUID": "other-component",
+          "ResultatPaUtbildning": {
+            "HarTillgodoraknande": False,
+            "HeltTillgodoraknad": False,
+            "OvrigaResultat": [],
+            "TotalTillgodoraknadOmfattning": 0.0,
+            "UtbildningUID": "course-education",
+          },
+        }],
+        "VersionensKurs": {},
+      }],
+    })
+  course = make_course_registration_for_test(ladok)
 
+  results = course.results(component="DD1315")
+
+  assert len(results) == 1
+  assert results[0].grade == None
+  assert results[0].attested == False
+@
+
+Genuinely malformed payloads must still surface loudly.
+A present [[Arbetsunderlag]] that fails to parse is a real error, not an absent
+result, so we keep raising for it rather than silently skipping.
+<<test course result functions>>=
 def test_course_registration_surfaces_malformed_course_results():
   ladok = FakeLadokForCourseResult(
     student_results_response={
@@ -2303,8 +2366,77 @@ def test_pull_course_result_refreshes_stale_attestation():
   assert result.finalized == False
   assert result.grade == "F"
   assert result.date == "2024-02-01"
+@
 
+A refresh must survive sibling modules that have no recorded result.
+This is the exact regression from the field report: refreshing one component
+iterated over a sibling whose [[ResultatPaUtbildning]] held only a
+credit-transfer summary and crashed on it.
+Here the credit-transfer-only sibling comes first, before the target module, so
+the refresh has to skip it and still find the target's work copy.
+<<test course result functions>>=
+def test_pull_course_result_skips_credit_transfer_only_sibling():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [
+          {
+            "Kod": "OTHER",
+            "UtbildningsinstansUID": "other-component",
+            "ResultatPaUtbildning": {
+              "HarTillgodoraknande": False,
+              "HeltTillgodoraknad": False,
+              "OvrigaResultat": [],
+              "TotalTillgodoraknadOmfattning": 0.0,
+              "UtbildningUID": "course-education",
+            },
+          },
+          {
+            "ResultatPaUtbildning": {
+              "Arbetsunderlag": {
+                "Uid": "draft-uid",
+                "UtbildningsinstansUID": "component-instance",
+                "ResultatUID": "draft-result",
+                "StudieresultatUID": "study-result",
+                "ProcessStatus": 1,
+                "Betygsgrad": 10,
+                "BetygsskalaID": 1,
+                "Examinationsdatum": "2024-02-01",
+              },
+            },
+          },
+        ],
+        "VersionensKurs": {},
+      }],
+    })
+  component = make_course_component_for_test(ladok)
+  component.course.components = lambda **kwargs: [component]
 
+  result = ladok3.CourseResult(
+    ladok=ladok,
+    student=types.SimpleNamespace(ladok_id="student-uid"),
+    components=[component],
+    ResultatPaUtbildning={
+      "SenastAttesteradeResultat": {
+        "Uid": "attested-uid",
+        "UtbildningsinstansUID": "component-instance",
+        "ResultatUID": "attested-result",
+        "StudieresultatUID": "study-result",
+        "Betygsgrad": 11,
+        "BetygsskalaID": 1,
+        "Examinationsdatum": "2024-01-15",
+      },
+    })
+
+  result.pull()
+
+  assert result.attested == False
+  assert result.finalized == False
+  assert result.grade == "F"
+  assert result.date == "2024-02-01"
+@
+
+<<test course result functions>>=
 def test_pull_course_result_raises_if_refresh_result_disappeared():
   ladok = FakeLadokForCourseResult(
     student_results_response={
@@ -2424,14 +2556,23 @@ def test_pull_course_result_keeps_state_if_population_fails():
   assert result.finalized == True
   assert result.grade == "P"
   assert result.date == "2024-01-15"
+@
 
-
+A malformed result on the refresh path is different from an absent one.
+A wrapper with no nested entries means \enquote{no result yet} and is skipped
+(see [[test_pull_course_result_skips_credit_transfer_only_sibling]]); but a
+nested entry that is present and cannot be parsed---here an empty
+[[Arbetsunderlag]] missing its [[UtbildningsinstansUID]]---is a real error we
+must still surface loudly.
+<<test course result functions>>=
 def test_pull_course_result_surfaces_malformed_refresh_payload():
   ladok = FakeLadokForCourseResult(
     student_results_response={
       "Kursversioner": [{
         "VersionensModuler": [{
-          "ResultatPaUtbildning": {},
+          "ResultatPaUtbildning": {
+            "Arbetsunderlag": {},
+          },
         }],
         "VersionensKurs": {},
       }],
