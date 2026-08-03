@@ -1994,16 +1994,19 @@ class CourseResult(LadokRemoteData):
 
   @property
   def attested(self):
-    """Returns True if the grade has been attested in LADOK"""
-    return self.__attested
+    """Returns True if the grade has been attested in LADOK, or if the
+    whole component is covered by a credit transfer"""
+    return self.__attested or self.fully_credit_transferred
 
   @property
   def finalized(self):
-    """Returns True if the grade has been finalized (klarmarkerad) in LADOK"""
+    """Returns True if the grade has been finalized (klarmarkerad) in LADOK,
+    or if the whole component is covered by a credit transfer"""
     try:
-      return self.__finalized
+      finalized = self.__finalized
     except AttributeError: # can occur with an old cache
-      return self.__attested
+      finalized = self.__attested
+    return finalized or self.fully_credit_transferred
 
   @property
   def credit_transferred(self):
@@ -2153,11 +2156,32 @@ attributes.
 Falling back to the \enquote{no transfer} defaults keeps such caches usable
 until they are refreshed.
 
+A credit transfer is a formal decision in LADOK: it appears among a
+student's results only once it has been decided, that is, attested.
+An undecided transfer case is not counted in the summary, so a transfer we
+see here is an attested one.
+A component that is entirely covered by such a transfer can never receive an
+ordinary grade---there is nothing left to grade---so [[attested]] and
+[[finalized]] report [[True]] for it.
+This makes the existing guard in [[set_grade]] refuse to change the grade,
+exactly as for an ordinarily attested result.
+A \emph{partially} transferred component keeps [[attested]] as [[False]]:
+the remaining credits can still be graded through this very result, and
+reporting them must not be blocked.
+The scope is each result's own component: a fully transferred [[LAB1]] locks
+[[LAB1]] alone, while its sibling modules and the course grade follow their
+own summaries.
+We compute this in the [[attested]] and [[finalized]] properties rather than
+setting the private attributes, so the transfer can never be overwritten by
+the ordinary result-state bookkeeping in the constructor and in [[pull]].
+
 When the user lists results, a transferred component must not look like an
 untouched one, so [[__str__]] appends a marker.
 A fully transferred component gets a definite label, since no ordinary grade
-will ever appear there; a partial transfer shows the credited amount when
-LADOK reports one, so the user can see how much of the component remains.
+will ever appear there; because it now counts as attested, the
+not-yet-attested asterisk also disappears from its listing.
+A partial transfer shows the credited amount when LADOK reports one, so the
+user can see how much of the component remains.
 <<append credit-transfer marker to [[result]]>>=
 if self.fully_credit_transferred:
   result += " (fully credit transferred)"
@@ -2466,7 +2490,9 @@ def test_course_registration_shows_module_credit_transfer():
   assert lab_results[0].credit_transferred == True
   assert lab_results[0].fully_credit_transferred == False
   assert lab_results[0].transferred_credits == 1.5
+  assert lab_results[0].attested == False
   assert "credit transfer: 1.5" in str(lab_results[0])
+  assert "*" in str(lab_results[0])
 
   course_results = course.results(component="DD1315")
 
@@ -2504,7 +2530,81 @@ def test_course_registration_shows_full_course_credit_transfer():
   assert results[0].credit_transferred == True
   assert results[0].fully_credit_transferred == True
   assert results[0].transferred_credits == 7.5
+  assert results[0].attested == True
+  assert results[0].finalized == True
   assert "fully credit transferred" in str(results[0])
+  assert "*" not in str(results[0])
+@
+
+An attested transfer must lock only its own component.
+Here [[LAB1]] is entirely covered by a transfer while [[LAB2]] and the course
+grade are untouched: [[LAB1]] counts as attested (so [[set_grade]] refuses
+it), but [[LAB2]] and the course grade must remain gradable.
+<<test course result functions>>=
+def test_full_module_credit_transfer_locks_only_that_module():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [{
+          "Kod": "LAB1",
+          "UtbildningsinstansUID": "lab1-instance",
+          "ResultatPaUtbildning": {
+            "HarTillgodoraknande": True,
+            "HeltTillgodoraknad": True,
+            "TotalTillgodoraknadOmfattning": 1.5,
+            "UtbildningUID": "course-education",
+          },
+        }],
+        "VersionensKurs": {},
+      }],
+    },
+    course_round_components_response={
+      "UtbildningsinstansUID": "course-instance",
+      "UtbildningUID": "course-education",
+      "Utbildningskod": "DD1315",
+      "Benamning": {"sv": "Course grade", "en": "Course grade"},
+      "Omfattning": 7.5,
+      "Enhet": "hp",
+      "Versionsnummer": "1",
+      "BetygsskalaID": 1,
+      "IngaendeMoment": [
+        {
+          "UtbildningsinstansUID": "lab1-instance",
+          "UtbildningUID": "lab1-education",
+          "Utbildningskod": "LAB1",
+          "Benamning": {"sv": "Lab 1"},
+          "Omfattning": 1.5,
+          "Enhet": "hp",
+          "BetygsskalaID": 1,
+        },
+        {
+          "UtbildningsinstansUID": "lab2-instance",
+          "UtbildningUID": "lab2-education",
+          "Utbildningskod": "LAB2",
+          "Benamning": {"sv": "Lab 2"},
+          "Omfattning": 1.5,
+          "Enhet": "hp",
+          "BetygsskalaID": 1,
+        },
+      ],
+    })
+  course = make_course_registration_for_test(ladok)
+
+  lab1 = course.results(component="LAB1")[0]
+  lab2 = course.results(component="LAB2")[0]
+  course_grade = course.results(component="DD1315")[0]
+
+  assert lab1.attested == True
+  assert lab1.finalized == True
+  assert "*" not in str(lab1)
+
+  assert lab2.attested == False
+  assert lab2.finalized == False
+  assert course_grade.attested == False
+  assert course_grade.finalized == False
+
+  with pytest.raises(AttributeError, match="attested"):
+    lab1.set_grade("P", "2024-02-01")
 @
 
 A component can also have both an ordinary result and a partial credit

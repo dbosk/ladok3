@@ -351,6 +351,7 @@ which is the one they need to act on.  If only the date differs, we
 log a [[WARNING]] including the cached examination date so the
 reporter can decide whether the drift is worth a manual fix.
 <<handle attested result>>=
+<<reject reporting on a fully credit-transferred component>>
 <<normalize requested and current result dates>>
 if component.grade != grade:
   if not refreshed_attested_result:
@@ -373,6 +374,23 @@ if current_date != date:
     f"not the requested {date}; leaving the attested result as-is.")
 @
 
+A component can also count as attested because it is entirely covered by a
+credit transfer.
+Then the refresh-and-compare dance above makes no sense: there is no
+ordinary attested result to compare grades and dates against, and a
+transfer-only component has no result payload to refresh, so [[pull()]]
+would only fail with not-found.
+We therefore reject such reporting outright, and we do so before even
+normalizing the date: date normalization can log a warning about dates
+before the course start, which would be noise for a component we are about
+to reject anyway.
+<<reject reporting on a fully credit-transferred component>>=
+if component.fully_credit_transferred:
+  raise ladok3.LadokValidationError(
+    f"{component.component} is entirely covered by a credit transfer; "
+    "can't report a grade for it.")
+@
+
 We can verify the important local branches here: draft results remain
 editable, matching finalized results stay idempotent, and locked results
 explain how to change them.
@@ -380,11 +398,12 @@ explain how to change them.
 class FakeComponent:
   def __init__(self, *, grade=None, attested=False,
                finalized=False, date=None, pull_updates=None,
-               pull_exception=None):
+               pull_exception=None, fully_credit_transferred=False):
     self.component = "DD1315"
     self.grade = grade
     self.attested = attested
     self.finalized = finalized
+    self.fully_credit_transferred = fully_credit_transferred
     self.date = date
     self.pull_updates = pull_updates or []
     self.pull_exception = pull_exception
@@ -556,6 +575,29 @@ def test_set_grade_explains_how_to_change_attested_result():
       ladok, args, "191212121212", "DD1315", "DD1315", "P",
       "2024-02-01", ["examiner"])
 
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+@
+
+A fully credit-transferred component is rejected outright: no refresh
+attempt, no grade comparison, and the message names the credit transfer
+rather than a mismatching attested result.
+<<test functions>>=
+def test_set_grade_rejects_fully_credit_transferred_component():
+  component = FakeComponent(attested=True, fully_credit_transferred=True)
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=False, verbose=0)
+
+  with pytest.raises(
+      ladok3.LadokValidationError,
+      match="covered by a credit transfer"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", [])
+
+  assert component.pull_calls == 0
   assert component.set_calls == []
   assert component.finalize_calls == []
 
