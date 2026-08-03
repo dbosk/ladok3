@@ -1806,7 +1806,7 @@ def has_recorded_result(entry):
 
 The summary we skip past is not noise, however.
 It is the only place where LADOK tells us about credit transfers
-(tillgodor\"aknanden) on the component.
+(tillgodoräknanden) on the component.
 A student whose component is covered by a credit transfer has no ordinary
 result on it, so without the summary the component would show up as an empty
 placeholder---indistinguishable from a component the student simply has not
@@ -1843,10 +1843,13 @@ for result in response["VersionensModuler"]:
       from err
 @
 
-We key the remembered summaries on [[UtbildningsinstansUID]] because that is
-the identifier the placeholder step below can match against a component's
-[[instance_id]]; the entry's [[Kod]] is less reliable, since the course-grade
-entry in [[VersionensKurs]] carries no code of its own.
+We key the remembered summaries on the wrapper entry's top-level
+[[UtbildningsinstansUID]] because that is the identifier the placeholder
+step below can match against a component's [[instance_id]].
+Should LADOK omit it from an entry, the summary is simply never
+attached and the component looks untouched---the behaviour we had
+before surfacing transfers---so a missing identifier degrades
+gracefully instead of failing.
 <<remember [[result]]'s credit-transfer summary>>=
 credit_transfers[result.get("UtbildningsinstansUID")] = \
   result.get("ResultatPaUtbildning")
@@ -2134,8 +2137,8 @@ whether any credit transfer exists at all ([[HarTillgodoraknande]]), whether
 the whole component is covered ([[HeltTillgodoraknad]]), and how many credits
 the transfers amount to ([[TotalTillgodoraknadOmfattning]]).
 We default each to its \enquote{no transfer} value so that a placeholder
-without any remembered summary---and a wrapper that predates these fields---
-behaves exactly like one that explicitly says there is no transfer.
+without any remembered summary---and a wrapper that predates these
+fields---behaves exactly like one that explicitly says there is no transfer.
 <<extract credit-transfer summary from [[wrapper]]>>=
 wrapper = wrapper or {}
 self.__credit_transferred = wrapper.get("HarTillgodoraknande", False)
