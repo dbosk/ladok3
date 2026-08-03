@@ -27,7 +27,10 @@ We need access to LADOK through the [[ladok3]] module.
 import csv
 import datetime
 import ladok3
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
 
 <<functions>>
 
@@ -61,6 +64,7 @@ We also provide unit tests for the reporting logic so we can verify the state
 machine without contacting LADOK.
 <<test [[report.py]]>>=
 import datetime
+import logging
 import types
 
 import pytest
@@ -140,26 +144,31 @@ many_parser.add_argument("-d", "--delimiter",
     "use `-d,` or `-d ,` to get comma-separated values.")
 @
 
-We also want to handle errors and confirmations.
-When reporting in bulk, we don't want unnecessary errors.
-We also want to have a summary of the changes.
-<<add many results group arguments>>=
-many_parser.add_argument("-v", "--verbose",
-  action="count", default=0,
-  help="Increases the verbosity of the output: -v will print results that "
-    "were reported to standard out. Otherwise only errors are printed.")
+Bulk reporting used to define its own [[-v]] flag here.  We now rely on
+the global [[-v]]/[[-q]] flags defined in [[ladok3.cli]] so that
+verbosity behaves identically across every subcommand: a wrapper script
+that passes [[-v]] once gets [[INFO]]-level reporting from both
+[[ladok report]] and any other [[ladok]] subcommand it invokes, with no
+duplicated flag parsing here.  The per-row stderr message and the
+``reported \dots'' confirmation are now produced via this module's
+[[logger]] (see below).
 @
 
-Then we can actually report the result using the values read from [[stdin]].
+Then we can actually report the result using the values read from
+[[stdin]].  We catch and log [[Exception]] per row because a single bad
+row in a CSV stream---an unknown student, a result that LADOK refuses---
+must not abort the whole batch.  The [[try]]/[[except]] is what gives us
+``error on one row, continue to the next''; we deliberately log the
+failure rather than raise so the [[for]] loop in
+[[report_results_given_in_stdin]] keeps iterating.
 <<report a result read from stdin>>=
 try:
   set_grade(ladok, args,
             student_id, course_code, component_code, grade, date, graders)
 except Exception as err:
   <<try to resolve [[student]] from [[ladok]] using [[student_id]]>>
-  print(f"{course_code} {component_code}={grade} ({date}) {student}: "
-        f"{err}",
-        file=sys.stderr)
+  logger.error(
+    f"{course_code} {component_code}={grade} ({date}) {student}: {err}")
 @
 
 The reason we want to resolve the student from LADOK is that the [[student_id]] 
@@ -199,12 +208,19 @@ cache state without clearing the whole cached session.
 If the refreshed state is still finalized and matches, we skip trying to
 modify or finalize it again---this keeps the command idempotent without
 refreshing every old result.
-If the result was attested, we apply the same mismatch-driven refresh rule to
-the cached attested result.
-If it still differs after that refresh, we output an error.
-If both match, we silently ignore it.
-This is best for bulk reporting, because then we can always try to report for
-all students.
+
+If the result is attested, we treat grade and date asymmetrically.
+A grade mismatch on an attested result is a real conflict the reporter
+must resolve manually in LADOK (the wrong grade was attested), so we
+keep raising [[LadokValidationError]] after the one-shot refresh.
+A date-only mismatch is not: the attested grade is still correct, and
+re-attestation just to fix an examination date is rarely worth the
+manual work.  We therefore log a [[WARNING]] and continue.  The
+warning is silenced by a global [[-q]] when bulk-reporting against a
+roster where date drift is expected.
+If everything matches, we silently ignore the row.
+This is best for bulk reporting, because then we can always try to
+report for all students.
 
 We want to report errors as exceptions.
 <<functions>>=
@@ -259,16 +275,19 @@ if isinstance(current_date, str):
 @
 
 If the result is a draft, we can set and finalize the grade as usual.
+The ``reported \dots'' confirmation is logged at [[INFO]] level so it
+appears with [[ladok -v report]] but stays out of the default output;
+the global [[-v]]/[[-q]] flags decide which subset is shown.
 <<handle draft result>>=
 <<normalize requested and current result dates>>
 if component.grade != grade or current_date != date:
   component.set_grade(grade, date)
 if args.finalize:
   component.finalize(graders)
-if args.verbose:
-  print(f"{course_code} {student}: reported "
-        f"{component.component} = {component.grade} ({date}) "
-        f"by {', '.join(graders)}.")
+logger.info(
+  f"{course_code} {student}: reported "
+  f"{component.component} = {component.grade} ({date}) "
+  f"by {', '.join(graders)}.")
 @
 
 If the result is already finalized but not attested, it's waiting for the
@@ -302,24 +321,39 @@ if component.grade != grade or current_date != date:
     f"{component.grade} ({component.date}) is different from "
     f"{grade} ({date}); change the finalized result back to "
     "draft in LADOK before changing the grade.")
-if args.verbose:
-  print(f"{course_code} {student}: {component.component} already finalized, "
-        f"waiting for attestation.")
+logger.info(
+  f"{course_code} {student}: {component.component} already finalized, "
+  f"waiting for attestation.")
 @
 
-If the result is attested, we check if the grade and date we want to report
-match the attested result.
-If not, we raise an error since we cannot change an attested grade without
-first removing the attested result in LADOK.
-Before raising that error, we refresh this specific result once.
-That lets the reporter remove the attested result in LADOK and then try again
-without clearing the whole cached session.
-If the cached attestation is stale, the next loop iteration will continue from
-the refreshed draft or finalized state instead.
-If they match, we silently succeed since the desired result is already set.
+If the result is attested, we check whether the grade and date we want
+to report match the attested result.  We split the comparison into two
+branches with different policies, as motivated above: grade mismatch is
+fatal, date-only mismatch is a warning.
+
+Before deciding either way we refresh this specific result once, in case
+the cached attestation is stale.  That refresh serves two purposes:
+\begin{enumerate}
+\item It lets the reporter fix the underlying problem in LADOK (remove
+  the attested result, re-attest with the right date) and re-run the
+  command without clearing the whole cached session.
+\item If the cached attestation is stale, the next loop iteration will
+  continue from the refreshed draft or finalized state instead, so we
+  don't warn or raise about state that no longer exists.
+\end{enumerate}
+The two branches share a single [[refreshed_attested_result]] guard so
+that one pull suffices for both checks; we want at most one refresh per
+[[set_grade]] call regardless of which mismatch triggers it.
+
+We check the grade first because it is the more serious signal---if
+both the grade and date differ, the reporter sees the grade error,
+which is the one they need to act on.  If only the date differs, we
+log a [[WARNING]] including the cached examination date so the
+reporter can decide whether the drift is worth a manual fix.
 <<handle attested result>>=
+<<reject reporting on a fully credit-transferred component>>
 <<normalize requested and current result dates>>
-if component.grade != grade or current_date != date:
+if component.grade != grade:
   if not refreshed_attested_result:
     refreshed_attested_result = True
     component.pull()
@@ -329,6 +363,32 @@ if component.grade != grade or current_date != date:
     f"{component.grade} ({component.date}) is different from "
     f"{grade} ({date}); remove the attested result in LADOK "
     "before changing the grade.")
+if current_date != date:
+  if not refreshed_attested_result:
+    refreshed_attested_result = True
+    component.pull()
+    continue
+  logger.warning(
+    f"{course_code} {student}: attested {component.component} "
+    f"{component.grade} has examination date {component.date}, "
+    f"not the requested {date}; leaving the attested result as-is.")
+@
+
+A component can also count as attested because it is entirely covered by a
+credit transfer.
+Then the refresh-and-compare dance above makes no sense: there is no
+ordinary attested result to compare grades and dates against, and a
+transfer-only component has no result payload to refresh, so [[pull()]]
+would only fail with not-found.
+We therefore reject such reporting outright, and we do so before even
+normalizing the date: date normalization can log a warning about dates
+before the course start, which would be noise for a component we are about
+to reject anyway.
+<<reject reporting on a fully credit-transferred component>>=
+if component.fully_credit_transferred:
+  raise ladok3.LadokValidationError(
+    f"{component.component} is entirely covered by a credit transfer; "
+    "can't report a grade for it.")
 @
 
 We can verify the important local branches here: draft results remain
@@ -338,11 +398,12 @@ explain how to change them.
 class FakeComponent:
   def __init__(self, *, grade=None, attested=False,
                finalized=False, date=None, pull_updates=None,
-               pull_exception=None):
+               pull_exception=None, fully_credit_transferred=False):
     self.component = "DD1315"
     self.grade = grade
     self.attested = attested
     self.finalized = finalized
+    self.fully_credit_transferred = fully_credit_transferred
     self.date = date
     self.pull_updates = pull_updates or []
     self.pull_exception = pull_exception
@@ -516,9 +577,32 @@ def test_set_grade_explains_how_to_change_attested_result():
 
   assert component.set_calls == []
   assert component.finalize_calls == []
+@
+
+A fully credit-transferred component is rejected outright: no refresh
+attempt, no grade comparison, and the message names the credit transfer
+rather than a mismatching attested result.
+<<test functions>>=
+def test_set_grade_rejects_fully_credit_transferred_component():
+  component = FakeComponent(attested=True, fully_credit_transferred=True)
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=False, verbose=0)
+
+  with pytest.raises(
+      ladok3.LadokValidationError,
+      match="covered by a credit transfer"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", [])
+
+  assert component.pull_calls == 0
+  assert component.set_calls == []
+  assert component.finalize_calls == []
 
 
-def test_set_grade_rejects_attested_date_change():
+def test_set_grade_warns_when_attested_date_differs(caplog):
   component = FakeComponent(
     grade="P", attested=True, finalized=True, date="2024-01-20")
   course = FakeCourse(component)
@@ -526,15 +610,70 @@ def test_set_grade_rejects_attested_date_change():
   ladok = FakeLadok(student)
   args = types.SimpleNamespace(finalize=True, verbose=0)
 
-  with pytest.raises(
-      ladok3.LadokValidationError,
-      match="remove the attested result in LADOK"):
+  with caplog.at_level(logging.WARNING, logger="ladok3.report"):
     ladok3.report.set_grade(
       ladok, args, "191212121212", "DD1315", "DD1315", "P",
       "2024-02-01", ["examiner"])
 
+  assert component.pull_calls == 1
   assert component.set_calls == []
   assert component.finalize_calls == []
+  warnings = [r for r in caplog.records
+              if r.levelno == logging.WARNING
+              and r.name == "ladok3.report"]
+  assert len(warnings) == 1
+  assert "examination date 2024-01-20" in warnings[0].message
+  assert "leaving the attested result as-is" in warnings[0].message
+
+
+def test_set_grade_attested_date_warning_silent_when_refresh_resolves(caplog):
+  component = FakeComponent(
+    grade="P", attested=True, finalized=True, date="2024-01-20",
+    pull_updates=[{"date": "2024-02-01"}])
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  with caplog.at_level(logging.WARNING, logger="ladok3.report"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", ["examiner"])
+
+  assert component.pull_calls == 1
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+  warnings = [r for r in caplog.records
+              if r.levelno == logging.WARNING
+              and r.name == "ladok3.report"]
+  assert warnings == []
+
+
+def test_set_grade_attested_date_warning_suppressed_at_error_level(caplog):
+  component = FakeComponent(
+    grade="P", attested=True, finalized=True, date="2024-01-20")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  report_logger = logging.getLogger("ladok3.report")
+  previous_level = report_logger.level
+  report_logger.setLevel(logging.ERROR)
+  try:
+    with caplog.at_level(logging.ERROR, logger="ladok3.report"):
+      ladok3.report.set_grade(
+        ladok, args, "191212121212", "DD1315", "DD1315", "P",
+        "2024-02-01", ["examiner"])
+  finally:
+    report_logger.setLevel(previous_level)
+
+  assert component.pull_calls == 1
+  assert component.set_calls == []
+  # The WARNING record is filtered out by the logger level itself
+  # (mimicking what -q does at the CLI), so caplog never sees it.
+  assert [r for r in caplog.records
+          if r.name == "ladok3.report"] == []
 
 
 def test_set_grade_retries_after_stale_attested_result():
@@ -601,11 +740,12 @@ if not isinstance(date, datetime.date):
   date = datetime.date.fromisoformat(date)
 
 if date < course.start:
-  print(f"{course_code} {component_code}={grade} "
-        f"({date}) {student}: "
-        f"Grade date ({date}) is before "
-        f"course start date ({course.start}), "
-        f"using course start date instead.")
+  logger.warning(
+    f"{course_code} {component_code}={grade} "
+    f"({date}) {student}: "
+    f"Grade date ({date}) is before "
+    f"course start date ({course.start}), "
+    f"using course start date instead.")
   date = course.start
 @
 
@@ -641,10 +781,8 @@ we got the arguments.
 <<check that we got all positional arguments>>=
 if not (args.course_code and args.component_code and
   args.student_id and args.grade):
-  print(f"{sys.argv[0]} report: "
-        "not all positional args given: "
-        "course_code, component, student, grade",
-        file=sys.stderr)
+  logger.error("report: not all positional args given: "
+               "course_code, component, student, grade")
   sys.exit(1)
 @
 
@@ -668,8 +806,10 @@ one_parser.add_argument("graders", nargs="*",
        "give each grader as 'First Last <email@institution.se>'.")
 @
 
-Now that we have the arguments, we can just execute the following code using 
-them.
+Now that we have the arguments, we can just execute the following code
+using them.  The single-result path uses the same logger-based error
+reporting as the bulk path, so both modes look identical to a wrapper
+script piping output through the [[logging]] hierarchy.
 <<report results given in args>>=
 <<check that we got all positional arguments>>
 try:
@@ -679,9 +819,9 @@ try:
 except Exception as err:
   student_id = args.student_id
   <<try to resolve [[student]] from [[ladok]] using [[student_id]]>>
-  print(f"{args.course_code} {args.component_code}={args.grade} ({args.date}) "
-        f"{student}: {err}",
-        file=sys.stderr)
+  logger.error(
+    f"{args.course_code} {args.component_code}={args.grade} "
+    f"({args.date}) {student}: {err}")
 @
 
 

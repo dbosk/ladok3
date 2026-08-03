@@ -1775,15 +1775,51 @@ We can pull these from LADOK as well.
 We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
 From the response we get from LADOK, we construct [[CourseResult]] objects that 
 deal with the details.
-Some entries contain only component metadata and no recorded result yet.
-Those must be skipped so the later
+LADOK attaches a [[ResultatPaUtbildning]] wrapper to every module, even to
+modules where the student has no recorded result yet.
+When there is no result, that wrapper carries only a credit-transfer summary
+([[HarTillgodoraknande]], [[TotalTillgodoraknadOmfattning]], and the like) and
+none of the nested entries that hold an actual grade.
+The presence of [[ResultatPaUtbildning]] is therefore not enough to conclude
+that a result exists; we must find one of the definitive nested entries,
+[[SenastAttesteradeResultat]] (attested) or [[Arbetsunderlag]] (a work copy).
+We capture that test once in [[has_recorded_result]] and reuse it on the
+refresh path below, so both paths agree on what counts as a result.
+
+Entries without a recorded result must be skipped so the later
 [[<<add new CourseResult objects for missing components>>]] step can create the
 expected empty placeholder.
-But once LADOK includes [[ResultatPaUtbildning]], we do have an existing
-result.
-If that payload is malformed, we must fail loudly here rather than pretending
-the result is missing and later trying to create a duplicate.
-(It's a bit unclear why [[Kursversioner]] is a list, so far it has always 
+But once a definitive entry is present, we do have an existing result.
+If that payload is then malformed, we must fail loudly here rather than
+pretending the result is missing and later trying to create a duplicate.
+<<functions>>=
+def has_recorded_result(entry):
+  """Return True if a VersionensModuler/VersionensKurs entry carries an
+  actual recorded result---an attested result (SenastAttesteradeResultat) or
+  a work copy (Arbetsunderlag)---as opposed to LADOK's always-present
+  credit-transfer summary, which has neither."""
+  results = entry.get("ResultatPaUtbildning")
+  if not results:
+    return False
+  return "SenastAttesteradeResultat" in results or "Arbetsunderlag" in results
+@
+
+The summary we skip past is not noise, however.
+It is the only place where LADOK tells us about credit transfers
+(tillgodoräknanden) on the component.
+A student whose component is covered by a credit transfer has no ordinary
+result on it, so without the summary the component would show up as an empty
+placeholder---indistinguishable from a component the student simply has not
+done yet.
+That invites reporting a grade for work the student has already been credited
+for.
+We therefore remember each skipped entry's wrapper, keyed by the component
+instance it belongs to, and hand it to the placeholder constructor below.
+(Modules that \emph{do} have a recorded result can still carry a partial
+credit transfer; for those the [[CourseResult]] constructor reads the summary
+straight off the wrapper it already receives.)
+
+(It's a bit unclear why [[Kursversioner]] is a list, so far it has always
 worked to take the first.)
 <<pull existing CourseResult objects from LADOK>>=
 response = self.ladok.student_results_JSON(
@@ -1791,9 +1827,11 @@ response = self.ladok.student_results_JSON(
 )["Kursversioner"][0]
 
 self.__results = []
+credit_transfers = {}
 
 for result in response["VersionensModuler"]:
-  if "ResultatPaUtbildning" not in result:
+  if not has_recorded_result(result):
+    <<remember [[result]]'s credit-transfer summary>>
     continue
   try:
     self.__results.append(CourseResult(ladok=self.ladok,
@@ -1805,12 +1843,27 @@ for result in response["VersionensModuler"]:
       from err
 @
 
+We key the remembered summaries on the wrapper entry's top-level
+[[UtbildningsinstansUID]] because that is the identifier the placeholder
+step below can match against a component's [[instance_id]].
+Should LADOK omit it from an entry, the summary is simply never
+attached and the component looks untouched---the behaviour we had
+before surfacing transfers---so a missing identifier degrades
+gracefully instead of failing.
+<<remember [[result]]'s credit-transfer summary>>=
+credit_transfers[result.get("UtbildningsinstansUID")] = \
+  result.get("ResultatPaUtbildning")
+@
+
 As with the components, the course grade itself is a special case.
 That data is not in [[VersionensModuler]], but in [[VersionensKurs]].
 But we can do the same with it, just as we could with the components.
 (And this works since it's a component in [[self.components()]].)
+When the course entry has no recorded result either, we remember its
+credit-transfer summary just like for the modules---a fully transferred course
+is precisely the case where no ordinary course grade will ever appear.
 <<pull existing CourseResult objects from LADOK>>=
-if "ResultatPaUtbildning" in response["VersionensKurs"]:
+if has_recorded_result(response["VersionensKurs"]):
   try:
     self.__results.append(CourseResult(ladok=self.ladok,
                                        components=self.components(),
@@ -1820,10 +1873,16 @@ if "ResultatPaUtbildning" in response["VersionensKurs"]:
     raise LadokError(
       "couldn't parse existing course result: "
       f"{response['VersionensKurs']}") from err
+else:
+  result = response["VersionensKurs"]
+  <<remember [[result]]'s credit-transfer summary>>
 @
 
-Now we can see which components from [[self.components]] are missing from 
+Now we can see which components from [[self.components]] are missing from
 [[self.__results]] and just add empty results for those.
+Each placeholder also receives any credit-transfer summary we remembered for
+its component instance, so that a transferred component is visibly different
+from one the student has not started.
 <<add new CourseResult objects for missing components>>=
 for component in self.components():
   if not list(filter_on_keys(self.__results, component=component.code)):
@@ -1831,6 +1890,7 @@ for component in self.components():
       CourseResult(
         ladok=self.ladok,
         component=component,
+        credit_transfer=credit_transfers.get(component.instance_id),
         student=self.__student))
 @
 
@@ -1856,11 +1916,13 @@ class CourseResult(LadokRemoteData):
     self.__finalized = False
     if "component" in kwargs:
       self.__component = kwargs.pop("component")
+      self.__extract_credit_transfer(kwargs.pop("credit_transfer", None))
       self.__populate_attributes()
     elif "components" in kwargs and "ResultatPaUtbildning" in kwargs:
       components = kwargs.pop("components")
 
       results = kwargs.pop("ResultatPaUtbildning")
+      self.__extract_credit_transfer(results)
 
       data, attested = self.__choose_result_data(results, fallback=kwargs)
 
@@ -1875,6 +1937,9 @@ class CourseResult(LadokRemoteData):
       <<populate CourseResult attributes for empty result>>
     else:
       <<populate CourseResult attributes from data>>
+
+  def __extract_credit_transfer(self, wrapper):
+    <<extract credit-transfer summary from [[wrapper]]>>
 
   def __choose_result_data(self, results, fallback=None):
     <<return definitive CourseResult data>>
@@ -1929,24 +1994,54 @@ class CourseResult(LadokRemoteData):
 
   @property
   def attested(self):
-    """Returns True if the grade has been attested in LADOK"""
-    return self.__attested
+    """Returns True if the grade has been attested in LADOK, or if the
+    whole component is covered by a credit transfer"""
+    return self.__attested or self.fully_credit_transferred
 
   @property
   def finalized(self):
-    """Returns True if the grade has been finalized (klarmarkerad) in LADOK"""
+    """Returns True if the grade has been finalized (klarmarkerad) in LADOK,
+    or if the whole component is covered by a credit transfer"""
     try:
-      return self.__finalized
+      finalized = self.__finalized
     except AttributeError: # can occur with an old cache
-      return self.__attested
+      finalized = self.__attested
+    return finalized or self.fully_credit_transferred
+
+  @property
+  def credit_transferred(self):
+    """Returns True if the student has a credit transfer for this component"""
+    try:
+      return self.__credit_transferred
+    except AttributeError: # can occur with an old cache
+      return False
+
+  @property
+  def fully_credit_transferred(self):
+    """Returns True if the component is entirely covered by a credit
+    transfer"""
+    try:
+      return self.__fully_credit_transferred
+    except AttributeError: # can occur with an old cache
+      return False
+
+  @property
+  def transferred_credits(self):
+    """Returns the number of credits covered by credit transfers"""
+    try:
+      return self.__transferred_credits
+    except AttributeError: # can occur with an old cache
+      return 0.0
 
   def __str__(self):
-    return f"{self.component} {self.grade} " \
-           f"{self.date}{'*' if not self.attested else ''}"
+    result = f"{self.component} {self.grade} " \
+             f"{self.date}{'*' if not self.attested else ''}"
+    <<append credit-transfer marker to [[result]]>>
+    return result
 
   def pull(self):
     """Refresh the result from LADOK."""
-    data, attested = self.__pull_result_data()
+    data, attested, transfer = self.__pull_result_data()
     <<replace CourseResult attributes transactionally>>
 
   def push(self):
@@ -2035,6 +2130,68 @@ self.__modified = False
 self.__last_modified = None
 @
 
+\subsection{Credit transfers}
+
+Both construction paths run the [[ResultatPaUtbildning]] wrapper (or the
+remembered summary for a placeholder) through
+[[__extract_credit_transfer]].
+LADOK's summary distinguishes three things we want to surface:
+whether any credit transfer exists at all ([[HarTillgodoraknande]]), whether
+the whole component is covered ([[HeltTillgodoraknad]]), and how many credits
+the transfers amount to ([[TotalTillgodoraknadOmfattning]]).
+We default each to its \enquote{no transfer} value so that a placeholder
+without any remembered summary---and a wrapper that predates these
+fields---behaves exactly like one that explicitly says there is no transfer.
+<<extract credit-transfer summary from [[wrapper]]>>=
+wrapper = wrapper or {}
+self.__credit_transferred = wrapper.get("HarTillgodoraknande", False)
+self.__fully_credit_transferred = wrapper.get("HeltTillgodoraknad", False)
+self.__transferred_credits = wrapper.get("TotalTillgodoraknadOmfattning", 0.0)
+@
+
+The corresponding properties guard against [[AttributeError]] for the same
+reason [[finalized]] does: [[CourseResult]] objects are cached and restored,
+so an object written by an older version of this package lacks the private
+attributes.
+Falling back to the \enquote{no transfer} defaults keeps such caches usable
+until they are refreshed.
+
+A credit transfer is a formal decision in LADOK: it appears among a
+student's results only once it has been decided, that is, attested.
+An undecided transfer case is not counted in the summary, so a transfer we
+see here is an attested one.
+A component that is entirely covered by such a transfer can never receive an
+ordinary grade---there is nothing left to grade---so [[attested]] and
+[[finalized]] report [[True]] for it.
+This makes the existing guard in [[set_grade]] refuse to change the grade,
+exactly as for an ordinarily attested result.
+A \emph{partially} transferred component keeps [[attested]] as [[False]]:
+the remaining credits can still be graded through this very result, and
+reporting them must not be blocked.
+The scope is each result's own component: a fully transferred [[LAB1]] locks
+[[LAB1]] alone, while its sibling modules and the course grade follow their
+own summaries.
+We compute this in the [[attested]] and [[finalized]] properties rather than
+setting the private attributes, so the transfer can never be overwritten by
+the ordinary result-state bookkeeping in the constructor and in [[pull]].
+
+When the user lists results, a transferred component must not look like an
+untouched one, so [[__str__]] appends a marker.
+A fully transferred component gets a definite label, since no ordinary grade
+will ever appear there; because it now counts as attested, the
+not-yet-attested asterisk also disappears from its listing.
+A partial transfer shows the credited amount when LADOK reports one, so the
+user can see how much of the component remains.
+<<append credit-transfer marker to [[result]]>>=
+if self.fully_credit_transferred:
+  result += " (fully credit transferred)"
+elif self.credit_transferred:
+  if self.transferred_credits:
+    result += f" (credit transfer: {self.transferred_credits})"
+  else:
+    result += " (credit transfer)"
+@
+
 Because a refresh can fail, [[pull()]] must not clear the cached state until
 LADOK has returned a replacement payload.
 We therefore parse the response first and only then repopulate the object.
@@ -2049,6 +2206,13 @@ We therefore choose that nested payload first and match on its
 [[UtbildningsinstansUID]].
 That keeps the retry path in [[report.set_grade]] narrowly scoped to the result
 whose cached attestation might be stale.
+We reuse [[has_recorded_result]] here for the same reason as on the fill
+path: the credit-transfer summary on a sibling module without a result must be
+skipped, not parsed---otherwise refreshing one component would crash on another
+component that happens to have no result yet.
+Along with the definitive result data we also return the matched entry's
+wrapper, so that a refresh renews the credit-transfer summary together with
+the grade state instead of leaving it stale.
 If LADOK no longer returns any entry for the component, then the cached object
 no longer has a corresponding remote result and we report that explicitly.
 <<fetch current CourseResult data from LADOK>>=
@@ -2058,7 +2222,7 @@ response = self.ladok.student_results_JSON(
 components = self.__component.course.components()
 
 for result in response["VersionensModuler"]:
-  if "ResultatPaUtbildning" not in result:
+  if not has_recorded_result(result):
     continue
   try:
     data, attested = self.__choose_result_data(
@@ -2068,15 +2232,17 @@ for result in response["VersionensModuler"]:
   except KeyError as err:
     raise LadokError(f"couldn't parse existing module result: {result}") \
       from err
-  return dict(data, components=components), attested
+  return dict(data, components=components), attested, \
+    result["ResultatPaUtbildning"]
 
 course_result = response["VersionensKurs"]
-if "ResultatPaUtbildning" in course_result:
+if has_recorded_result(course_result):
   try:
     data, attested = self.__choose_result_data(
       course_result["ResultatPaUtbildning"])
     if data["UtbildningsinstansUID"] == self.__component.instance_id:
-      return dict(data, components=components), attested
+      return dict(data, components=components), attested, \
+        course_result["ResultatPaUtbildning"]
   except KeyError as err:
     raise LadokError(
       "couldn't parse existing course result: "
@@ -2097,6 +2263,7 @@ state = self.__dict__.copy()
 try:
   self.__attested = attested
   self.__finalized = attested
+  self.__extract_credit_transfer(transfer)
   self.__populate_attributes(**data)
 except Exception:
   self.__dict__.clear()
@@ -2235,8 +2402,248 @@ def test_course_registration_skips_course_entry_without_result():
   assert len(results) == 1
   assert results[0].grade == None
   assert results[0].attested == False
+@
 
+The same must hold when the wrapper is present but carries only a
+credit-transfer summary.
+This is the shape that triggered the original crash: a sibling module had a
+[[ResultatPaUtbildning]] with neither [[Arbetsunderlag]] nor
+[[SenastAttesteradeResultat]], only the always-present credit-transfer fields.
+We skip it and fall back to an empty placeholder instead of failing to parse.
+<<test course result functions>>=
+def test_course_registration_skips_credit_transfer_only_module():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [{
+          "Kod": "OTHER",
+          "UtbildningsinstansUID": "other-component",
+          "ResultatPaUtbildning": {
+            "HarTillgodoraknande": False,
+            "HeltTillgodoraknad": False,
+            "OvrigaResultat": [],
+            "TotalTillgodoraknadOmfattning": 0.0,
+            "UtbildningUID": "course-education",
+          },
+        }],
+        "VersionensKurs": {},
+      }],
+    })
+  course = make_course_registration_for_test(ladok)
 
+  results = course.results(component="DD1315")
+
+  assert len(results) == 1
+  assert results[0].grade == None
+  assert results[0].attested == False
+@
+
+When the summary reports an actual transfer, the placeholder must surface it.
+Here the module [[LAB1]] is partially covered by a credit transfer: LADOK
+reports [[HarTillgodoraknande]] with a credited amount but no recorded result.
+The placeholder for [[LAB1]] must carry the transfer, while the untouched
+course-grade placeholder must not.
+<<test course result functions>>=
+def test_course_registration_shows_module_credit_transfer():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [{
+          "Kod": "LAB1",
+          "UtbildningsinstansUID": "lab-instance",
+          "ResultatPaUtbildning": {
+            "HarTillgodoraknande": True,
+            "HeltTillgodoraknad": False,
+            "OvrigaResultat": [],
+            "TotalTillgodoraknadOmfattning": 1.5,
+            "UtbildningUID": "course-education",
+          },
+        }],
+        "VersionensKurs": {},
+      }],
+    },
+    course_round_components_response={
+      "UtbildningsinstansUID": "course-instance",
+      "UtbildningUID": "course-education",
+      "Utbildningskod": "DD1315",
+      "Benamning": {"sv": "Course grade", "en": "Course grade"},
+      "Omfattning": 7.5,
+      "Enhet": "hp",
+      "Versionsnummer": "1",
+      "BetygsskalaID": 1,
+      "IngaendeMoment": [{
+        "UtbildningsinstansUID": "lab-instance",
+        "UtbildningUID": "lab-education",
+        "Utbildningskod": "LAB1",
+        "Benamning": {"sv": "Lab"},
+        "Omfattning": 1.5,
+        "Enhet": "hp",
+        "BetygsskalaID": 1,
+      }],
+    })
+  course = make_course_registration_for_test(ladok)
+
+  lab_results = course.results(component="LAB1")
+
+  assert len(lab_results) == 1
+  assert lab_results[0].grade == None
+  assert lab_results[0].credit_transferred == True
+  assert lab_results[0].fully_credit_transferred == False
+  assert lab_results[0].transferred_credits == 1.5
+  assert lab_results[0].attested == False
+  assert "credit transfer: 1.5" in str(lab_results[0])
+  assert "*" in str(lab_results[0])
+
+  course_results = course.results(component="DD1315")
+
+  assert course_results[0].credit_transferred == False
+  assert "credit transfer" not in str(course_results[0])
+@
+
+A course that is transferred in its entirety never gets an ordinary course
+grade, so the transfer must show on the course-grade placeholder built from
+[[VersionensKurs]].
+<<test course result functions>>=
+def test_course_registration_shows_full_course_credit_transfer():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [],
+        "VersionensKurs": {
+          "UtbildningsinstansUID": "course-instance",
+          "ResultatPaUtbildning": {
+            "HarTillgodoraknande": True,
+            "HeltTillgodoraknad": True,
+            "OvrigaResultat": [],
+            "TotalTillgodoraknadOmfattning": 7.5,
+            "UtbildningUID": "course-education",
+          },
+        },
+      }],
+    })
+  course = make_course_registration_for_test(ladok)
+
+  results = course.results(component="DD1315")
+
+  assert len(results) == 1
+  assert results[0].grade == None
+  assert results[0].credit_transferred == True
+  assert results[0].fully_credit_transferred == True
+  assert results[0].transferred_credits == 7.5
+  assert results[0].attested == True
+  assert results[0].finalized == True
+  assert "fully credit transferred" in str(results[0])
+  assert "*" not in str(results[0])
+@
+
+An attested transfer must lock only its own component.
+Here [[LAB1]] is entirely covered by a transfer while [[LAB2]] and the course
+grade are untouched: [[LAB1]] counts as attested (so [[set_grade]] refuses
+it), but [[LAB2]] and the course grade must remain gradable.
+<<test course result functions>>=
+def test_full_module_credit_transfer_locks_only_that_module():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [{
+          "Kod": "LAB1",
+          "UtbildningsinstansUID": "lab1-instance",
+          "ResultatPaUtbildning": {
+            "HarTillgodoraknande": True,
+            "HeltTillgodoraknad": True,
+            "TotalTillgodoraknadOmfattning": 1.5,
+            "UtbildningUID": "course-education",
+          },
+        }],
+        "VersionensKurs": {},
+      }],
+    },
+    course_round_components_response={
+      "UtbildningsinstansUID": "course-instance",
+      "UtbildningUID": "course-education",
+      "Utbildningskod": "DD1315",
+      "Benamning": {"sv": "Course grade", "en": "Course grade"},
+      "Omfattning": 7.5,
+      "Enhet": "hp",
+      "Versionsnummer": "1",
+      "BetygsskalaID": 1,
+      "IngaendeMoment": [
+        {
+          "UtbildningsinstansUID": "lab1-instance",
+          "UtbildningUID": "lab1-education",
+          "Utbildningskod": "LAB1",
+          "Benamning": {"sv": "Lab 1"},
+          "Omfattning": 1.5,
+          "Enhet": "hp",
+          "BetygsskalaID": 1,
+        },
+        {
+          "UtbildningsinstansUID": "lab2-instance",
+          "UtbildningUID": "lab2-education",
+          "Utbildningskod": "LAB2",
+          "Benamning": {"sv": "Lab 2"},
+          "Omfattning": 1.5,
+          "Enhet": "hp",
+          "BetygsskalaID": 1,
+        },
+      ],
+    })
+  course = make_course_registration_for_test(ladok)
+
+  lab1 = course.results(component="LAB1")[0]
+  lab2 = course.results(component="LAB2")[0]
+  course_grade = course.results(component="DD1315")[0]
+
+  assert lab1.attested == True
+  assert lab1.finalized == True
+  assert "*" not in str(lab1)
+
+  assert lab2.attested == False
+  assert lab2.finalized == False
+  assert course_grade.attested == False
+  assert course_grade.finalized == False
+
+  with pytest.raises(AttributeError, match="attested"):
+    lab1.set_grade("P", "2024-02-01")
+@
+
+A component can also have both an ordinary result and a partial credit
+transfer.
+Then the wrapper holds a definitive nested entry \emph{and} the transfer
+fields, and the constructor must pick up both.
+<<test course result functions>>=
+def test_course_result_extracts_credit_transfer_with_recorded_result():
+  ladok = FakeLadokForCourseResult()
+  component = make_course_component_for_test(ladok)
+
+  result = ladok3.CourseResult(
+    ladok=ladok,
+    student=object(),
+    components=[component],
+    ResultatPaUtbildning={
+      "HarTillgodoraknande": True,
+      "HeltTillgodoraknad": False,
+      "TotalTillgodoraknadOmfattning": 1.5,
+      "SenastAttesteradeResultat": {
+        "Uid": "attested-uid",
+        "UtbildningsinstansUID": "component-instance",
+        "ResultatUID": "attested-result",
+        "StudieresultatUID": "study-result",
+        "Betygsgrad": 11,
+        "BetygsskalaID": 1,
+        "Examinationsdatum": "2024-01-15",
+      },
+    })
+
+  assert result.grade == "P"
+  assert result.credit_transferred == True
+  assert result.transferred_credits == 1.5
+@
+
+Genuinely malformed payloads must still surface loudly.
+A present [[Arbetsunderlag]] that fails to parse is a real error, not an absent
+result, so we keep raising for it rather than silently skipping.
+<<test course result functions>>=
 def test_course_registration_surfaces_malformed_course_results():
   ladok = FakeLadokForCourseResult(
     student_results_response={
@@ -2303,8 +2710,136 @@ def test_pull_course_result_refreshes_stale_attestation():
   assert result.finalized == False
   assert result.grade == "F"
   assert result.date == "2024-02-01"
+@
 
+A refresh must survive sibling modules that have no recorded result.
+This is the exact regression from the field report: refreshing one component
+iterated over a sibling whose [[ResultatPaUtbildning]] held only a
+credit-transfer summary and crashed on it.
+Here the credit-transfer-only sibling comes first, before the target module, so
+the refresh has to skip it and still find the target's work copy.
+<<test course result functions>>=
+def test_pull_course_result_skips_credit_transfer_only_sibling():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [
+          {
+            "Kod": "OTHER",
+            "UtbildningsinstansUID": "other-component",
+            "ResultatPaUtbildning": {
+              "HarTillgodoraknande": False,
+              "HeltTillgodoraknad": False,
+              "OvrigaResultat": [],
+              "TotalTillgodoraknadOmfattning": 0.0,
+              "UtbildningUID": "course-education",
+            },
+          },
+          {
+            "ResultatPaUtbildning": {
+              "Arbetsunderlag": {
+                "Uid": "draft-uid",
+                "UtbildningsinstansUID": "component-instance",
+                "ResultatUID": "draft-result",
+                "StudieresultatUID": "study-result",
+                "ProcessStatus": 1,
+                "Betygsgrad": 10,
+                "BetygsskalaID": 1,
+                "Examinationsdatum": "2024-02-01",
+              },
+            },
+          },
+        ],
+        "VersionensKurs": {},
+      }],
+    })
+  component = make_course_component_for_test(ladok)
+  component.course.components = lambda **kwargs: [component]
 
+  result = ladok3.CourseResult(
+    ladok=ladok,
+    student=types.SimpleNamespace(ladok_id="student-uid"),
+    components=[component],
+    ResultatPaUtbildning={
+      "SenastAttesteradeResultat": {
+        "Uid": "attested-uid",
+        "UtbildningsinstansUID": "component-instance",
+        "ResultatUID": "attested-result",
+        "StudieresultatUID": "study-result",
+        "Betygsgrad": 11,
+        "BetygsskalaID": 1,
+        "Examinationsdatum": "2024-01-15",
+      },
+    })
+
+  result.pull()
+
+  assert result.attested == False
+  assert result.finalized == False
+  assert result.grade == "F"
+  assert result.date == "2024-02-01"
+@
+
+A refresh must also renew the credit-transfer summary, not just the grade
+state.
+The cached result below knows of no transfer, but the fresh response reports
+a partial one alongside the work copy; after [[pull()]] the transfer must be
+visible.
+<<test course result functions>>=
+def test_pull_course_result_refreshes_credit_transfer():
+  ladok = FakeLadokForCourseResult(
+    student_results_response={
+      "Kursversioner": [{
+        "VersionensModuler": [{
+          "ResultatPaUtbildning": {
+            "HarTillgodoraknande": True,
+            "HeltTillgodoraknad": False,
+            "TotalTillgodoraknadOmfattning": 1.5,
+            "Arbetsunderlag": {
+              "Uid": "draft-uid",
+              "UtbildningsinstansUID": "component-instance",
+              "ResultatUID": "draft-result",
+              "StudieresultatUID": "study-result",
+              "ProcessStatus": 1,
+              "Betygsgrad": 10,
+              "BetygsskalaID": 1,
+              "Examinationsdatum": "2024-02-01",
+            },
+          },
+        }],
+        "VersionensKurs": {},
+      }],
+    })
+  component = make_course_component_for_test(ladok)
+  component.course.components = lambda **kwargs: [component]
+
+  result = ladok3.CourseResult(
+    ladok=ladok,
+    student=types.SimpleNamespace(ladok_id="student-uid"),
+    components=[component],
+    ResultatPaUtbildning={
+      "Arbetsunderlag": {
+        "Uid": "draft-uid",
+        "UtbildningsinstansUID": "component-instance",
+        "ResultatUID": "draft-result",
+        "StudieresultatUID": "study-result",
+        "ProcessStatus": 1,
+        "Betygsgrad": 10,
+        "BetygsskalaID": 1,
+        "Examinationsdatum": "2024-02-01",
+      },
+    })
+
+  assert result.credit_transferred == False
+
+  result.pull()
+
+  assert result.credit_transferred == True
+  assert result.fully_credit_transferred == False
+  assert result.transferred_credits == 1.5
+@
+
+<<test course result functions>>=
 def test_pull_course_result_raises_if_refresh_result_disappeared():
   ladok = FakeLadokForCourseResult(
     student_results_response={
@@ -2424,14 +2959,23 @@ def test_pull_course_result_keeps_state_if_population_fails():
   assert result.finalized == True
   assert result.grade == "P"
   assert result.date == "2024-01-15"
+@
 
-
+A malformed result on the refresh path is different from an absent one.
+A wrapper with no nested entries means \enquote{no result yet} and is skipped
+(see [[test_pull_course_result_skips_credit_transfer_only_sibling]]); but a
+nested entry that is present and cannot be parsed---here an empty
+[[Arbetsunderlag]] missing its [[UtbildningsinstansUID]]---is a real error we
+must still surface loudly.
+<<test course result functions>>=
 def test_pull_course_result_surfaces_malformed_refresh_payload():
   ladok = FakeLadokForCourseResult(
     student_results_response={
       "Kursversioner": [{
         "VersionensModuler": [{
-          "ResultatPaUtbildning": {},
+          "ResultatPaUtbildning": {
+            "Arbetsunderlag": {},
+          },
         }],
         "VersionensKurs": {},
       }],

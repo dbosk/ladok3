@@ -29,6 +29,7 @@ import io
 import json
 import keyring
 import ladok3
+import logging
 import os
 import pickle
 import re
@@ -41,6 +42,7 @@ import weblogin.seamlessaccess as sa
 <<modules>>
 
 dirs = appdirs.AppDirs("ladok", "dbosk@kth.se")
+logger = logging.getLogger(__name__)
 
 <<functions>>
 <<command-line interface>>
@@ -68,26 +70,39 @@ if __name__ == "__main__":
 @
 
 We want uniform error handling.
-We will use the function [[err]] for errors and [[warn]] for warnings, both 
-inspired by err(3) and warn(3) in the BSD world.
+We keep the BSD-inspired [[err]] and [[warn]] names, but their bodies now
+delegate to the [[logging]] module configured below.  Two reasons for
+keeping the names rather than calling [[logger.warning]] at every call
+site directly:
+\begin{enumerate}
+\item Test suites already monkey-patch [[warn]] to capture diagnostics
+  (e.g.\ [[monkeypatch.setattr(ladok3.cli, "warn", warnings.append)]] in
+  this file and in [[data.nw]]); preserving the symbol keeps those tests
+  working unchanged.
+\item [[err]] still needs to combine a log message with [[sys.exit]] in
+  one call, which is awkward to express at every call site.
+\end{enumerate}
+We drop the [[sys.argv[0]:]] prefix that the old bodies prepended by
+hand---the level name now comes from the [[logging.basicConfig]]
+format string, and the program name from the shell's process listing.
 <<functions>>=
 def err(rc, msg):
-  """Print error message to stderr and exit with given return code.
-  
+  """Log an error message and exit with the given return code.
+
   Args:
       rc (int): Return code to exit with.
       msg (str): Error message to display.
   """
-  print(f"{sys.argv[0]}: error: {msg}", file=sys.stderr)
+  logger.error(msg)
   sys.exit(rc)
 
 def warn(msg):
-  """Print warning message to stderr.
-  
+  """Log a warning message.
+
   Args:
       msg (str): Warning message to display.
   """
-  print(f"{sys.argv[0]}: {msg}", file=sys.stderr)
+  logger.warning(msg)
 @
 
 
@@ -120,6 +135,7 @@ subp = argp.add_subparsers(
 <<add subparsers to subp>>
 argcomplete.autocomplete(argp)
 args = argp.parse_args()
+<<configure logging based on verbose flag>>
 <<execute early commands that do not need [[ls]]>>
 <<create or restore the LadokSession ls>>
 <<execute subcommand>>
@@ -410,7 +426,9 @@ classes as hard failures. We also verify that the commands dispatched before
 session creation really bypass [[get_session]].
 
 <<test [[cli.py]]>>=
+import argparse
 import io
+import logging
 import pickle
 import sys
 import types
@@ -650,9 +668,141 @@ argp.add_argument("-f", "--config-file",
   help="Path to configuration file "
     f"(default: {dirs.user_config_dir}/config.json) "
     "or set LADOK_USER and LADOK_PASS environment variables.")
-@ Since we provide the default value here, we can always rely on it to be 
-available, so we can use [[args.config_file]] directly when we want to access 
+@ Since we provide the default value here, we can always rely on it to be
+available, so we can use [[args.config_file]] directly when we want to access
 the configuration file.
+
+
+\paragraph{Controlling verbosity}
+
+The CLI used to print warnings and errors with ad-hoc [[print(...,
+file=sys.stderr)]] calls.  We now route everything through Python's
+[[logging]] module so callers can adjust the verbosity in one place
+instead of grepping the codebase for [[args.verbose]] checks.
+
+We expose two count-style flags, [[-v]]/[[--verbose]] and [[-q]]/[[--quiet]],
+on the top-level parser so they apply to every subcommand uniformly.
+Defining them globally is also what lets bulk-reporting silence
+non-fatal warnings (e.g.\ ``attested result has a different examination
+date'') with a single [[-q]], without each subcommand inventing its own
+suppression flag.
+
+We pattern this port on the sibling [[canvaslms]] project's
+[[~/devel/edu/canvaslms/src/canvaslms/cli/cli.nw]], so users of both
+tools see identical [[-v]]/[[-q]] semantics.
+
+<<add global configuration options>>=
+argp.add_argument("-q", "--quiet",
+  action="count", default=0,
+  help="Decrease verbosity: -q=ERROR only, -qq=CRITICAL only, "
+    "-qqq=silent")
+argp.add_argument("-v", "--verbose",
+  action="count", default=0,
+  help="Increase verbosity: -v=INFO, -vv=DEBUG, "
+    "-vvv=all library debug")
+@
+
+We compute a \emph{net verbosity} by subtracting the quiet count from the
+verbose count.  Letting [[-v]] and [[-q]] offset each other makes the
+flags compose: a wrapper script that always passes [[-vv]] for debugging
+can still be quieted to ordinary [[-v]] output with a single [[-q]],
+without having to know whether [[-vv]] was set.
+
+The net verbosity maps to the standard Python logging hierarchy:
+\begin{description}
+\item[Net $\leq -3$ ([[-qqq]] or more)] Completely silent, no output.
+\item[Net $= -2$ ([[-qq]])] [[CRITICAL]] messages only.
+\item[Net $= -1$ ([[-q]])] [[ERROR]] and [[CRITICAL]] messages.
+\item[Net $= 0$ (default)] [[WARNING]] and above.
+\item[Net $= 1$ ([[-v]])] [[INFO]] and above.
+\item[Net $= 2$ ([[-vv]])] [[DEBUG]] and above.
+\item[Net $\geq 3$ ([[-vvv]] or more)] [[NOTSET]]\,---\,everything,
+  including third-party library debug output.
+\end{description}
+
+We call [[logging.basicConfig]] exactly once, immediately after parsing
+arguments, so the very first log call (which may happen inside
+[[get_session]] or a subcommand) goes through a configured handler.
+The [[format]] string carries the level name so users can distinguish
+warnings from errors without the legacy [[sys.argv[0]:]] prefix that
+[[warn]]/[[err]] used to add by hand.
+<<configure logging based on verbose flag>>=
+net_verbosity = args.verbose - args.quiet
+
+<<determine logging level from net verbosity>>
+logging.basicConfig(level=level,
+                    format='[%(levelname)s] %(message)s')
+@
+
+We extract the verbosity-to-level mapping into its own chunk so both the
+runtime configuration above and the parametrised tests below tangle the
+exact same code.  Drifting the mapping in one place but not the other
+would silently change CLI behaviour without breaking any test.
+<<determine logging level from net verbosity>>=
+if net_verbosity <= -3:
+  level = logging.CRITICAL + 1   # silent
+elif net_verbosity == -2:
+  level = logging.CRITICAL
+elif net_verbosity == -1:
+  level = logging.ERROR
+elif net_verbosity == 0:
+  level = logging.WARNING
+elif net_verbosity == 1:
+  level = logging.INFO
+elif net_verbosity == 2:
+  level = logging.DEBUG
+else:                            # >= 3: even library logs
+  level = logging.NOTSET
+@
+
+Let's pin the net-verbosity arithmetic and the level mapping with tests.
+The mapping in particular is a small table that's easy to typo when
+adding a new level later; a parametrised test catches that the moment
+the chunk is recompiled.
+<<test functions>>=
+class TestVerbositySystem:
+  """Net verbosity is verbose count minus quiet count."""
+
+  def test_net_verbosity_calculation(self):
+    args = argparse.Namespace(verbose=2, quiet=1)
+    assert args.verbose - args.quiet == 1
+
+  def test_multiple_verbose_flags(self):
+    args = argparse.Namespace(verbose=3, quiet=0)
+    assert args.verbose - args.quiet == 3
+
+  def test_multiple_quiet_flags(self):
+    args = argparse.Namespace(verbose=0, quiet=3)
+    assert args.verbose - args.quiet == -3
+
+  def test_offsetting_flags(self):
+    args = argparse.Namespace(verbose=2, quiet=1)
+    assert args.verbose - args.quiet == 1
+
+
+class TestVerbosityLevelMapping:
+  """The full mapping from net verbosity to Python logging levels."""
+
+  @pytest.mark.parametrize("verbose,quiet,expected_level", [
+    (0, 3, logging.CRITICAL + 1),  # -qqq: silent
+    (0, 2, logging.CRITICAL),       # -qq:  critical only
+    (0, 1, logging.ERROR),          # -q:   errors and critical
+    (0, 0, logging.WARNING),        # default
+    (1, 0, logging.INFO),           # -v
+    (2, 0, logging.DEBUG),          # -vv
+    (3, 0, logging.NOTSET),         # -vvv: include library logs
+    (4, 0, logging.NOTSET),         # -vvvv: still everything
+    (2, 1, logging.INFO),           # -vv -q  == -v
+    (3, 2, logging.INFO),           # -vvv -qq == -v
+  ])
+  def test_verbosity_to_logging_level(self, verbose, quiet,
+                                      expected_level):
+    net_verbosity = verbose - quiet
+
+    <<determine logging level from net verbosity>>
+
+    assert level == expected_level
+@
 
 
 \section{Managing credentials: the \texttt{login} command}
