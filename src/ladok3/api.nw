@@ -664,37 +664,125 @@ def remove_links(json_obj: dict | list) -> None:
       remove_links(item)
 @
 
-The [[pseudonymize]] function replaces names and personnummer with dummy 
-entries.
+The [[pseudonymize]] function handles personal data.
+Matching keys by name at any depth is what makes a flat list of rules
+work across LADOK's many response schemas: the same key names recur
+everywhere --- a [[Fornamn]] inside an [[Attestant]] object in a result
+history is caught by the same rule as a student's own [[Fornamn]].
+
+Different kinds of data need different treatment, so the function body
+is three groups of rules followed by the recursion.
 <<functions>>=
 def pseudonymize(json_obj: dict | list) -> None:
   """
   Recursively pseudonymizes a JSON data record
   """
   if isinstance(json_obj, dict):
-    if "Fornamn" in json_obj:
-      json_obj["Fornamn"] = "Student"
-    if "Efternamn" in json_obj:
-      json_obj["Efternamn"] = "Studentzadeh"
-    if "Personnummer" in json_obj:
-      json_obj["Personnummer"] = "191234561234"
-    if "Epostadress" in json_obj:
-      json_obj["Epostadress"] = "user@domain.se"
-    if "Anvandarnamn" in json_obj:
-      json_obj["Anvandarnamn"] = "user@domain.se"
-    if "Utdelningsadress" in json_obj:
-      json_obj["Utdelningsadress"] = "Stora vägen 1"
-    if "Postnummer" in json_obj:
-      json_obj["Postnummer"] = "12345"
-    if "Postort" in json_obj:
-      json_obj["Postort"] = "Byn"
-    if "Telefonnummer" in json_obj:
-      json_obj["Telefonnummer"] = "0701234567"
+    <<replace identifiers with fixed dummies>>
+    <<replace free-text fields with placeholders>>
+    <<remove presence-sensitive keys>>
     for value in json_obj.values():
       pseudonymize(value)
   elif isinstance(json_obj, list):
     for item in json_obj:
       pseudonymize(item)
+@
+
+Identifying values with a fixed format get fixed dummy replacements.
+The dummy personnummer is deliberately an impossible date, and
+[[Fodelsedata]] uses the same impossible date so that a reader who
+cross-checks the two fields sees them agree.  [[KonID]] becomes the
+neutral [[0]] and [[Avliden]] always reads as alive: neither gender
+nor vital status belongs in documentation examples.
+[[SenastAndradAv]] holds the username of the LADOK caseworker who last
+touched the record --- staff are people too, so it gets the same dummy
+as the other username fields.
+<<replace identifiers with fixed dummies>>=
+if "Fornamn" in json_obj:
+  json_obj["Fornamn"] = "Student"
+if "Efternamn" in json_obj:
+  json_obj["Efternamn"] = "Studentzadeh"
+if "Personnummer" in json_obj:
+  json_obj["Personnummer"] = "191234561234"
+if "Fodelsedata" in json_obj:
+  json_obj["Fodelsedata"] = "1912-34-56"
+if "KonID" in json_obj:
+  json_obj["KonID"] = 0
+if "Avliden" in json_obj:
+  json_obj["Avliden"] = False
+if "Epostadress" in json_obj:
+  json_obj["Epostadress"] = "user@domain.se"
+if "Anvandarnamn" in json_obj:
+  json_obj["Anvandarnamn"] = "user@domain.se"
+if "SenastAndradAv" in json_obj:
+  json_obj["SenastAndradAv"] = "user@domain.se"
+if "Utdelningsadress" in json_obj:
+  json_obj["Utdelningsadress"] = "Stora vägen 1"
+if "Postnummer" in json_obj:
+  json_obj["Postnummer"] = "12345"
+if "Postort" in json_obj:
+  json_obj["Postort"] = "Byn"
+if "Telefonnummer" in json_obj:
+  json_obj["Telefonnummer"] = "0701234567"
+@
+
+Free text cannot be selectively scrubbed --- an [[Anteckning]] (case
+note) or [[OvrigaMedverkande]] (other contributors to an examination)
+may contain names in whatever phrasing the caseworker chose, and no
+pattern reliably finds them.  So non-empty values are replaced
+wholesale by a visible placeholder.  We leave empty values alone: that
+way the example output still shows which records carry notes and which
+do not, which is part of what an example should teach.
+<<replace free-text fields with placeholders>>=
+if json_obj.get("Anteckning"):
+  json_obj["Anteckning"] = "[borttagen anteckning]"
+if json_obj.get("OvrigaMedverkande"):
+  json_obj["OvrigaMedverkande"] = "[borttagna medverkande]"
+@
+
+Two keys are sensitive by their mere presence, not their value:
+[[Skyddsstatus]] marks a protected identity (sekretessmarkering) and
+[[FolkbokforingsbevakningTillOchMed]] marks population-register
+monitoring.  A placeholder value would still reveal that the flag is
+set for this record, so these keys are removed entirely --- the same
+treatment [[remove_links]] gives the [[link]] keys.
+<<remove presence-sensitive keys>>=
+for key in ("Skyddsstatus", "FolkbokforingsbevakningTillOchMed"):
+  json_obj.pop(key, None)
+@
+
+Let's verify all three kinds of treatment on a synthetic record,
+including that UIDs survive untouched (they must, per the discussion
+above) and that the rules reach nested objects such as an attestant.
+<<test functions>>=
+def test_pseudonymize() -> None:
+  record = {
+    "Uid": "00000000-0000-0000-0000-000000000001",
+    "Fornamn": "Real", "Efternamn": "Name",
+    "Fodelsedata": "1999-12-31", "KonID": 1, "Avliden": True,
+    "SenastAndradAv": "handler@institution.se",
+    "Skyddsstatus": "SEKRETESS",
+    "FolkbokforingsbevakningTillOchMed": "2027-01-01",
+    "Historik": [{"Anteckning": "spoke to John Doe",
+                  "OvrigaMedverkande": "External Examiner",
+                  "Attestant": {"Fornamn": "Jane",
+                                "Uid": "00000000-0000-0000-0000-000000000002"}}],
+  }
+  ladok3.pseudonymize(record)
+  assert record["Uid"] == "00000000-0000-0000-0000-000000000001"
+  assert record["Fornamn"] == "Student"
+  assert record["Fodelsedata"] == "1912-34-56"
+  assert record["KonID"] == 0
+  assert record["Avliden"] is False
+  assert record["SenastAndradAv"] == "user@domain.se"
+  assert "Skyddsstatus" not in record
+  assert "FolkbokforingsbevakningTillOchMed" not in record
+  entry = record["Historik"][0]
+  assert entry["Anteckning"] == "[borttagen anteckning]"
+  assert entry["OvrigaMedverkande"] == "[borttagna medverkande]"
+  assert entry["Attestant"]["Fornamn"] == "Student"
+  assert entry["Attestant"]["Uid"] \
+    == "00000000-0000-0000-0000-000000000002"
 @
 
 
