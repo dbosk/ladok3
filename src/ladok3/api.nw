@@ -3691,6 +3691,11 @@ def student_course_round_participations_JSON(self, student_uid: str) -> list:
   return data.get("Tillfallesdeltaganden", data.get("Resultat", []))
 @
 
+Unlike the other methods in this document, we show no example output
+here: the documentation build makes the example requests live, and this
+endpoint refuses the build account.  A static, anonymised example from
+an account with the required roles is the only kind we can ever embed.
+
 Only accounts with programme-level roles can exercise this endpoint, so
 running its test unconditionally would fail for most developers ---
 including the maintainer.  We gate it behind the
@@ -3844,6 +3849,17 @@ def test_student_course_registrations_JSON_states() -> None:
     == "registrerad"
     for entry in ongoing)
 @
+
+The output looks like this (showing only the first entry for brevity;
+note the [[TillstandKurs]] summary that the [[states]] parameter
+filters on):
+\begin{pycode}[apitest]
+regs = ladok.student_course_registrations_JSON(student_uid)
+ladok3.clean_data(regs)
+print(r"\begin{minted}{JSON}")
+print(json.dumps(regs[:1], ensure_ascii=False, indent=2))
+print(r"\end{minted}")
+\end{pycode}
 
 \section{[[student_course_participations_JSON]]}
 
