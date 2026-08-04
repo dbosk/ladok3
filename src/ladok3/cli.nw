@@ -203,12 +203,21 @@ We use [[LADOK_VARS]] as credentials, since it contains the credentials.
 
 The session lifecycle---load credentials, try to restore a cached session, fall
 back to a fresh [[LadokSession]]---is shared with the module-level
-[[ladok3.session]] attribute.
+[[ladok3.session]] and [[ladok3.test_session]] attributes.
 We cannot have the CLI use [[ladok3.session]] directly, because the CLI needs
 to pass a custom [[config_file]] path and because the [[login]] command must
 work even without credentials.
 Instead, we factor the shared lifecycle into [[get_session]], which both the CLI
 and [[ladok3.session]] call.
+
+When no config file is given we fall back to the same default path as the
+argument parser ([[default_config_file]], see the configuration section).
+An earlier version passed [[None]] straight into [[load_credentials]], whose
+[[open(None)]] failed and was silently swallowed there: the module-level
+[[ladok3.session]] never saw the configuration file even though the [[ladok]]
+command did.
+Defaulting here rather than in [[load_credentials]] keeps that function's
+old cwd-relative default intact for external callers.
 <<functions>>=
 def get_session(config_file=None):
   """Load or create a LadokSession from available credentials.
@@ -218,7 +227,7 @@ def get_session(config_file=None):
 
   Args:
       config_file (str or None): Path to configuration file, or None for
-          default.
+          the default path (see `default_config_file`).
 
   Returns:
       tuple: (LadokSession, credentials) where credentials is a dict.
@@ -226,11 +235,36 @@ def get_session(config_file=None):
   Raises:
       ValueError: If a cached session exists but cannot be decrypted.
   """
+  if config_file is None:
+    config_file = default_config_file()
   institution, credentials = load_credentials(config_file)
   session = restore_ladok_session(credentials)
   if not session:
     session = ladok3.LadokSession(institution, vars=credentials)
   return session, credentials
+@
+
+Let's verify that [[get_session]] resolves the default config path and
+still honours an explicit one.
+<<test functions>>=
+def test_get_session_defaults_config_file(monkeypatch):
+  recorded = {}
+
+  def fake_load_credentials(filename):
+    recorded["filename"] = filename
+    return ("Inst", {"username": "u", "password": "p"})
+
+  monkeypatch.setattr(ladok3.cli, "load_credentials",
+                      fake_load_credentials)
+  monkeypatch.setattr(ladok3.cli, "restore_ladok_session",
+                      lambda credentials: "fake session")
+
+  session, credentials = ladok3.cli.get_session()
+  assert recorded["filename"] == ladok3.cli.default_config_file()
+  assert session == "fake session"
+
+  ladok3.cli.get_session("/tmp/other.json")
+  assert recorded["filename"] == "/tmp/other.json"
 @
 
 The CLI calls [[get_session]] with the user-supplied config file path.
@@ -660,13 +694,22 @@ We want to allow the user to specify different locations for the configuration.
 
 \paragraph{Location of configuration files}
 
-We want the user to be able to specify the location of the configuration 
+We want the user to be able to specify the location of the configuration
 file.
+The default location is needed in two places: here in the argument parser
+and in [[get_session]], which must fall back to the same path when it is
+called without an explicit config file (as the module-level
+[[ladok3.session]] does).
+We factor the path into a helper so the two cannot drift apart.
+<<functions>>=
+def default_config_file():
+  """Returns the path to the default configuration file."""
+  return f"{dirs.user_config_dir}/config.json"
 <<add global configuration options>>=
 argp.add_argument("-f", "--config-file",
-  default=f"{dirs.user_config_dir}/config.json",
+  default=default_config_file(),
   help="Path to configuration file "
-    f"(default: {dirs.user_config_dir}/config.json) "
+    f"(default: {default_config_file()}) "
     "or set LADOK_USER and LADOK_PASS environment variables.")
 @ Since we provide the default value here, we can always rely on it to be
 available, so we can use [[args.config_file]] directly when we want to access

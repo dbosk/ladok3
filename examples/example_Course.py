@@ -2,12 +2,8 @@
 # -*- coding: utf-8 -*-
 # -*- mode: python; python-indent-offset: 4 -*-
 import ladok3
-import os
 
-ladok = ladok3.LadokSession("KTH",
-                            vars={"username": os.environ["KTH_LOGIN"],
-                                  "password": os.environ["KTH_PASSWD"]},
-                            test_environment=True) # for experiments
+ladok = ladok3.test_session  # LADOK's test environment, for experiments
 
 course_rounds = ladok.search_course_rounds(code="DD1315")
 

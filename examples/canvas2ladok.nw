@@ -25,11 +25,14 @@ each must have a P too.
 
 For now we will ignore setting the grade on the full course.
 
-When running the program we must have the following environment variables set:
+When running the program we must be able to access LADOK and Canvas:
 \begin{itemize}
-\item [[LADOK_LOGIN]] and [[LADOK_PASSWD]] which hold the credentials for LADOK 
-(or KTH CAS).
-\item [[CANVAS_SERVER]] and [[CANVAS_TOKEN]] to point to the Canvas server to 
+\item For LADOK, the program reuses the [[ladok]] command's cached session
+through [[ladok3.session]], so it suffices to run [[ladok login]] once.
+Where no cache or keyring is available (\eg in Docker), set the
+[[LADOK_INST]], [[LADOK_USER]] and [[LADOK_PASS]] environment variables,
+which [[ladok3.session]] understands as well.
+\item [[CANVAS_SERVER]] and [[CANVAS_TOKEN]] to point to the Canvas server to
 use and a token to authenticate.
 \end{itemize}
 
@@ -92,12 +95,7 @@ import ladok3
 import os
 import re
 
-LOGIN = os.environ["LADOK_USER"]
-PASSWD = os.environ["LADOK_PASS"]
-
-ladok = ladok3.LadokSession("KTH",
-                            vars={"username": LOGIN, "password": PASSWD},
-                            test_environment=False) # for experiments
+ladok = ladok3.session
 
 API_URL = os.environ["CANVAS_SERVER"]
 API_KEY = os.environ["CANVAS_TOKEN"]
