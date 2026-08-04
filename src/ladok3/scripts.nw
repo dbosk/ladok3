@@ -31,9 +31,33 @@ This way we can use the helper functions in our terminal.
 
 The design is that all functions output lines expected by [[ladok report]].
 This way, we can simply pipe the output of the main function to
-[[ladok report -fv]] to report them.
+[[ladok -v report -f]] to report them.
 This also makes it easy to debug the script by running it in the terminal and 
 seeing what it would report.
+
+At [[-v]], [[ladok report]] logs three kinds of line, but only two of them
+call for action from us.
+It logs an [[INFO]] line for each result that is now finalised and waiting
+for us to attest it, and an [[ERROR]] line for each result whose
+already-attested grade conflicts with what we want to report---those we must
+de-attest and update manually in LADOK.
+Both belong in the cron mail.
+It also logs a [[WARNING]] when an attested result's examination date has
+drifted from the date we recompute from Canvas; but since the attested grade
+is already correct, that drift needs no action from us.
+For a course with many attested results these drift warnings would flood the
+mail and bury the lines we actually act on, defeating the rule from the start
+of this chapter that the script should only speak up when it needs attention.
+
+We therefore drop just the drift line.
+We match on its message rather than on the [[WARNING]] level on purpose: the
+date-before-course-start warning is also a [[WARNING]], but it signals a
+genuinely suspect date that we want to keep seeing, so a level-based filter
+would be too blunt.
+The drift line is the only [[report]] log line containing the phrase
+\enquote{leaving the attested result as-is}, which makes it a precise anchor.
+Because [[report]] logs to standard error, we merge it into the pipe with
+[[2>&1]] before filtering.
 <<[[ladok.sh]]>>=
 <<constants>>
 <<helper functions>>
@@ -44,8 +68,19 @@ main() {
 
 # Only run if this is the main script
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  main "$@" | ladok report -fv
+  main "$@" | ladok -v report -f 2>&1 | <<filter out non-actionable date drift>>
 fi
+@
+
+The filter drops the drift line and nothing else.
+This phrase is coupled to the exact wording of the attested date-drift
+warning in [[report.nw]]; if that message ever changes, this pattern must
+change with it.
+We append [[|| true]] because [[grep -v]] exits non-zero when it selects no
+lines---which is exactly the quiet, nothing-to-report run we want---and we
+don't want [[cron]] to treat that healthy run as a failure.
+<<filter out non-actionable date drift>>=
+grep -v "leaving the attested result as-is" || true
 @
 
 We need to report more than once for a course.
@@ -71,14 +106,35 @@ previous year too.
 
 To construct the regex for years, we simply take a sequence of years
 ([[24 25]]) and make a regex ([[(24|25)]]) out of it.
+
+One important as aspect is that we don't want to include the current year for 
+autumn courses before August.
+That's because they will not be published before that, so we'll get a 
+permission error from Canvas.
+So we'll use two functions, one for spring and one for autumn courses.
 <<constants>>=
 YEAR=$(date +%y)
-LOOKBACK=5
-YEARS=$(echo -n "("; \
-        seq $((YEAR - $LOOKBACK)) $YEAR \
-        | sed -zE "s/\s/|/g" \
-        | sed "s/|$/)/")
+LOOKBACK=3
+<<helper functions>>=
+years_spring() {
+  echo -n "("; \
+  seq $((YEAR - LOOKBACK)) $YEAR \
+  | sed -zE "s/\s/|/g" \
+  | sed "s/|$/)/"
+}
+
+years_autumn() {
+  if [[ $(date +%m) -lt 8 ]]; then
+    echo -n "("; \
+    seq $((YEAR - LOOKBACK - 1)) $((YEAR - 1)) \
+    | sed -zE "s/\s/|/g" \
+    | sed "s/|$/)/"
+  else
+    years_spring
+  fi
+}
 @
+
 
 \section{Reporting results on course components}
 
@@ -104,9 +160,17 @@ We want something like [[<<main script>>]] below.
 For the datintro course (DD1301), we simply have four lab assignments in the 
 assignment group LAB1.
 LAB1 is the only course component in LADOK.
+
+We note however that we need an optional space between the course code (DD1301) 
+and the semester (HT21), because for 2021 IT seems to have omitted the space 
+between them.
+
+Since this course is given in every period, but the Canvas rooms are merged, it 
+should appear only as one course with the semester HT25/VT26.
+So we use the [[years_autumn]] function above for the regex for the years.
 <<main script>>=
 # datintro
-report_components "DD1301 HT${YEARS}" \
+report_components "DD1301 ?HT$(years_autumn)" \
                   LAB1
 @
 
@@ -118,12 +182,18 @@ In the old version of the course (DD1315), we had MAT1 instead of KAL1.
 
 The LAB1, MAT1 and KAL1 components each contain lab assignments.
 The students must pass all of them for a grade.
+
+To guard for that accidental space bug above, we make the space between course 
+code and semester optional.
+
+Since this is also an autumn only course, we should give the same regex for the 
+years as for datintro.
 <<main script>>=
 # prgi
 # labs
-report_components "DD1317 HT${YEARS}" \
+report_components "DD1317 ?HT$(years_autumn)" \
                   "LAB1"
-report_components "DD1317 HT${YEARS}" \
+report_components "DD1317 ?HT$(years_autumn)" \
                   "KAL1"
 @
 
@@ -133,9 +203,15 @@ last week of the course in LADOK.
 In some versions we also have multiple assignments, one for each time the exam 
 was given (hence maxgradesurvey); but in newer we reuse the same assignment for 
 all re-exams.
+
+The exams are given all around the year.
+They don't have the semester, but rather a date---so we should match on 2026 
+instead of 26.
+These rooms are also created shortly before the exam, so the errors ought to be 
+fewer if we try to report on an unpublished course.
 <<main script>>=
 # datorprov with optional survey
-report_components "DD1317.*LAB2.*${YEARS}" \
+report_components "DD1317.*LAB2.*20$(years_spring)" \
                   LAB2 \
                   canvaslms.grades.maxgradesurvey
 @ However, now we have that mandatory survey in the LAB3 component with the 
@@ -152,7 +228,7 @@ final grade to be the A--F grade of the presentation, but only if the
 specification, peer review and survey are all passed.
 <<main script>>=
 # p-uppgift with optional survey
-report_components "DD1317 HT${YEARS}" \
+report_components "DD1317 ?HT$(years_autumn)" \
                   LAB3 \
                   canvaslms.grades.conjunctavgsurvey
 @
@@ -163,11 +239,11 @@ For the old version of the course, we simply have MAT1 instead of KAL1.
 And there was no mandatory survey.
 But we run it for a fixed number of years.
 <<main script>>=
-report_components "DD1315 HT2[0-3]" \
+report_components "DD1315 ?HT2[0-3]" \
                   "LAB1"
-report_components "DD1315 HT2[0-3]" \
+report_components "DD1315 ?HT2[0-3]" \
                   "MAT1"
-report_components "DD1315 HT2[0-3]" \
+report_components "DD1315 ?HT2[0-3]" \
                   "LAB3"
 @ We don't need to run LAB2 for it, because they have to reregister for the 
 newer course to do LAB2.
@@ -176,9 +252,14 @@ newer course to do LAB2.
 
 For vetcyb (DA2215) we have one component: INL1.
 It's just a few P/F-assignments and a mandatory survey.
+
+This course is given both in autumn and in spring.
+This means that we should adapt the regex to match spring and autumn 
+separately---with spring and autumn adapted years.
 <<main script>>=
 # vetcyb
-report_components "DA2215 [HV]T${YEARS}" \
+SPRING_AUTUMN_YEARS="(HT$(years_autumn)|VT$(years_spring))"
+report_components "DA2215 ?${SPRING_AUTUMN_YEARS}" \
                   INL1 \
                   canvaslms.grades.conjunctavgsurvey
 @ However, we also want to report the \enquote{Participation INL1}.
@@ -189,7 +270,7 @@ get the participation grade (since those assignments consist only of
 complete/incomplete and 0--100 grades).
 <<main script>>=
 # vetcyb participation
-report_alt_components "DA2215 [HV]T${YEARS}" \
+report_alt_components "DA2215 ?${SPRING_AUTUMN_YEARS}" \
                       "Participation INL1" INL1 \
                       canvaslms.grades.participation
 @
@@ -202,11 +283,14 @@ The LAB1 component is a set of mandatory and optional assignments.
 The number of optional assignments (and their grades) determine the final 
 grade.
 So it has a custom summary module: [[canvaslms.grades.tilkryLAB1]].
+
+This course is only given in spring, so we only need to match on the spring 
+years.
 <<main script>>=
 # tilkry
-report_components "DD2520 VT${YEARS}" \
+report_components "DD2520 ?VT$(years_spring)" \
                   INL1
-report_components "DD2520 VT${YEARS}" \
+report_components "DD2520 ?VT$(years_spring)" \
                   LAB1 \
                   canvaslms.grades.tilkryLAB1
 @
@@ -215,9 +299,9 @@ Finally, let's do this also for the courses that I have given previous years.
 <<main script>>=
 # tidigare kurser
 # DD1310 - prgm2[1-5]
-report_components "DD1310 HT2[1-5]" \
+report_components "DD1310 ?HT2[1-5]" \
                   "LAB1"
-report_components "DD1310 HT2[1-5]" \
+report_components "DD1310 ?HT2[1-5]" \
                   "LAB3" \
                   canvaslms.grades.conjunctavgsurvey
 @
@@ -275,8 +359,17 @@ The course code the is the first column of the output from
 [[canvaslms results]].
 The course code is the first word, separated from the rest by a space.
 So we simply drop everything after the first space.
+However, this doesn't work for the cases where IT has forgotten that space 
+between course code and semester.
+
+This means that we can't use [[split]] in [[awk]], since that would need a 
+space of other character to split on.
+We must instead resort to using regexes to extract the course code.
 <<change course column to only course code>>=
-awk -F '\t' -v OFS='\t' '{ split($1,a," "); $1=a[1]; print }'
+awk -F '\t' -v OFS='\t' '{
+    sub(/ ?[HV]T.*/, "", $1)
+    print
+}'
 @ We can do something similar for the component column, but we simply replace 
 it with the desired component name.
 <<rename the component column to the desired component>>=
