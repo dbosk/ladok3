@@ -167,7 +167,7 @@ class FakeLadokForProgramData:
       personnummer=f"{uid}-pnr",
       __str__=lambda self: f"student {uid}")
 
-  def student_course_participations_JSON(self, student_uid):
+  def student_course_registrations_JSON(self, student_uid):
     return self._course_participations.get(student_uid, [])
 
   def registrations_on_course_JSON(self, education_id, student_id):
@@ -639,6 +639,12 @@ The program exporter needs to recover real [[Student]] and
 [[CourseRegistration]] objects from the lower-level JSON responses.
 That keeps the rest of the export logic on the same abstractions as the rest of
 the codebase.
+
+We deliberately fetch the courses with
+[[student_course_registrations_JSON]] --- the wide, all-history view ---
+rather than [[student_course_participations_JSON]].  Results export must
+see completed courses, and the latter method narrows to \emph{current}
+participations for accounts holding programme-level Ladok roles.
 <<functions>>=
 def program_round_participants(ladok, program_round):
   """Return Student objects for a program round."""
@@ -649,7 +655,7 @@ def program_round_participants(ladok, program_round):
 def program_round_courses(ladok, student):
   """Return all historical course registrations for a student."""
   courses = []
-  for registration in ladok.student_course_participations_JSON(student.ladok_id):
+  for registration in ladok.student_course_registrations_JSON(student.ladok_id):
     try:
       course_data = registration["Utbildningsinformation"]
     except KeyError:

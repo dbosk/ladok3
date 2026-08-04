@@ -32,7 +32,7 @@ dependencies = [
   "keyring>=24.2.0,<25.0.0",
   "requests>=2.31.0,<3.0.0",
   "urllib3 (>=2.0)",
-  "weblogin (>=1.19,<2.0)",
+  "weblogin (>=1.22,<2.0)",
   "canvaslms (>=6.12,<7.0)"
 ]
 

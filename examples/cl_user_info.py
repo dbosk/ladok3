@@ -31,7 +31,9 @@
 #
 # The "-a" or "--all" flag will keep the list of all program, even those that are cancelled, otherwise by default cancelled programs are removed
 #
-# It requires a config.json file with (1) the Canvas url and access token and (2) the user's username and password (for access to Ladok)
+# It requires a config.json file with the Canvas url and access token.
+# For Ladok access it reuses the cached session of the ladok command
+# (ladok3.session), so run "ladok login" once beforehand.
 #
 # last modified: 2020-08-23
 #
@@ -76,20 +78,16 @@ def initialize(options):
 
             canvas_header = {'Authorization' : 'Bearer ' + canvas_access_token}
             canvas_payload = {}
-
-            # set up Ladok access
-            username=configuration["ladok"]["username"]
-            password=configuration["ladok"].get("password", [])
     except:
         print("Unable to open configuration file named {}".format(config_file))
         print("Please create a suitable configuration file, the default name is config.json")
         sys.exit()
 
-    if not password:
-        password=getpass.getpass(prompt='Password (for Ladok access): ')
-    ls=ladok3.LadokSession("KTH",
-                           vars={"username": username, "password": password},
-                           options.testenvironment)
+    # set up Ladok access: reuse the ladok command's cached session
+    if options.testenvironment:
+        ls=ladok3.test_session
+    else:
+        ls=ladok3.session
     return ls
 
 
@@ -351,7 +349,7 @@ def specialization_info(ls, student_uid):
     return si
 
 def clean_exit(ls):
-    status=ls.logout()
+    # do not log out: the session is shared and cached for reuse
     sys.exit()
 
 
@@ -628,8 +626,7 @@ def main():
                     # (which means for each section they are in), once found return
 
 
-    # to logout and close the session
-    status=ladok_session.logout()
+    # do not log out: the session is shared and cached for reuse
 
 
 if __name__ == "__main__": main()

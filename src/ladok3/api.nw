@@ -13,14 +13,20 @@ We will design the test functions in such a way that we can reuse them to show
 the example outputs from the API requests.
 
 We will use the following to test the API methods.
+We reuse the cached test-environment session through
+[[ladok3.test_session]]: running only the API tests then requires no MFA at
+all when the cache is warm.
+Previously we imported the session from [[test_ladok3]], which triggered
+that module's deliberate fresh login---the right thing when testing session
+\emph{establishment}, but a needless MFA prompt for every API test run.
 <<test [[api.py]]>>=
 import json
 import ladok3
 import ladok3.report
-import ladok3.cli
 import os
 import pytest
-from test_ladok3 import ladok
+
+ladok = ladok3.test_session
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
@@ -39,11 +45,8 @@ This is useful for development and when LADOK changes anything in the API.
 \begin{pycode}[apitest]
 import json
 import ladok3
-import ladok3.cli
-import os
 
-ladok = ladok3.LadokSession(*ladok3.cli.load_credentials(),
-                            test_environment=True) # for experiments
+ladok = ladok3.test_session
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
@@ -88,12 +91,9 @@ components, etc.).
 Usage example:
 \begin{minted}{python}
 import ladok3
-import ladok3.cli
 
 try:
-    session = ladok3.LadokSession(**ladok3.cli.load_credentials(),
-                                  test_environment=True)
-    student = session.get_student("invalid-person-nr")
+    student = ladok3.session.get_student("invalid-person-nr")
 except ladok3.LadokValidationError as e:
     print(f"Invalid data provided: {e}")
 except ladok3.LadokServerError as e:
@@ -616,11 +616,21 @@ def _all_pages(self,
 
 \section{Cleaning data for printing}
 
-We sometimes want to print the data, for instance, example output in this 
+We sometimes want to print the data, for instance, example output in this
 document.
 For this reason we introduce some cleaning functions.
-These recursively transcends the JSON structure removing the data that should 
+These recursively transcends the JSON structure removing the data that should
 be removed.
+
+Note that we \emph{pseudonymize} rather than anonymize: direct
+identifiers --- names, personnummer, contact data --- are replaced, but
+LADOK's UIDs are deliberately kept.  The example outputs exist to help
+the reader understand the API, and much of that understanding lies in
+how objects relate \emph{across} calls: the same student, course or
+round UID recurring in different methods' outputs is what shows the
+reader how to join them.  Replacing UIDs would sever exactly those
+connections.  Keeping them is safe because a UID is opaque: it
+identifies a record only for someone who already has LADOK access.
 <<functions>>=
 def clean_data(json_obj: dict | list) -> dict | list:
   """
@@ -654,37 +664,148 @@ def remove_links(json_obj: dict | list) -> None:
       remove_links(item)
 @
 
-The [[pseudonymize]] function replaces names and personnummer with dummy 
-entries.
+The [[pseudonymize]] function handles personal data.
+Matching keys by name at any depth is what makes a flat list of rules
+work across LADOK's many response schemas: the same key names recur
+everywhere --- a [[Fornamn]] inside an [[Attestant]] object in a result
+history is caught by the same rule as a student's own [[Fornamn]].
+
+Different kinds of data need different treatment, so the function body
+is three groups of rules followed by the recursion.
 <<functions>>=
 def pseudonymize(json_obj: dict | list) -> None:
   """
   Recursively pseudonymizes a JSON data record
   """
   if isinstance(json_obj, dict):
-    if "Fornamn" in json_obj:
-      json_obj["Fornamn"] = "Student"
-    if "Efternamn" in json_obj:
-      json_obj["Efternamn"] = "Studentzadeh"
-    if "Personnummer" in json_obj:
-      json_obj["Personnummer"] = "191234561234"
-    if "Epostadress" in json_obj:
-      json_obj["Epostadress"] = "user@domain.se"
-    if "Anvandarnamn" in json_obj:
-      json_obj["Anvandarnamn"] = "user@domain.se"
-    if "Utdelningsadress" in json_obj:
-      json_obj["Utdelningsadress"] = "Stora vägen 1"
-    if "Postnummer" in json_obj:
-      json_obj["Postnummer"] = "12345"
-    if "Postort" in json_obj:
-      json_obj["Postort"] = "Byn"
-    if "Telefonnummer" in json_obj:
-      json_obj["Telefonnummer"] = "0701234567"
+    <<replace identifiers with fixed dummies>>
+    <<replace free-text fields with placeholders>>
+    <<remove presence-sensitive keys>>
     for value in json_obj.values():
       pseudonymize(value)
   elif isinstance(json_obj, list):
     for item in json_obj:
       pseudonymize(item)
+@
+
+Identifying values with a fixed format get fixed dummy replacements.
+The dummy personnummer is deliberately an impossible date, and
+[[Fodelsedata]] uses the same impossible date so that a reader who
+cross-checks the two fields sees them agree.  [[KonID]] becomes the
+neutral [[0]] and [[Avliden]] always reads as alive: neither gender
+nor vital status belongs in documentation examples.
+[[SenastAndradAv]] holds the username of the LADOK caseworker who last
+touched the record --- staff are people too, so it gets the same dummy
+as the other username fields.
+<<replace identifiers with fixed dummies>>=
+if "Fornamn" in json_obj:
+  json_obj["Fornamn"] = "Student"
+if "Efternamn" in json_obj:
+  json_obj["Efternamn"] = "Studentzadeh"
+if "Personnummer" in json_obj:
+  json_obj["Personnummer"] = "191234561234"
+if "Fodelsedata" in json_obj:
+  json_obj["Fodelsedata"] = "1912-34-56"
+if "KonID" in json_obj:
+  json_obj["KonID"] = 0
+if "Avliden" in json_obj:
+  json_obj["Avliden"] = False
+if "Epostadress" in json_obj:
+  json_obj["Epostadress"] = "user@domain.se"
+if isinstance(json_obj.get("Epost"), str):
+  json_obj["Epost"] = "user@domain.se"
+if "Anvandarnamn" in json_obj:
+  json_obj["Anvandarnamn"] = "user@domain.se"
+if "SenastAndradAv" in json_obj:
+  json_obj["SenastAndradAv"] = "user@domain.se"
+if "Utdelningsadress" in json_obj:
+  json_obj["Utdelningsadress"] = "Stora vägen 1"
+if "Postnummer" in json_obj:
+  json_obj["Postnummer"] = "12345"
+if "Postort" in json_obj:
+  json_obj["Postort"] = "Byn"
+if "Telefonnummer" in json_obj:
+  json_obj["Telefonnummer"] = "0701234567"
+@
+
+Free text cannot be selectively scrubbed --- an [[Anteckning]] (case
+note) or [[OvrigaMedverkande]] (other contributors to an examination)
+may contain names in whatever phrasing the caseworker chose, and no
+pattern reliably finds them.  So non-empty values are replaced
+wholesale by a visible placeholder.  We leave empty values alone: that
+way the example output still shows which records carry notes and which
+do not, which is part of what an example should teach.
+
+[[Attestant]] and [[Beslutsfattare]] need a type guard.  LADOK uses
+these keys in two shapes: result histories carry a nested object
+(whose [[Fornamn]], [[Efternamn]] and [[Anvandarnamn]] the rules above
+already reach through the recursion), but attestation views carry a
+flat \emph{string} --- sometimes the examiner's display name, sometimes
+LADOK's own \enquote{Uppgift om examinator saknas/Not applicable} text.
+An audit of the rendered documentation examples caught a real
+examiner's name in that string form.  We replace only the string
+shape, and with a neutral placeholder rather than the dummy name:
+a fake name would falsely suggest a person where the original said
+\enquote{missing}, and the field is free text, so the same
+cannot-selectively-scrub argument applies.
+<<replace free-text fields with placeholders>>=
+if json_obj.get("Anteckning"):
+  json_obj["Anteckning"] = "[borttagen anteckning]"
+if json_obj.get("OvrigaMedverkande"):
+  json_obj["OvrigaMedverkande"] = "[borttagna medverkande]"
+if isinstance(json_obj.get("Attestant"), str):
+  json_obj["Attestant"] = "[borttagen attestant]"
+if isinstance(json_obj.get("Beslutsfattare"), str):
+  json_obj["Beslutsfattare"] = "[borttagen beslutsfattare]"
+@
+
+Two keys are sensitive by their mere presence, not their value:
+[[Skyddsstatus]] marks a protected identity (sekretessmarkering) and
+[[FolkbokforingsbevakningTillOchMed]] marks population-register
+monitoring.  A placeholder value would still reveal that the flag is
+set for this record, so these keys are removed entirely --- the same
+treatment [[remove_links]] gives the [[link]] keys.
+<<remove presence-sensitive keys>>=
+for key in ("Skyddsstatus", "FolkbokforingsbevakningTillOchMed"):
+  json_obj.pop(key, None)
+@
+
+Let's verify all three kinds of treatment on a synthetic record,
+including that UIDs survive untouched (they must, per the discussion
+above) and that the rules reach nested objects such as an attestant.
+<<test functions>>=
+def test_pseudonymize() -> None:
+  record = {
+    "Uid": "00000000-0000-0000-0000-000000000001",
+    "Fornamn": "Real", "Efternamn": "Name",
+    "Fodelsedata": "1999-12-31", "KonID": 1, "Avliden": True,
+    "SenastAndradAv": "handler@institution.se",
+    "Skyddsstatus": "SEKRETESS",
+    "FolkbokforingsbevakningTillOchMed": "2027-01-01",
+    "Epost": "someone@institution.se",
+    "Historik": [{"Anteckning": "spoke to John Doe",
+                  "OvrigaMedverkande": "External Examiner",
+                  "Beslutsfattare": "Jane Doe",
+                  "Attestant": {"Fornamn": "Jane",
+                                "Uid": "00000000-0000-0000-0000-000000000002"}}],
+  }
+  ladok3.pseudonymize(record)
+  assert record["Uid"] == "00000000-0000-0000-0000-000000000001"
+  assert record["Fornamn"] == "Student"
+  assert record["Fodelsedata"] == "1912-34-56"
+  assert record["KonID"] == 0
+  assert record["Avliden"] is False
+  assert record["SenastAndradAv"] == "user@domain.se"
+  assert "Skyddsstatus" not in record
+  assert "FolkbokforingsbevakningTillOchMed" not in record
+  assert record["Epost"] == "user@domain.se"
+  entry = record["Historik"][0]
+  assert entry["Anteckning"] == "[borttagen anteckning]"
+  assert entry["OvrigaMedverkande"] == "[borttagna medverkande]"
+  assert entry["Beslutsfattare"] == "[borttagen beslutsfattare]"
+  assert entry["Attestant"]["Fornamn"] == "Student"
+  assert entry["Attestant"]["Uid"] \
+    == "00000000-0000-0000-0000-000000000002"
 @
 
 
@@ -3635,36 +3756,139 @@ def test_student_program_participations_JSON() -> None:
   assert isinstance(participations, list)
 @
 
-\section{[[student_course_participations_JSON]]}
+\section{[[student_course_round_participations_JSON]]}
 
-Returns all course-round participations for a student.  Used to discover which
-course rounds a student has attended independently of the programme study plan
---- important for elective courses or courses taken outside the nominal
-curriculum.
+Which course rounds does a student participate in?  LADOK can answer
+that question in two ways, and the two answers differ both in scope and
+in who is allowed to ask.  This section and the two that follow cover
+the pair of views and the method that unifies them:
+\begin{description}
+\item[{[[student_course_round_participations_JSON]]}] the dedicated
+  participations view --- narrow but permission-gated (this section);
+\item[{[[student_course_registrations_JSON]]}] every registration the
+  student ever had --- wide but available to everyone;
+\item[{[[student_course_participations_JSON]]}] tries the narrow view
+  first and falls back to the wide one.
+\end{description}
 
-The obvious design would mirror [[student_program_participations_JSON]] with a
-course-specific endpoint.  In practice the test environment returns
-[[404 Not Found]] for the dedicated
-[[/studiedeltagande/internal/deltagare/kurstillfalle/student/{uid}]] path.
-Rather than keep a broken endpoint just because its URL sounds right, we reuse
-[[registrations_JSON]], which already returns the full participation objects,
-and keep only entries whose
-[[Utbildningsinformation.Utbildningstillfallestyp.Grundtyp]] is [[KURS]].
-That still fails loudly on schema drift: if the discriminator disappears, the
-caller sees a [[LadokAPIError]] with the offending registration attached.
+The dedicated
+[[/studiedeltagande/internal/deltagare/kurstillfalle/student/{uid}]]
+endpoint corresponds to the participation view in the LADOK GUI: the
+course rounds the student currently takes part in.  It is
+permission-gated, however.  For an account with programme-level roles
+it works --- Christian Ohm (\enquote{cohm}), who contributed this
+method in pull request \#129, uses it in production for programme
+administration.  For an ordinary teacher's account LADOK answers
+[[404 Not Found]], in the test environment \emph{and} in production
+(verified against production on 2026-08-04).  A 404 surfaces as
+[[LadokAPIError]] from [[get_query]], or [[LadokServerError]] when the
+response body carries a [[Meddelande]].
+
+Because we cannot exercise this endpoint without those roles, we keep
+the implementation exactly as contributed and tested by its author ---
+including the lenient unwrapping that accepts both response shapes he
+observed rather than failing loudly on either.  Rewriting it to match
+the module's fail-loud style would discard the only verification we
+have.
 
 <<LadokSession data methods>>=
-def student_course_participations_JSON(self, student_uid: str) -> list:
+def student_course_round_participations_JSON(self, student_uid: str) -> list:
   """Return all course-round participations for a student.
 
-  Uses [[registrations_JSON()]] as the source and keeps only course entries.
+  Uses GET /studiedeltagande/internal/deltagare/kurstillfalle/student/{uid}.
+
+  Requires programme-level Ladok roles; without them LADOK answers
+  404 Not Found and this method raises a LadokError.
+
+  Each item typically contains:
+    - UtbildningstillfalleUID: the course round UUID
+    - Utbildningsinformation.Utbildningskod: the course code
+    - Status.Kod: participation status
+  """
+  data = self.get_query(
+    f"/studiedeltagande/internal/deltagare/kurstillfalle/student/{student_uid}",
+    "application/vnd.ladok-studiedeltagande+json",
+  )
+  return data.get("Tillfallesdeltaganden", data.get("Resultat", []))
+@
+
+Unlike the other methods in this document, we show no example output
+here: the documentation build makes the example requests live, and this
+endpoint refuses the build account.  A static, anonymised example from
+an account with the required roles is the only kind we can ever embed.
+
+Only accounts with programme-level roles can exercise this endpoint, so
+running its test unconditionally would fail for most developers ---
+including the maintainer.  We gate it behind the
+[[LADOK_PROGRAM_ROLES]] environment variable: default test runs skip
+it, while a privileged user can opt in with
+[[LADOK_PROGRAM_ROLES=1 pytest -k course_round_participations]].
+Note that the test session talks to the LADOK test environment, so the
+roles must be held there.
+
+<<test functions>>=
+@pytest.mark.skipif(not os.environ.get("LADOK_PROGRAM_ROLES"),
+                    reason="needs programme-level Ladok roles; "
+                           "set LADOK_PROGRAM_ROLES=1 to run")
+def test_student_course_round_participations_JSON() -> None:
+  participations = ladok.student_course_round_participations_JSON(
+    SH1014_retake_student_uid)
+  assert isinstance(participations, list)
+  assert len(participations) > 0
+@
+
+\section{[[student_course_registrations_JSON]]}
+
+The view available to everyone is [[registrations_JSON]]: every
+tillfällesdeltagande the student has ever had --- ongoing courses, but
+also courses completed years ago, withdrawals, study breaks and
+programme rounds.  Filtering it on
+[[Utbildningsinformation.Utbildningstillfallestyp.Grundtyp]] being
+[[KURS]] keeps exactly the course registrations.  That is a much wider
+net than the previous section's participation view: one sampled student
+had 45 course registrations of which only 5 were ongoing.
+
+The width is sometimes the point --- the [[ladok program]] exporter
+wants results from historical courses too --- and sometimes a problem:
+discovering a cohort's \emph{current} courses through this view drags
+in every course round any member ever touched.  So we let the caller
+narrow the result by state.  Each registration summarizes its state in
+[[TillstandKurs.Sammanfattattillstand]], a token like
+[[studiedeltagande.domain.tillstandsdefinition.registrerad]] whose last
+component is one of:
+\begin{description}
+\item[{[[registrerad]]}] ongoing --- registered but not yet finished;
+\item[{[[avklarad]]}] completed;
+\item[{[[aterbud]]}] the student withdrew before the round started;
+\item[{[[avbrott]]}] the student broke off during the round.
+\end{description}
+The [[states]] parameter takes a set of these last components, so
+passing [[{"registrerad"}]] reproduces the narrow \enquote{current
+courses} view from data every account can read.  We compare only the
+last dot-separated component; callers should not have to care about
+the [[studiedeltagande.domain.tillstandsdefinition]] prefix.
+
+<<LadokSession data methods>>=
+def student_course_registrations_JSON(self, student_uid: str, /,
+                                      states: set | None = None) -> list:
+  """Return all course registrations for a student.
+
+  Uses registrations_JSON() as the source and keeps only course
+  entries.  This includes every registration the student ever had:
+  completed courses, withdrawals and study breaks as well as ongoing
+  courses.
+
+  states: optional set of summarized states to keep, out of
+    "registrerad" (ongoing), "avklarad" (completed), "aterbud"
+    (withdrawal before start) and "avbrott" (break during the
+    course).  None keeps everything.
 
   Each item typically contains:
     - Utbildningsinformation.UtbildningstillfalleUID: the course round UUID
     - Utbildningsinformation.Utbildningskod: the course code
     - TillstandKurs: participation state summary
   """
-  participations = []
+  registrations = []
   for registration in self.registrations_JSON(student_uid):
     try:
       grundtyp = registration["Utbildningsinformation"][
@@ -3673,26 +3897,173 @@ def student_course_participations_JSON(self, student_uid: str) -> list:
       err.add_note(f"Registration data: {registration}")
       raise LadokAPIError(
         f"Unexpected registration format when fetching course "
-        f"participations for student {student_uid}: missing "
+        f"registrations for student {student_uid}: missing "
         f"'Utbildningsinformation.Utbildningstillfallestyp.Grundtyp'"
       ) from err
     if grundtyp == "KURS":
-      participations.append(registration)
-  return participations
+      registrations.append(registration)
+  if states is None:
+    return registrations
+  return filter_participations_by_state(registrations, states)
 @
 
-The retake student took SH1014 multiple times, so we expect their
-course-round participations to include at least one entry.
+The state filter lives in a module-level function rather than inside
+the method because [[student_course_participations_JSON]] must apply
+the same narrowing to results from the permission-gated endpoint.  It
+follows the module's fail-loud pattern: a missing state key raises
+[[LadokAPIError]] with the offending entry attached instead of
+silently dropping the entry --- silent dropping would make a schema
+change look like a student without courses.
+
+<<functions>>=
+def filter_participations_by_state(participations: list,
+                                   states: set) -> list:
+  """Keep only participations whose summarized state is in states.
+
+  states contains last components of
+  TillstandKurs.Sammanfattattillstand values, e.g. "registrerad".
+  Raises LadokAPIError if an entry lacks the state key.
+  """
+  kept = []
+  for participation in participations:
+    try:
+      state = participation["TillstandKurs"]["Sammanfattattillstand"]
+    except KeyError as err:
+      err.add_note(f"Participation data: {participation}")
+      raise LadokAPIError(
+        "Unexpected participation format: missing "
+        "'TillstandKurs.Sammanfattattillstand'") from err
+    if state.rsplit(".", 1)[-1] in states:
+      kept.append(participation)
+  return kept
+@
+
+The retake student took SH1014 multiple times, so their course
+registrations must contain at least one entry, and the [[Grundtyp]]
+filter must hold for all of them.
+
+<<test functions>>=
+def test_student_course_registrations_JSON() -> None:
+  registrations = ladok.student_course_registrations_JSON(
+    SH1014_retake_student_uid)
+  assert len(registrations) > 0
+  assert all(
+    r["Utbildningsinformation"]["Utbildningstillfallestyp"]["Grundtyp"]
+    == "KURS"
+    for r in registrations)
+@
+
+Filtering by state must yield a subset of the unfiltered result where
+every entry is in the requested state.  We do not assert the subset is
+non-empty: whether the test student has ongoing courses is up to the
+test environment's data, not to us.
+
+<<test functions>>=
+def test_student_course_registrations_JSON_states() -> None:
+  registrations = ladok.student_course_registrations_JSON(
+    SH1014_retake_student_uid)
+  ongoing = ladok.student_course_registrations_JSON(
+    SH1014_retake_student_uid, states={"registrerad"})
+  assert all(entry in registrations for entry in ongoing)
+  assert all(
+    entry["TillstandKurs"]["Sammanfattattillstand"].rsplit(".", 1)[-1]
+    == "registrerad"
+    for entry in ongoing)
+@
+
+The output looks like this (showing only the first entry for brevity;
+note the [[TillstandKurs]] summary that the [[states]] parameter
+filters on):
+\begin{pycode}[apitest]
+regs = ladok.student_course_registrations_JSON(student_uid)
+ladok3.clean_data(regs)
+print(r"\begin{minted}{JSON}")
+print(json.dumps(regs[:1], ensure_ascii=False, indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+\section{[[student_course_participations_JSON]]}
+
+Now we can unify the two views.  Callers of this method --- notably
+programme portals iterating over a whole cohort --- want the student's
+course participations, and prefer the narrow participation view
+whenever their account can read it.  So we try
+[[student_course_round_participations_JSON]] first and fall back to
+[[student_course_registrations_JSON]].
+
+We catch any [[LadokError]] rather than looking for a 404
+specifically, because [[get_query]] collapses the HTTP status into the
+message text of [[LadokAPIError]] or [[LadokServerError]].  For an
+account with the required roles the endpoint works, so any error means
+the narrow view is not available to this account and the wide view is
+the best we can offer.
+
+One failed probe per student would be wasteful --- a cohort import
+makes this call hundreds of times --- so the first failure is
+remembered on the session in
+[[_course_round_participations_available]].  We read it with
+[[getattr]] and a default of [[True]] because sessions are restored
+from pickles ([[ladok3.cli]] caches them), and a session pickled by an
+older version has no such attribute.
+
+The [[states]] filter applies to whichever view produced the result.
+On the fallback path the entries are registration objects, where the
+filter is verified to work.  Whether the permission-gated view's
+entries carry [[TillstandKurs]] we cannot observe from this account;
+if they do not, the filter fails loudly with the entry attached, so a
+privileged caller can report the actual shape rather than silently
+receiving an empty list.  Note the placement of the filter outside the
+[[try]]: a filter error must propagate, not masquerade as the endpoint
+being unavailable and trigger the fallback.
+
+<<LadokSession data methods>>=
+def student_course_participations_JSON(self, student_uid: str, /,
+                                       states: set | None = None) -> list:
+  """Return all course-round participations for a student.
+
+  Tries the dedicated participations view
+  (student_course_round_participations_JSON(), which needs
+  programme-level Ladok roles) and falls back to the registrations
+  view (student_course_registrations_JSON(), available to everyone).
+  Note that the fallback is wider: it includes completed and withdrawn
+  registrations, not just current participations.
+
+  states: optional set of summarized states to keep, see
+    student_course_registrations_JSON().
+  """
+  if getattr(self, "_course_round_participations_available", True):
+    try:
+      participations = self.student_course_round_participations_JSON(
+        student_uid)
+    except LadokError:
+      self._course_round_participations_available = False
+    else:
+      if states is None:
+        return participations
+      return filter_participations_by_state(participations, states)
+  return self.student_course_registrations_JSON(student_uid,
+                                                states=states)
+@
+
+In the test environment the maintainer's account lacks the programme
+roles, so this test exercises the fallback path: the result must then
+equal the registrations view, and a second call must give the same
+answer as the first --- that is the capability cache at work.  For an
+account where the narrow view works we can assert much less, only that
+a list comes back.
+
 <<test functions>>=
 def test_student_course_participations_JSON() -> None:
   participations = ladok.student_course_participations_JSON(
     SH1014_retake_student_uid)
   assert isinstance(participations, list)
-  assert len(participations) > 0
-  assert all(
-    p["Utbildningsinformation"]["Utbildningstillfallestyp"]["Grundtyp"]
-    == "KURS"
-    for p in participations)
+  again = ladok.student_course_participations_JSON(
+    SH1014_retake_student_uid)
+  assert again == participations
+  if not getattr(ladok, "_course_round_participations_available", True):
+    assert len(participations) > 0
+    assert participations == ladok.student_course_registrations_JSON(
+      SH1014_retake_student_uid)
 @
 
 \section{[[fetch_linked_uri_JSON]]}
