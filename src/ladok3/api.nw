@@ -13,14 +13,19 @@ We will design the test functions in such a way that we can reuse them to show
 the example outputs from the API requests.
 
 We will use the following to test the API methods.
+We reuse the cached test-environment session through
+[[ladok3.test_session]]: running only the API tests then requires no MFA at
+all when the cache is warm.
+Previously we imported the session from [[test_ladok3]], which triggered
+that module's deliberate fresh login---the right thing when testing session
+\emph{establishment}, but a needless MFA prompt for every API test run.
 <<test [[api.py]]>>=
 import json
 import ladok3
 import ladok3.report
-import ladok3.cli
-import os
 import pytest
-from test_ladok3 import ladok
+
+ladok = ladok3.test_session
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
@@ -39,11 +44,8 @@ This is useful for development and when LADOK changes anything in the API.
 \begin{pycode}[apitest]
 import json
 import ladok3
-import ladok3.cli
-import os
 
-ladok = ladok3.LadokSession(*ladok3.cli.load_credentials(),
-                            test_environment=True) # for experiments
+ladok = ladok3.test_session
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
@@ -88,12 +90,9 @@ components, etc.).
 Usage example:
 \begin{minted}{python}
 import ladok3
-import ladok3.cli
 
 try:
-    session = ladok3.LadokSession(**ladok3.cli.load_credentials(),
-                                  test_environment=True)
-    student = session.get_student("invalid-person-nr")
+    student = ladok3.session.get_student("invalid-person-nr")
 except ladok3.LadokValidationError as e:
     print(f"Invalid data provided: {e}")
 except ladok3.LadokServerError as e:

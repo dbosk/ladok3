@@ -18,8 +18,12 @@ For now we will ignore setting the grade on the full course.
 \paragraph{Accessing the systems}
 
 We use the standard structure for the script.
-We start with the imports and set up our [[ladok]] and [[canvas]] objects, 
+We start with the imports and set up our [[ladok]] and [[canvas]] objects,
 these are used to access the two systems.
+For LADOK we reuse the [[ladok]] command's cached session through
+[[ladok3.session]]---run [[ladok login]] once instead of setting credential
+environment variables; Canvas still needs [[CANVAS_SERVER]] and
+[[CANVAS_TOKEN]] set.
 <<[[datintro.py]]>>=
 # -*- coding: utf-8 -*-
 import cachetools
@@ -29,13 +33,7 @@ import datetime
 import ladok3
 import os
 
-KTH_LOGIN = os.environ["KTH_LOGIN"]
-KTH_PASSWD = os.environ["KTH_PASSWD"]
-
-ladok = ladok3.LadokSession("KTH",
-                            vars={"username": KTH_LOGIN,
-                                  "password": KTH_PASSWD},
-                            test_environment=False) # for experiments
+ladok = ladok3.session
 
 API_URL = os.environ["CANVAS_SERVER"]
 API_KEY = os.environ["CANVAS_TOKEN"]

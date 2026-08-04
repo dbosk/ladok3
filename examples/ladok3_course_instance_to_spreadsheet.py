@@ -26,7 +26,9 @@
 # 2	xxxx		xxx,yyy	xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx	TCOMM		Track, Wireless networking				TRN		TRN2020
 #...
 #
-# It requires a config.json file with (1) the Canvas url and access token and (2) the user's username and password (for access to Ladok)
+# It requires a config.json file with the Canvas url and access token.
+# For Ladok access it reuses the cached session of the ladok command
+# (ladok3.session), so run "ladok login" once beforehand.
 #
 # If run with the flag --testing or -t it calls a lot of the routines to test of the functionality of the various calls to get information from Ladok.
 #
@@ -78,19 +80,16 @@ def initialize(options):
             canvas_header = {'Authorization' : 'Bearer ' + canvas_access_token}
             canvas_payload = {}
 
-            # set up Ladok access
-            username=configuration["ladok"]["username"]
-            password=configuration["ladok"].get("password", [])
     except:
         print("Unable to open configuration file named {}".format(config_file))
         print("Please create a suitable configuration file, the default name is config.json")
         sys.exit()
 
-    if not password:
-        password=getpass.getpass(prompt='Password (for Ladok access): ')
-    ls=ladok3.LadokSession("KTH",
-                           vars={"username": username, "password": password},
-                           options.testenvironment)
+    # set up Ladok access: reuse the ladok command's cached session
+    if options.testenvironment:
+        ls=ladok3.test_session
+    else:
+        ls=ladok3.session
     return ls
 
 
@@ -325,7 +324,7 @@ def specialization_info(ls, student_uid):
 
 # cleanup the session and then exit
 def clean_exit(ls):
-    status=ls.logout()
+    # do not log out: the session is shared and cached for reuse
     sys.exit()
 
 #//////////////////////////////////////////////////////////////////////
@@ -576,8 +575,7 @@ def main():
     output_file="users_programs-instance-{}".format(instance_code)
     write_xlsx(output_file, user_and_program_df, 'users_programs')
 
-    # to logout and close the session
-    status=ladok_session.logout()
+    # do not log out: the session is shared and cached for reuse
 
 
 if __name__ == "__main__": main()

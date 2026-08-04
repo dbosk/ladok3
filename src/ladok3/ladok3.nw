@@ -23,7 +23,7 @@ import urllib.parse
 import weblogin.ladok
 import weblogin.microsoft
 
-<<lazy session attribute>>
+<<lazy session attributes>>
 
 <<classes>>
 <<functions>>
@@ -52,6 +52,20 @@ import pytest
 <<test course result functions>>
 @
 
+We also test session sharing between [[LadokSession]] instances and the
+module-level [[session]] and [[test_session]] attributes.
+These tests run without live LADOK credentials, so they get their own test
+file, separate from the live tests in [[test_ladok3.py]] whose import
+already requires credentials in the environment.
+<<test [[shared_session.py]]>>=
+import ladok3
+import ladok3.cli
+
+import pytest
+
+<<shared session test functions>>
+@
+
 
 \section{Convenient access to a cached session}
 
@@ -65,6 +79,17 @@ student = ladok3.session.get_student("191234561234")
 instead of the usual three-line boilerplate of loading credentials
 and restoring a cached session manually.
 
+We provide a sibling attribute [[test_session]] for LADOK's test
+environment.
+The documentation build and the API test suite deliberately run against
+the test environment; before this attribute existed, every such run
+constructed its own [[LadokSession]] and performed a full SSO login with
+an MFA prompt.
+Every consumer except one should use these two attributes: the exception
+is [[test_ladok3.py]]'s module-level login, whose very purpose is to test
+\emph{establishing} a session, which reusing an established session would
+defeat.
+
 The session lifecycle---load credentials, try to restore a cached
 session, fall back to creating a fresh one---is shared with the CLI.
 Rather than duplicating that logic here, we delegate to
@@ -73,54 +98,169 @@ process.
 The helper lives in [[cli]] because that module already owns the
 credential-loading and session-caching functions it depends on.
 
+We use Python's module-level [[__getattr__]] (PEP~562) for lazy
+loading---importing [[ladok3]] alone does \emph{not} require
+credentials; a session is loaded only when [[session]] or
+[[test_session]] is first accessed.
+We import [[ladok3.cli]] inside the functions rather than at module
+level to avoid circular imports, since [[cli.py]] itself imports
+[[ladok3]].
+<<lazy session attributes>>=
+_session = None
+_credentials = None
+_test_session = None
+
+def __getattr__(name):
+    global _test_session
+    if name == "session":
+        return _cached_session()
+    if name == "test_session":
+        if _test_session is None:
+            import ladok3.cli
+            prod = _cached_session()
+            institution, vars = ladok3.cli.load_credentials(
+                ladok3.cli.default_config_file()
+            )
+            _test_session = LadokSession(
+                institution, vars=vars,
+                test_environment=True,
+                session=prod.session
+            )
+        return _test_session
+    raise AttributeError(
+        f"module 'ladok3' has no attribute {name!r}"
+    )
+@
+
+The [[test_session]] attribute does \emph{not} get its own cached session.
+Instead it is a [[LadokSession]] facade for the test environment that
+shares the production session's underlying [[weblogin.AutologinSession]]
+(via the [[session]] constructor argument, \cref{LadokSession}).
+Sharing means sharing the SSO, identity-provider and MFA cookies: if the
+user has used the [[ladok]] tool---or anything else that touched
+[[ladok3.session]]---the test environment logs in on those cookies without
+any new MFA prompt; otherwise the first test-environment request
+authenticates once, and the production session benefits in the same way.
+It also means there is only \emph{one} thing to cache: the production
+session's pickle carries the shared session with both environments'
+handlers and cookies, and re-deriving the facade after a restore is safe
+because [[add_handler]] skips the handlers already present.
+
+\subsection{Loading and memoizing the production session}
+
+The first access to [[session]] runs [[ladok3.cli.get_session]] and
+memoizes the result, so all later accesses---including the derivation of
+[[test_session]]---return the same object.
+
+If [[get_session]] itself raises we re-raise as a [[RuntimeError]] with
+a hint about [[ladok login]], chaining the original exception
+([[raise ... from]]) so the real cause stays visible in the traceback.
+An earlier version swallowed the exception and raised a bare
+[[RuntimeError]], which made cache corruption indistinguishable from
+missing credentials.
+We must also handle the case where no exception is raised but no
+credentials were found anywhere: [[load_credentials]] then returns
+[[None]] values and [[get_session]] happily constructs a
+[[LadokSession(None)]], which would only fail---confusingly---at the
+first request.
+Checking the returned credentials catches that case up front.
+<<lazy session attributes>>=
+def _cached_session():
+    global _session, _credentials
+    if _session is None:
+        import atexit
+        import ladok3.cli
+        try:
+            _session, _credentials = (
+                ladok3.cli.get_session()
+            )
+        except Exception as error:
+            raise RuntimeError(
+                <<no-credentials error message>>
+            ) from error
+        if _credentials is None:
+            _session = None
+            raise RuntimeError(
+                <<no-credentials error message>>
+            )
+        atexit.register(_save_session)
+    return _session
+<<no-credentials error message>>=
+"No LADOK credentials found. "
+"Run `ladok login` first, or "
+"create a session manually with "
+"ladok3.LadokSession(...)."
+@
+
+\subsection{Saving the session back on exit}
+
 Since LADOK sessions contain OAuth tokens that get refreshed during
 use, we register an [[atexit]] handler to save the session back to
 the cache on process exit.
 This preserves refreshed tokens for the next invocation, just as the
 CLI does after every command.
-
-We use Python's module-level [[__getattr__]] (PEP~562) for lazy
-loading---importing [[ladok3]] alone does \emph{not} require
-credentials; the session is loaded only when [[session]] is first
-accessed.
-We import [[ladok3.cli]] inside [[__getattr__]] rather than at module
-level to avoid circular imports, since [[cli.py]] itself imports
-[[ladok3]].
-<<lazy session attribute>>=
-_session = None
-_credentials = None
-
+Only the production session is saved: the test facade shares the same
+underlying session object, so its cookies and handlers are pickled as
+part of the production session.
+<<lazy session attributes>>=
 def _save_session():
     if _session is not None and _credentials is not None:
         import ladok3.cli
         ladok3.cli.store_ladok_session(
             _session, _credentials
         )
+@
 
-def __getattr__(name):
-    global _session, _credentials
-    if name == "session":
-        if _session is None:
-            import atexit
-            import ladok3.cli
-            try:
-                _session, _credentials = (
-                    ladok3.cli.get_session()
-                )
-            except Exception:
-                _session = None
-            if _session is None:
-                raise RuntimeError(
-                    "No LADOK credentials found. "
-                    "Run `ladok login` first, or "
-                    "create a session manually with "
-                    "ladok3.LadokSession(...)."
-                )
-            atexit.register(_save_session)
-        return _session
-    raise AttributeError(
-        f"module 'ladok3' has no attribute {name!r}"
-    )
+Let's verify the lazy attributes offline by replacing
+[[ladok3.cli.get_session]] (and [[load_credentials]]) with fakes.
+The fixture also resets the module globals through [[monkeypatch]], which
+restores their previous values on teardown: a fake session leaking out of
+a test would poison later tests, and---since [[_save_session]] only writes
+when [[_session]] is set---the reset also keeps the [[atexit]] handler
+from pickling a fake to the user's real cache.
+<<shared session test functions>>=
+@pytest.fixture
+def fake_get_session(monkeypatch):
+  fake = ladok3.LadokSession("KTH Royal Institute of Technology")
+  creds = {"username": "u", "password": "p"}
+
+  monkeypatch.setattr(ladok3.cli, "get_session",
+                      lambda config_file=None: (fake, creds))
+  monkeypatch.setattr(ladok3.cli, "load_credentials",
+                      lambda filename=None:
+                        ("KTH Royal Institute of Technology", creds))
+  monkeypatch.setattr(ladok3, "_session", None)
+  monkeypatch.setattr(ladok3, "_credentials", None)
+  monkeypatch.setattr(ladok3, "_test_session", None)
+  return fake
+
+def test_module_session_memoizes(fake_get_session):
+  assert ladok3.session is fake_get_session
+  assert ladok3.session is ladok3.session
+
+def test_module_test_session_shares_session(fake_get_session):
+  assert ladok3.test_session.session is ladok3.session.session
+  assert ladok3.test_session is ladok3.test_session
+
+def test_module_session_raises_without_credentials(monkeypatch):
+  monkeypatch.setattr(ladok3.cli, "get_session",
+                      lambda config_file=None:
+                        (ladok3.LadokSession(None), None))
+  monkeypatch.setattr(ladok3, "_session", None)
+  monkeypatch.setattr(ladok3, "_credentials", None)
+
+  with pytest.raises(RuntimeError):
+    ladok3.session
+
+def test_module_session_chains_errors(monkeypatch):
+  def boom(config_file=None):
+    raise ValueError("cache corrupted")
+  monkeypatch.setattr(ladok3.cli, "get_session", boom)
+  monkeypatch.setattr(ladok3, "_session", None)
+
+  with pytest.raises(RuntimeError) as excinfo:
+    ladok3.session
+  assert isinstance(excinfo.value.__cause__, ValueError)
 @
 
 
@@ -139,6 +279,9 @@ import ladok3
 
 student = ladok3.session.get_student("123456-1234")
 \end{minted}
+For experiments against LADOK's test environment, the sibling attribute
+[[ladok3.test_session]] works the same way; it shares the login state
+with [[ladok3.session]], so using both costs at most one login.
 
 For more control, we can use the class directly as follows.
 \inputminted{python}{../examples/example_LadokSession.py}
@@ -197,7 +340,8 @@ class LadokSession:
   def __init__(self, institution: str, vars: dict | None = None,
                autologin_handlers: list | None = None,
                test_environment: bool = False,
-               notification_cmd: str | None = None) -> None:
+               notification_cmd: str | None = None,
+               session: weblogin.AutologinSession | None = None) -> None:
     """
     Creates a session with LADOK.
     - `institution` is the name (str) of the university that will give a unique
@@ -217,6 +361,13 @@ class LadokSession:
     - `notification_cmd` is an optional command (str) used to notify the user
       of the MFA number (e.g. 'notify-send'). The environment variable
       WEBLOGIN_MFA_NOTIFICATION takes precedence if set.
+    - `session` is an optional existing weblogin.AutologinSession to reuse
+      instead of creating a new one, e.g. another LadokSession's `.session`
+      attribute. The handlers above are registered on it with `add_handler`
+      (already present handlers are skipped). Sharing a session shares its
+      authentication state: the SSO, identity-provider and MFA cookies are
+      common, so a session already authenticated in one LADOK environment
+      enters the other without a new login or MFA prompt.
     """
     self.__session = None
     <<construct the session object from the autologin handlers>>
@@ -272,6 +423,20 @@ It is placed last because MFA challenges occur after password authentication.
 The handler is passive: if no MFA challenge is encountered, it does nothing.
 Users can configure a custom notification command via the
 [[WEBLOGIN_MFA_NOTIFICATION]] environment variable.
+
+Normally we construct a fresh [[weblogin.AutologinSession]] from the
+handlers.
+But the caller may instead pass an existing one through the [[session]]
+argument.
+The reason is that the [[AutologinSession]] holds all authentication
+state---the cookies for LADOK, for the university's identity provider and
+for Microsoft's MFA.
+Two [[LadokSession]] objects sharing one [[AutologinSession]] therefore
+authenticate at most once in total: once the identity-provider cookies
+exist, [[weblogin.ladok.SSOlogin]] rides them into the other environment
+without any new password or MFA prompt.
+This is what the module-level [[ladok3.test_session]] attribute uses to
+piggyback on [[ladok3.session]].
 <<construct the session object from the autologin handlers>>=
 if not vars:
   vars = {}
@@ -285,8 +450,56 @@ autologin_handlers.insert(0,
 autologin_handlers.append(
             weblogin.microsoft.AzureMFA(notification_cmd=notification_cmd))
 
+if session is not None:
+  <<register our handlers on the shared session>>
+else:
+  <<create a fresh session from the handlers>>
+@
+
+For a shared session we register our handlers with [[add_handler]], which
+skips handlers that are already present.
+That idempotence matters for the cached-session workflow: a session restored
+from the CLI's cache already contains the handlers pickled with it, so
+deriving a [[LadokSession]] from it again must not accumulate duplicates.
+We also leave the shared session's configuration alone---it was already
+set up (retry policy included) when it was first created.
+<<register our handlers on the shared session>>=
+for handler in autologin_handlers:
+  session.add_handler(handler)
+self.__session = session
+<<create a fresh session from the handlers>>=
 self.__session = weblogin.AutologinSession(autologin_handlers)
 <<configure retry policy for the session>>
+@
+
+Let's verify the sharing: deriving a second [[LadokSession]] from an
+existing session must reuse the very same [[AutologinSession]] object and
+add only the handlers that are new (here: the test environment's
+[[SSOlogin]]).
+Deriving the same facade twice must not grow the handler list further,
+which is what makes re-derivation from a restored cached session safe.
+<<shared session test functions>>=
+def test_shared_session_is_same_object():
+  prod = ladok3.LadokSession("KTH Royal Institute of Technology")
+  test = ladok3.LadokSession("KTH Royal Institute of Technology",
+                             test_environment=True,
+                             session=prod.session)
+  assert test.session is prod.session
+
+def test_shared_session_deduplicates_handlers():
+  prod = ladok3.LadokSession("KTH Royal Institute of Technology")
+  handlers = prod.session._AutologinSession__handlers
+  count = len(handlers)
+
+  ladok3.LadokSession("KTH Royal Institute of Technology",
+                      test_environment=True,
+                      session=prod.session)
+  assert len(handlers) == count + 1
+
+  ladok3.LadokSession("KTH Royal Institute of Technology",
+                      test_environment=True,
+                      session=prod.session)
+  assert len(handlers) == count + 1
 @
 
 
@@ -773,13 +986,8 @@ it on [[LadokData]].
 \begin{pycode}
 import json
 import ladok3
-import os
 
-ladok = ladok3.LadokSession(
-          os.environ["LADOK_INST"],
-          vars={"username": os.environ["LADOK_USER"],
-                "password": os.environ["LADOK_PASS"]},
-          test_environment=True)
+ladok = ladok3.test_session
 
 print(r"\begin{minted}{JSON}")
 print(json.dumps(ladok.grade_scales_JSON()[0], indent=2))
@@ -886,25 +1094,26 @@ return iter(self.__grades)
 This chapter treats how we can work with student data.
 We can get student data from LADOK using the [[LadokSession]] class.
 We first create the [[ladok]] object, an instance of a LADOK session.
-\inputminted[lastline=6]{python}{../examples/example_Student.py}
-This is the same as in \cref{AccessingLADOK}.
+\inputminted[lastline=3]{python}{../examples/example_Student.py}
+This is the same as in \cref{AccessingLADOK}: [[ladok3.test_session]]
+reuses the cached session against LADOK's test environment.
 
 Next we want to access data of a student.
 We can refer to the student by personnummer or the unique LADOK ID.
-\inputminted[firstline=8,lastline=13]{python}{../examples/example_Student.py}
+\inputminted[firstline=5,lastline=11]{python}{../examples/example_Student.py}
 This gives us objects of the [[Student]] class.
-The objects [[me]] and [[me2]] both refer to the same person, so the outputs 
+The objects [[me]] and [[me2]] both refer to the same person, so the outputs
 should be the same.
 
-We can see which course instances the student is registered on (throughout 
+We can see which course instances the student is registered on (throughout
 history).
-\inputminted[firstline=16,lastline=17]{python}{../examples/example_Student.py}
-We can select a particular course and we can get the results for that course in 
+\inputminted[firstline=13,lastline=14]{python}{../examples/example_Student.py}
+We can select a particular course and we can get the results for that course in
 the same way.
-\inputminted[firstline=19,lastline=29]{python}{../examples/example_Student.py}
+\inputminted[firstline=16,lastline=27]{python}{../examples/example_Student.py}
 We can check if the result is attested or not.
 If it's not attested, we can change it.
-\inputminted[firstline=32,lastline=51]{python}{../examples/example_Student.py}
+\inputminted[firstline=29]{python}{../examples/example_Student.py}
 
 
 \section{Getting students from LADOK}\label{GetStudent}
@@ -1299,13 +1508,8 @@ The response consists of this JSON data:
 \begin{pycode}
 import json
 import ladok3
-import os
 
-ladok = ladok3.LadokSession(
-          os.environ["LADOK_INST"],
-          vars={"username": os.environ["LADOK_USER"],
-                "password": os.environ["LADOK_PASS"]},
-          test_environment=True)
+ladok = ladok3.test_session
 
 print(r"\begin{minted}{JSON}")
 course_round = ladok.search_course_rounds_JSON(code="DD1317")[0]
@@ -1403,13 +1607,8 @@ Then data will be populated with the following values:
 \begin{pycode}
 import json
 import ladok3
-import os
 
-ladok = ladok3.LadokSession(
-          os.environ["LADOK_INST"],
-          vars={"username": os.environ["LADOK_USER"],
-                "password": os.environ["LADOK_PASS"]},
-          test_environment=True)
+ladok = ladok3.test_session
 
 print(r"\begin{minted}{JSON}")
 data = ladok.course_round_components_JSON(
