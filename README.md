@@ -96,6 +96,16 @@ student = ladok3.session.get_student("123456-1234")
 # ...
 ```
 
+For experiments against LADOK's test environment there is a sibling
+attribute `test_session`. It shares the underlying authenticated session
+with `ladok3.session`, so using both costs at most one login (MFA prompt).
+```python
+import ladok3
+
+student = ladok3.test_session.get_student("123456-1234")
+# ...
+```
+
 Another way is to use the `load_credentials` function of the CLI.
 ```python
 import ladok3
