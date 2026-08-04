@@ -712,6 +712,8 @@ if "Avliden" in json_obj:
   json_obj["Avliden"] = False
 if "Epostadress" in json_obj:
   json_obj["Epostadress"] = "user@domain.se"
+if isinstance(json_obj.get("Epost"), str):
+  json_obj["Epost"] = "user@domain.se"
 if "Anvandarnamn" in json_obj:
   json_obj["Anvandarnamn"] = "user@domain.se"
 if "SenastAndradAv" in json_obj:
@@ -733,11 +735,28 @@ pattern reliably finds them.  So non-empty values are replaced
 wholesale by a visible placeholder.  We leave empty values alone: that
 way the example output still shows which records carry notes and which
 do not, which is part of what an example should teach.
+
+[[Attestant]] and [[Beslutsfattare]] need a type guard.  LADOK uses
+these keys in two shapes: result histories carry a nested object
+(whose [[Fornamn]], [[Efternamn]] and [[Anvandarnamn]] the rules above
+already reach through the recursion), but attestation views carry a
+flat \emph{string} --- sometimes the examiner's display name, sometimes
+LADOK's own \enquote{Uppgift om examinator saknas/Not applicable} text.
+An audit of the rendered documentation examples caught a real
+examiner's name in that string form.  We replace only the string
+shape, and with a neutral placeholder rather than the dummy name:
+a fake name would falsely suggest a person where the original said
+\enquote{missing}, and the field is free text, so the same
+cannot-selectively-scrub argument applies.
 <<replace free-text fields with placeholders>>=
 if json_obj.get("Anteckning"):
   json_obj["Anteckning"] = "[borttagen anteckning]"
 if json_obj.get("OvrigaMedverkande"):
   json_obj["OvrigaMedverkande"] = "[borttagna medverkande]"
+if isinstance(json_obj.get("Attestant"), str):
+  json_obj["Attestant"] = "[borttagen attestant]"
+if isinstance(json_obj.get("Beslutsfattare"), str):
+  json_obj["Beslutsfattare"] = "[borttagen beslutsfattare]"
 @
 
 Two keys are sensitive by their mere presence, not their value:
@@ -763,8 +782,10 @@ def test_pseudonymize() -> None:
     "SenastAndradAv": "handler@institution.se",
     "Skyddsstatus": "SEKRETESS",
     "FolkbokforingsbevakningTillOchMed": "2027-01-01",
+    "Epost": "someone@institution.se",
     "Historik": [{"Anteckning": "spoke to John Doe",
                   "OvrigaMedverkande": "External Examiner",
+                  "Beslutsfattare": "Jane Doe",
                   "Attestant": {"Fornamn": "Jane",
                                 "Uid": "00000000-0000-0000-0000-000000000002"}}],
   }
@@ -777,9 +798,11 @@ def test_pseudonymize() -> None:
   assert record["SenastAndradAv"] == "user@domain.se"
   assert "Skyddsstatus" not in record
   assert "FolkbokforingsbevakningTillOchMed" not in record
+  assert record["Epost"] == "user@domain.se"
   entry = record["Historik"][0]
   assert entry["Anteckning"] == "[borttagen anteckning]"
   assert entry["OvrigaMedverkande"] == "[borttagna medverkande]"
+  assert entry["Beslutsfattare"] == "[borttagen beslutsfattare]"
   assert entry["Attestant"]["Fornamn"] == "Student"
   assert entry["Attestant"]["Uid"] \
     == "00000000-0000-0000-0000-000000000002"
