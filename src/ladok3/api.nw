@@ -616,11 +616,21 @@ def _all_pages(self,
 
 \section{Cleaning data for printing}
 
-We sometimes want to print the data, for instance, example output in this 
+We sometimes want to print the data, for instance, example output in this
 document.
 For this reason we introduce some cleaning functions.
-These recursively transcends the JSON structure removing the data that should 
+These recursively transcends the JSON structure removing the data that should
 be removed.
+
+Note that we \emph{pseudonymize} rather than anonymize: direct
+identifiers --- names, personnummer, contact data --- are replaced, but
+LADOK's UIDs are deliberately kept.  The example outputs exist to help
+the reader understand the API, and much of that understanding lies in
+how objects relate \emph{across} calls: the same student, course or
+round UID recurring in different methods' outputs is what shows the
+reader how to join them.  Replacing UIDs would sever exactly those
+connections.  Keeping them is safe because a UID is opaque: it
+identifies a record only for someone who already has LADOK access.
 <<functions>>=
 def clean_data(json_obj: dict | list) -> dict | list:
   """
