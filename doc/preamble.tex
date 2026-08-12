@@ -55,3 +55,15 @@
 \creflabelformat{question}{#2\textup{#1}#3}
 
 \usepackage{didactic}
+
+% Noweb's \nwhyperreference self-redefines on first execution, which
+% misfires when a [[...]]-quoted indexed identifier in a heading is
+% expanded into moving arguments (toc, running heads, PDF bookmarks)
+% under hyperref from TeX Live 2025.  Make it robust, and strip the
+% code-quote macros from bookmark strings.
+\DeclareRobustCommand\nwhyperreference[2]{\hyperlink{noweb.#1}{#2}}
+\pdfstringdefDisableCommands{%
+  \def\nwlinkedidentq#1#2{#1}%
+  \let\Tt\relax
+  \let\nwendquote\relax
+}
