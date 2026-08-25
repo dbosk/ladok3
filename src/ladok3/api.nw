@@ -653,8 +653,21 @@ def remove_links(json_obj: dict | list) -> None:
       remove_links(item)
 @
 
-The [[pseudonymize]] function replaces names and personnummer with dummy 
+The [[pseudonymize]] function replaces names and personnummer with dummy
 entries.
+Most of the fields it covers describe the student: name, personnummer and
+contact details.
+Two more fields are easy to miss precisely because they do \emph{not} describe
+the student.
+LADOK stamps most records with audit metadata, and [[SenastAndradAv]]
+(\enquote{last changed by}) names the \emph{staff member} who last touched the
+record, as their institutional email address---an audit of the rendered
+example outputs in this documentation found real staff addresses leaking
+through it.
+Pseudonymization has to protect staff as well as students, so we replace it
+like any other email address.
+Similarly, the delivery-preference records use the bare key [[Epost]] where
+student records use [[Epostadress]], so we must cover both spellings.
 <<functions>>=
 def pseudonymize(json_obj: dict | list) -> None:
   """
@@ -669,6 +682,8 @@ def pseudonymize(json_obj: dict | list) -> None:
       json_obj["Personnummer"] = "191234561234"
     if "Epostadress" in json_obj:
       json_obj["Epostadress"] = "user@domain.se"
+    if "Epost" in json_obj:
+      json_obj["Epost"] = "user@domain.se"
     if "Anvandarnamn" in json_obj:
       json_obj["Anvandarnamn"] = "user@domain.se"
     if "Utdelningsadress" in json_obj:
@@ -679,11 +694,29 @@ def pseudonymize(json_obj: dict | list) -> None:
       json_obj["Postort"] = "Byn"
     if "Telefonnummer" in json_obj:
       json_obj["Telefonnummer"] = "0701234567"
+    if "SenastAndradAv" in json_obj:
+      json_obj["SenastAndradAv"] = "user@domain.se"
     for value in json_obj.values():
       pseudonymize(value)
   elif isinstance(json_obj, list):
     for item in json_obj:
       pseudonymize(item)
+@
+
+Let's verify that the replacements reach nested records: the observed leak was
+[[SenastAndradAv]] inside a \emph{list} of Rättigheter records, so the test
+mirrors that shape.
+<<test functions>>=
+def test_pseudonymize() -> None:
+  data = {
+    "Fornamn": "Anna",
+    "Epost": "anna@example.com",
+    "Rattigheter": [{"SenastAndradAv": "teacher@example.com"}],
+  }
+  ladok3.pseudonymize(data)
+  assert data["Fornamn"] == "Student"
+  assert data["Epost"] == "user@domain.se"
+  assert data["Rattigheter"][0]["SenastAndradAv"] == "user@domain.se"
 @
 
 
