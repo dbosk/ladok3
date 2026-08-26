@@ -27,7 +27,7 @@ ladok3.pdf: ../examples/canvas2ladok.tex
 ladok3.pdf: ../examples/canvas2ladok.py
 ladok3.pdf: ../src/ladok3/scripts.tex
 
-ladok3.pdf: didactic.sty noweb_lexer.py
+ladok3.pdf: didactic.sty
 
 ../%::
 	${MAKE} -C $(dir $@) $(notdir $@)

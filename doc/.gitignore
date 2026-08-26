@@ -1,3 +1,11 @@
 ladok3.pdf
 ltxobj/
 didactic.sty
+latexmkrc
+noweb_lexer.py
+*.pytxcode
+*.pytxmcr
+*.pytxpyg
+pythontex-files-*
+pythontex_data.pkl
+py_*.stdout
