@@ -77,19 +77,17 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 fi
 @
 
-To ensure we have a valid LADOK session, we run [[ladok -v report -f]] until it
-succeeds.
+To ensure we have a valid LADOK session, we run [[ladok student]] to 
+[[/dev/null]] until it succeeds.
+When it succeeds, we know the MFA has passed.
 <<report while ensuring we have a valid LADOK session>>=
-until ladok -v report -f \
-      2>&1 \
-      | grep -v "Page has multiple forms" \
-      | grep -v "infinite loop for URL"
-do true; done
-@ This will work since only the successful run will exit with zero and actually 
-consume stdin.
-We also remove any of the expected errors from the output.
-Whenever we don't answer the MFA on time, we'll get errors, but we don't want 
-those errors in the cron mail.
+until ladok student $ME 2>&1 >/dev/null; do true; done
+ladok -v report -f
+<<constants>>=
+ME=de709f81-a867-11e7-8dbf-78e86dc2470c
+@ This will work since only the successful run will exit with zero.
+Then we can actually run the [[ladok report]] command to report the results.
+Only that last command will consume stdin.
 
 The filter drops the drift line and nothing else.
 This phrase is coupled to the exact wording of the attested date-drift
