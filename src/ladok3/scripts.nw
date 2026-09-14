@@ -66,11 +66,30 @@ main() {
   <<main script>>
 }
 
+report_to_ladok() {
+  <<report while ensuring we have a valid LADOK session>>
+}
+
 # Only run if this is the main script
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  main "$@" | ladok -v report -f 2>&1 | <<filter out non-actionable date drift>>
+  main "$@" | report_to_ladok 2>&1 \
+  | <<filter out non-actionable date drift>>
 fi
 @
+
+To ensure we have a valid LADOK session, we run [[ladok -v report -f]] until it
+succeeds.
+<<report while ensuring we have a valid LADOK session>>=
+until ladok -v report -f \
+      2>&1 \
+      | grep -v "Page has multiple forms" \
+      | grep -v "infinite loop for URL"
+do true; done
+@ This will work since only the successful run will exit with zero and actually 
+consume stdin.
+We also remove any of the expected errors from the output.
+Whenever we don't answer the MFA on time, we'll get errors, but we don't want 
+those errors in the cron mail.
 
 The filter drops the drift line and nothing else.
 This phrase is coupled to the exact wording of the attested date-drift
