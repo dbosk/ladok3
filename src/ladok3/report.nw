@@ -218,9 +218,15 @@ re-attestation just to fix an examination date is rarely worth the
 manual work.  We therefore log a [[WARNING]] and continue.  The
 warning is silenced by a global [[-q]] when bulk-reporting against a
 roster where date drift is expected.
-If everything matches, we silently ignore the row.
+If everything matches, we do nothing to the result, but we do confirm the
+row at [[INFO]] level, just as for a finalized result.
 This is best for bulk reporting, because then we can always try to
-report for all students.
+report for all students: the default output stays silent for rows that
+need no action, while a [[-v]] run accounts for every row it read.
+Without that confirmation, an attested-and-matching row was the only
+case that produced no output at any verbosity, which made it impossible
+to tell a processed row from one that was never read---for instance
+when a tab in the input had been mangled.
 
 We want to report errors as exceptions.
 <<functions>>=
@@ -350,6 +356,9 @@ both the grade and date differ, the reporter sees the grade error,
 which is the one they need to act on.  If only the date differs, we
 log a [[WARNING]] including the cached examination date so the
 reporter can decide whether the drift is worth a manual fix.
+Finally, if neither check fired, the attested result already is what we
+were asked to report, and we say so at [[INFO]] level for the same
+reason the finalized branch does.
 <<handle attested result>>=
 <<reject reporting on a fully credit-transferred component>>
 <<normalize requested and current result dates>>
@@ -372,6 +381,9 @@ if current_date != date:
     f"{course_code} {student}: attested {component.component} "
     f"{component.grade} has examination date {component.date}, "
     f"not the requested {date}; leaving the attested result as-is.")
+logger.debug(
+  f"{course_code} {student}: {component.component} already attested "
+  f"as {component.grade} ({component.date}).")
 @
 
 A component can also count as attested because it is entirely covered by a
@@ -624,6 +636,29 @@ def test_set_grade_warns_when_attested_date_differs(caplog):
   assert len(warnings) == 1
   assert "examination date 2024-01-20" in warnings[0].message
   assert "leaving the attested result as-is" in warnings[0].message
+
+
+def test_set_grade_confirms_matching_attested_result(caplog):
+  component = FakeComponent(
+    grade="P", attested=True, finalized=True, date="2024-02-01")
+  course = FakeCourse(component)
+  student = FakeStudent(course)
+  ladok = FakeLadok(student)
+  args = types.SimpleNamespace(finalize=True, verbose=0)
+
+  with caplog.at_level(logging.INFO, logger="ladok3.report"):
+    ladok3.report.set_grade(
+      ladok, args, "191212121212", "DD1315", "DD1315", "P",
+      "2024-02-01", ["examiner"])
+
+  assert component.pull_calls == 0
+  assert component.set_calls == []
+  assert component.finalize_calls == []
+  infos = [r for r in caplog.records
+           if r.levelno == logging.INFO
+           and r.name == "ladok3.report"]
+  assert len(infos) == 1
+  assert "already attested as P (2024-02-01)" in infos[0].message
 
 
 def test_set_grade_attested_date_warning_silent_when_refresh_resolves(caplog):
