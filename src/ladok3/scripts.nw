@@ -79,15 +79,21 @@ fi
 
 To ensure we have a valid LADOK session, we run [[ladok student]] to 
 [[/dev/null]] until it succeeds.
-When it succeeds, we know the MFA has passed.
+When it succeeds, we know the MFA has passed and can report the results.
 <<report while ensuring we have a valid LADOK session>>=
-until ladok student $ME 2>&1 >/dev/null; do true; done
+local backoff=1
+until ladok student $ME 2>&1 >/dev/null; do
+  sleep $backoff
+  backoff=$((backoff * 2))
+done
 ladok -v report -f
 <<constants>>=
 ME=de709f81-a867-11e7-8dbf-78e86dc2470c
 @ This will work since only the successful run will exit with zero.
 Then we can actually run the [[ladok report]] command to report the results.
 Only that last command will consume stdin.
+We use the exponential backoff to avoid flooding the server, but also to avoid 
+flooding ourselves.
 
 The filter drops the drift line and nothing else.
 This phrase is coupled to the exact wording of the attested date-drift
