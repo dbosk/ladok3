@@ -113,41 +113,86 @@ For those rare cases when a student finishes a course years after it ended, we
 can report the results manually for that course again---by importing and 
 invoking the functions below in the terminal.
 
-We'll let [[YEARS]] be a regex for the years that we're interested in reporting 
-for.
-We'll use the current year and the previous year.
-The advantage of this window is that when we pass new year's eve, the autumn 
-courses are still current for a few weeks---but the year is the wrong one.
-As a side effect, during autumn we report results for any late results for the 
-previous year too.
+The window is a regex for the years that we're interested in reporting for,
+which we put into the course regex, for example [[DD1317 ?HT(23|24|25|26)]].
+We use the current year and the [[LOOKBACK]] years before it.
+Including earlier years has two advantages.
+First, when we pass new year's eve, the autumn courses are still current for
+a few weeks---but the year is the wrong one.
+Second, we also report any late results for the past few years without having
+to do it manually.
+Course names use two-digit years, so [[YEAR]] does too.
+<<constants>>=
+YEAR=$(date +%y)
+LOOKBACK=3
+@
 
 To construct the regex for years, we simply take a sequence of years
 ([[24 25]]) and make a regex ([[(24|25)]]) out of it.
 
-One important as aspect is that we don't want to include the current year for 
-autumn courses before August.
-That's because they will not be published before that, so we'll get a 
-permission error from Canvas.
-So we'll use two functions, one for spring and one for autumn courses.
-<<constants>>=
-YEAR=$(date +%y)
-LOOKBACK=3
+The sequence is empty if it starts after it ends.
+Then the pipeline would output only [[(]], which is an invalid regex.
+Simply outputting nothing would be worse:
+[[HT]] followed by nothing matches the course in \emph{every} year.
+Instead we output [[(?!)]], a regex that never matches anything, so no course
+is selected.
+This works since [[canvaslms]] uses Python's regexes, which support the
+negative lookahead [[(?!...)]].
+We also print a warning, so that the cron mail tells us about the mistake.
+This also catches four-digit years, like [[2023]], since they are larger than
+any two-digit year.
 <<helper functions>>=
-years_spring() {
+years_regex() {
+  local first="$1"
+  local last="$2"
+  if [[ "$first" -gt "$last" ]]; then
+    echo "years_regex: starting year $first is after $last," \
+         "no course will match" >&2
+    echo -n "(?!)"
+    return 1
+  fi
   echo -n "("; \
-  seq $((YEAR - LOOKBACK)) $YEAR \
+  seq "$first" "$last" \
   | sed -zE "s/\s/|/g" \
   | sed "s/|$/)/"
 }
+@
+
+One important aspect is that we don't want to include the current year for
+autumn courses before August.
+That's because they will not be published before that, so we'll get a
+permission error from Canvas.
+So we'll use two functions, one for spring and one for autumn courses.
+
+To check the month, we must strip the leading zero that [[date +%m]] gives.
+Inside [[[[ ]]]], bash compares numbers as arithmetic expressions, and there
+a leading zero means octal.
+So [[08]] and [[09]] are invalid numbers: the test fails with an error in
+August and September, which would also end up in the cron mail.
+The prefix [[10#]] in [[$((10#$(date +%m)))]] tells bash to read the number in
+base ten.
+
+Sometimes the grading in a course changes from a certain year.
+For instance, in tilkry (\cref{tilkry}) the INL1Quiz assignment used to give
+points, but now it gives P/F.
+The summary of INL1 that [[canvaslms results]] computes needs P/F grades, so
+it can't summarize the older rounds.
+So the window for such a component must not reach back before the year of the
+change.
+For this, both functions take an optional starting year.
+It is a two-digit year, like [[YEAR]], and replaces the start of the sliding
+window, for example [[HT$(years_autumn 24)]].
+If it's not given, we use the sliding window.
+<<helper functions>>=
+years_spring() {
+  years_regex "${1:-$((YEAR - LOOKBACK))}" "$YEAR"
+}
 
 years_autumn() {
-  if [[ $(date +%m) -lt 8 ]]; then
-    echo -n "("; \
-    seq $((YEAR - LOOKBACK - 1)) $((YEAR - 1)) \
-    | sed -zE "s/\s/|/g" \
-    | sed "s/|$/)/"
+  if [[ $((10#$(date +%m))) -lt 8 ]]; then
+    years_regex "${1:-$((YEAR - LOOKBACK - 1))}" $((YEAR - 1))
   else
-    years_spring
+    years_spring "$@"
   fi
 }
 @
@@ -292,7 +337,7 @@ report_alt_components "DA2215 ?${SPRING_AUTUMN_YEARS}" \
                       canvaslms.grades.participation
 @
 
-\subsection{DD2520 tilkry}
+\subsection{DD2520 tilkry}\label{tilkry}
 
 For tilkry (DD2520) we have two components: INL1 and LAB1.
 The INL1 component is just a few P/F-assignments.
@@ -303,9 +348,16 @@ So it has a custom summary module: [[canvaslms.grades.tilkryLAB1]].
 
 This course is only given in spring, so we only need to match on the spring 
 years.
+
+Until VT23, the INL1Quiz assignment was graded with points, and from VT24 on
+it is graded P/F.
+The default summary that gives the INL1 result needs P/F grades, so we start
+the INL1 window at 24.
+Once the sliding window starts at 24 or later, the starting year makes no
+difference, and we can remove it.
 <<main script>>=
 # tilkry
-report_components "DD2520 ?VT$(years_spring)" \
+report_components "DD2520 ?VT$(years_spring 24)" \
                   INL1
 report_components "DD2520 ?VT$(years_spring)" \
                   LAB1 \
