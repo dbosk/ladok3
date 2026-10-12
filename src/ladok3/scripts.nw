@@ -328,7 +328,7 @@ separately---with spring and autumn adapted years.
 # vetcyb
 SPRING_AUTUMN_YEARS="(HT$(years_autumn)|VT$(years_spring))"
 report_components "DA2215 ?${SPRING_AUTUMN_YEARS}" \
-                  INL1 \
+                  ^INL1 \
                   canvaslms.grades.conjunctavgsurvey
 @ However, we also want to report the \enquote{Participation INL1}.
 But that would require us to rewrite the name of the group to just INL1, so we 
@@ -339,7 +339,7 @@ complete/incomplete and 0--100 grades).
 <<main script>>=
 # vetcyb participation
 report_alt_components "DA2215 ?${SPRING_AUTUMN_YEARS}" \
-                      "Participation INL1" INL1 \
+                      "^Participation INL1" INL1 \
                       canvaslms.grades.participation
 @
 
