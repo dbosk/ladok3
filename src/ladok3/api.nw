@@ -616,6 +616,30 @@ def _all_pages(self,
     page += 1
 @
 
+The recordings can't test the loop: in the test environment every list we
+ask for fits on one page, so a helper that stopped after the first page
+would still pass them.
+We therefore test it offline, with a [[request_fn]] that serves a list of
+five items two at a time, just as LADOK would with a page size of two.
+<<test functions>>=
+def test_all_pages_walks_every_page(offline_ladok) -> None:
+  items = list(range(5))
+  pages = []
+
+  def request_fn(page, limit):
+    pages.append(page)
+    start = (page - 1) * limit
+    return {"Resultat": items[start:start + limit],
+            "TotaltAntalPoster": len(items)}
+
+  assert offline_ladok._all_pages(request_fn, page_size=2) == items
+  assert pages == [1, 2, 3]
+
+def test_all_pages_rejects_unpaginated_response(offline_ladok) -> None:
+  with pytest.raises(ladok3.LadokAPIError, match="TotaltAntalPoster"):
+    offline_ladok._all_pages(lambda page, limit: {"Resultat": []})
+@
+
 
 \section{Cleaning data for printing}
 
