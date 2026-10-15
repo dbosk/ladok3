@@ -13,6 +13,7 @@ ladok3.pdf: ../src/ladok3
 ladok3.pdf: ../src/ladok3/ladok3.tex
 ladok3.pdf: ../src/ladok3/api.tex
 ladok3.pdf: ../src/ladok3/undoc.tex
+ladok3.pdf: ../src/ladok3/testing.tex
 
 ladok3.pdf: ../src/ladok3/cli.tex
 ladok3.pdf: ../src/ladok3/data.tex

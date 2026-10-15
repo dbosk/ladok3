@@ -36,6 +36,7 @@ These illustrate how to the [[ladok3]] module and provide testing using
 import json
 import ladok3
 import os
+import pytest
 
 <<test functions>>
 @
@@ -67,7 +68,7 @@ import pytest
 @
 
 
-\section{Convenient access to a cached session}
+\section{Convenient access to a cached session}\label{CachedSession}
 
 For scripts that use the CLI's cached credentials, we provide a
 convenient module-level attribute [[session]].
@@ -386,20 +387,35 @@ class LadokSession:
 @
 
 Now let's test this class.
-We create a single [[LadokSession]] object at the module level that is shared
-across all tests.
-This minimizes the number of MFA authentications required when running the test
-suite, since each session creation triggers a full login flow.
+Unlike the other live tests, which share the cached session of
+[[ladok3.test_session]] (see \cref{Testing}), this test must establish a
+session itself: what it verifies is that the credentials passed in [[vars]]
+reach the login handlers.
+It therefore takes its credentials from the environment and logs in afresh,
+with one MFA prompt.
+The session comes from a fixture rather than from module level.
+A session created at import time made the whole module fail to import when
+the variables were missing, so the offline tests further down in this file
+never ran.
+The fixture instead skips this one test, and it creates the session only in
+a live run.
 <<test functions>>=
-ladok = ladok3.LadokSession(
-        os.environ["LADOK_INST"],
-        vars={"username": os.environ["LADOK_USER"],
-              "password": os.environ["LADOK_PASS"]},
-        test_environment=True,
-        notification_cmd="notify-send")
+LOGIN_VARIABLES = ["LADOK_INST", "LADOK_USER", "LADOK_PASS"]
 
-def test_LadokSession_vars():
-  assert ladok.user_info_JSON()
+@pytest.fixture(scope="module")
+def fresh_ladok(live):
+  missing = [name for name in LOGIN_VARIABLES if name not in os.environ]
+  if missing:
+    pytest.skip(f"needs {', '.join(missing)} in the environment")
+  return ladok3.LadokSession(
+          os.environ["LADOK_INST"],
+          vars={"username": os.environ["LADOK_USER"],
+                "password": os.environ["LADOK_PASS"]},
+          test_environment=True,
+          notification_cmd="notify-send")
+
+def test_LadokSession_vars(fresh_ladok):
+  assert fresh_ladok.user_info_JSON()
 @
 
 

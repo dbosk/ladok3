@@ -6,6 +6,7 @@ SCRIPTS=$(shell noroots scripts.nw | sed -E "s/(<<|>>|\[\[|\]\])//g")
 all: ${LIB:.nw=.tex} __init__.py
 all: ${CLI:.nw=.tex} ${CLI:.nw=.py} ladok.bash
 all: scripts.tex ${SCRIPTS}
+all: testing.tex
 
 __init__.py: ladok3.py
 	mv $^ $@
@@ -26,6 +27,7 @@ clean:
 	${RM} ${CLI:.nw=.tex}
 	${RM} ${CLI:.nw=.py} ladok.bash
 	${RM} scripts.tex ${SCRIPTS}
+	${RM} testing.tex
 
 .PHONY: distclean
 distclean:

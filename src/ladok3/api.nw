@@ -13,19 +13,19 @@ We will design the test functions in such a way that we can reuse them to show
 the example outputs from the API requests.
 
 We will use the following to test the API methods.
-We reuse the cached test-environment session through
-[[ladok3.test_session]]: running only the API tests then requires no MFA at
-all when the cache is warm.
-Previously we imported the session from [[test_ladok3]], which triggered
-that module's deliberate fresh login---the right thing when testing session
-\emph{establishment}, but a needless MFA prompt for every API test run.
+Each test that talks to LADOK takes the session as its [[ladok]] argument,
+a fixture that reuses the cached test-environment session through
+[[ladok3.test_session]] (see \cref{Testing}).
+Running the API tests then requires no MFA at all when the cache is warm,
+and without [[--live]] these tests are skipped rather than run.
+The few tests that check our own validation, before any request is sent,
+take [[offline_ladok]] instead, a session that never logs in, so they run
+offline.
 <<test [[api.py]]>>=
 import json
 import ladok3
 import ladok3.report
 import pytest
-
-ladok = ladok3.test_session
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
@@ -758,7 +758,7 @@ We add the following test.
 If we can convert the return value do JSON, it's probably correct.
 (No this isn't the best of tests.)
 <<test functions>>=
-def test_grade_scales_JSON() -> None:
+def test_grade_scales_JSON(ladok) -> None:
   assert ladok.grade_scales_JSON()
 @
 
@@ -839,7 +839,7 @@ def get_student_data_JSON(self, person_nr_raw: str, lang: str = 'sv') -> dict:
 
 To test this function, we do the following.
 <<test functions>>=
-def test_get_student_data_JSON() -> None:
+def test_get_student_data_JSON(ladok) -> None:
   assert ladok.get_student_data_JSON("8506097891")
 @
 
@@ -875,7 +875,7 @@ def get_student_data_by_uid_JSON(self, uid: str) -> dict:
 
 To test this function, we do the following.
 <<test functions>>=
-def test_get_student_data_by_uid_JSON() -> None:
+def test_get_student_data_by_uid_JSON(ladok) -> None:
   assert ladok.get_student_data_by_uid_JSON(student_uid)
 @
 
@@ -913,7 +913,7 @@ def get_student_contact_data_JSON(self, student_id: str) -> dict:
 
 We test this function.
 <<test functions>>=
-def test_get_student_contact_data_JSON() -> None:
+def test_get_student_contact_data_JSON(ladok) -> None:
   assert ladok.get_student_contact_data_JSON(student_uid)
 @
 
@@ -951,7 +951,7 @@ def get_student_suspensions_JSON(self, student_id: str) -> dict:
 
 We test this function.
 <<test functions>>=
-def test_get_student_suspensions_JSON() -> None:
+def test_get_student_suspensions_JSON(ladok) -> None:
   assert ladok.get_student_suspensions_JSON(student_uid)
 @
 
@@ -990,7 +990,7 @@ def registrations_JSON(self, student_id: str) -> list:
 
 We provide the following test.
 <<test functions>>=
-def test_registrations_JSON() -> None:
+def test_registrations_JSON(ladok) -> None:
   results = ladok.registrations_JSON(student_uid)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -1035,7 +1035,7 @@ def registrations_on_course_JSON(
 
 We add the following test.
 <<test functions>>=
-def test_registrations_on_course_JSON() -> None:
+def test_registrations_on_course_JSON(ladok) -> None:
   results = ladok.registrations_on_course_JSON(dasak_education_id, student_uid)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -1072,7 +1072,7 @@ def studystructure_student_JSON(self, uid: str) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_studystructure_student_JSON() -> None:
+def test_studystructure_student_JSON(ladok) -> None:
   r = ladok.studystructure_student_JSON(student_uid)
   assert type(r) == dict
 @
@@ -1120,7 +1120,7 @@ def search_course_rounds_JSON(self, /, **kwargs) -> list:
 
 We add the following test.
 <<test functions>>=
-def test_search_course_rounds_JSON() -> None:
+def test_search_course_rounds_JSON(ladok) -> None:
   results = ladok.search_course_rounds_JSON(code="DD1317")
   assert results
 @
@@ -1156,7 +1156,7 @@ def course_rounds_JSON(self, course_instance_id: str) -> list:
 
 We test this method as follows.
 <<test functions>>=
-def test_course_rounds_JSON() -> None:
+def test_course_rounds_JSON(ladok) -> None:
   results = ladok.course_rounds_JSON(dasak_instance_id)
   assert json.dumps(results[:1]+results[-1:], indent=2, ensure_ascii=False)
 @
@@ -1196,7 +1196,7 @@ def course_instance_JSON(self, instance_id: str) -> dict:
 
 We add the following test.
 <<test functions>>=
-def test_course_instance_JSON() -> None:
+def test_course_instance_JSON(ladok) -> None:
   results = ladok.course_instance_JSON(dasak_instance_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -1237,7 +1237,7 @@ def course_instances_JSON(self, course_code: str, lang: str = 'sv') -> dict:
 Let's add a test.
 This should return a list of dictionaries.
 <<test functions>>=
-def test_course_instances_JSON() -> None:
+def test_course_instances_JSON(ladok) -> None:
   r = ladok.course_instances_JSON('DD2395')
   assert type(r) == dict
 @
@@ -1286,7 +1286,7 @@ def instance_info(
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_instance_info() -> None:
+def test_instance_info(ladok) -> None:
   r = ladok.instance_info('DD1310', '50429')
   assert type(r) == dict
 @
@@ -1326,7 +1326,7 @@ def instance_info_uid(self, instance_uid: str) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_instance_info_uid() -> None:
+def test_instance_info_uid(ladok) -> None:
   r = ladok.instance_info_uid(dasak_round_id)
   assert type(r) == dict
 @
@@ -1382,7 +1382,7 @@ def course_round_components_JSON(self, round_id: str) -> list:
 
 We add the following test.
 <<test functions>>=
-def test_course_round_components_JSON() -> None:
+def test_course_round_components_JSON(ladok) -> None:
   components = ladok.course_round_components_JSON(dasak_round_id)
   assert json.dumps(components, indent=2, ensure_ascii=False)
 @
@@ -1434,7 +1434,7 @@ def course_instance_components_JSON(self, course_instance_id: str) -> dict:
 
 We add the following test code.
 <<test functions>>=
-def test_course_instance_components_JSON() -> None:
+def test_course_instance_components_JSON(ladok) -> None:
   components = ladok.course_instance_components_JSON(dasak_instance_id)
   assert json.dumps(components, indent=2, ensure_ascii=False)
 @
@@ -1503,7 +1503,7 @@ def search_reported_results_JSON(
 
 We write the following test.
 <<test functions>>=
-def test_search_reported_results_JSON() -> None:
+def test_search_reported_results_JSON(ladok) -> None:
   results = ladok.search_reported_results_JSON(dasak_round_id,
     LAB1_instance_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
@@ -1564,7 +1564,7 @@ def search_course_results_JSON(
 
 We test this by the following.
 <<test functions>>=
-def test_search_course_results_JSON() -> None:
+def test_search_course_results_JSON(ladok) -> None:
   results = ladok.search_course_results_JSON(dasak_round_id, LAB1_instance_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -1607,7 +1607,7 @@ def student_results_JSON(
  
 We test this in the following way.
 <<test functions>>=
-def test_student_results_JSON() -> None:
+def test_student_results_JSON(ladok) -> None:
   results = ladok.student_results_JSON(student_uid, dasak_education_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -1678,7 +1678,8 @@ datintro_LAB1_id = "385a4428-73d8-11e8-b4e0-063f9afb40e3"
 result_uid = None
 result_last_modified = None
 
-def test_create_result_JSON() -> None:
+@pytest.mark.mutates
+def test_create_result_JSON(ladok) -> None:
   result = ladok.create_result_JSON(
     datintro_student_uid, datintro_instance_id, datintro_LAB1_id,
     131663, "2022-11-29")
@@ -1758,7 +1759,8 @@ def update_result_JSON(self,
 
 We test this in the following way.
 <<test functions>>=
-def test_update_result_JSON() -> None:
+@pytest.mark.mutates
+def test_update_result_JSON(ladok) -> None:
   global result_uid
   global result_last_modified
 
@@ -1816,7 +1818,8 @@ the path.
 
 We can test this in the following way.
 <<test functions>>=
-def test_result_attestants_JSON() -> None:
+@pytest.mark.mutates
+def test_result_attestants_JSON(ladok) -> None:
   global result_uid
   try:
     attestants = ladok.result_attestants_JSON(result_uid)
@@ -1855,7 +1858,7 @@ def result_reporters_JSON(self, organization_id: str) -> list:
 
 We test this method as follows.
 <<test functions>>=
-def test_result_reporters_JSON() -> None:
+def test_result_reporters_JSON(ladok) -> None:
   reporters = ladok.result_reporters_JSON(KTH_org_id)
   assert json.dumps(reporters, indent=2, ensure_ascii=False)
 @
@@ -1900,7 +1903,7 @@ def user_info_JSON(self) -> dict:
 
 We test this as follows.
 <<test functions>>=
-def test_user_info_JSON() -> None:
+def test_user_info_JSON(ladok) -> None:
   me_teacher = ladok.user_info_JSON()
   assert json.dumps(me_teacher, indent=2, ensure_ascii=False)
 @
@@ -1953,7 +1956,8 @@ We test this in the following way.
 <<test functions>>=
 reporter_id = "21f4667a-e864-11ea-adbf-a14961264cf0"
 
-def test_finalize_result_JSON() -> None:
+@pytest.mark.mutates
+def test_finalize_result_JSON(ladok) -> None:
   global result_uid
   global result_last_modified
 
@@ -1969,7 +1973,8 @@ def test_finalize_result_JSON() -> None:
 We also want to verify that the [[CourseResult]] class correctly reflects the
 finalized state through its [[finalized]] property.
 <<test functions>>=
-def test_finalized_CourseResult() -> None:
+@pytest.mark.mutates
+def test_finalized_CourseResult(ladok) -> None:
   """Verify CourseResult.finalized property after finalization."""
   student = ladok.get_student(datintro_student_uid)
 
@@ -1996,7 +2001,8 @@ different result once LADOK has a finalized value waiting for attestation.
 This exercises the live create/finalize cycle while keeping the cleanup flow
 unchanged.
 <<test functions>>=
-def test_report_set_grade_rejects_mismatching_finalized_result() -> None:
+@pytest.mark.mutates
+def test_report_set_grade_rejects_mismatching_finalized_result(ladok) -> None:
   ladok.cache.clear()
   student = ladok.get_student(datintro_student_uid)
 
@@ -2065,7 +2071,8 @@ def update_finalized_result_JSON(self,
 
 We test this in the following way.
 <<test functions>>=
-def test_update_finalized_result_JSON() -> None:
+@pytest.mark.mutates
+def test_update_finalized_result_JSON(ladok) -> None:
   global result_uid
   global result_last_modified
 
@@ -2112,7 +2119,8 @@ def finalized_result_to_draft_JSON(
 
 We test this in the following way.
 <<test functions>>=
-def test_finalized_result_to_draft_JSON() -> None:
+@pytest.mark.mutates
+def test_finalized_result_to_draft_JSON(ladok) -> None:
   global result_uid
   global result_last_modified
 
@@ -2153,7 +2161,8 @@ def remove_result_draft_JSON(self, result_id: str) -> None:
 
 We test this in the following way.
 <<test functions>>=
-def test_remove_result_draft_JSON() -> None:
+@pytest.mark.mutates
+def test_remove_result_draft_JSON(ladok) -> None:
   global result_uid
 
   ladok.remove_result_draft_JSON(result_uid)
@@ -2221,7 +2230,7 @@ def participants_JSON(self, course_round_id: str, /, **kwargs) -> list:
 
 We test this as follows.
 <<test functions>>=
-def test_participants_JSON() -> None:
+def test_participants_JSON(ladok) -> None:
   results = ladok.participants_JSON(dasak_round_id)
   assert json.dumps(results, indent=2, ensure_ascii=False)
 @
@@ -2267,7 +2276,7 @@ def grading_rights(self) -> list:
 Let's add a test.
 This should return a list of dictionaries.
 <<test functions>>=
-def test_grading_rights() -> None:
+def test_grading_rights(ladok) -> None:
   r = ladok.grading_rights()
   assert type(r) == list
   assert type(r[0]) == dict
@@ -2302,7 +2311,7 @@ def organization_info_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_organization_info_JSON() -> None:
+def test_organization_info_JSON(ladok) -> None:
   r = ladok.organization_info_JSON()
   assert type(r) == dict
 @
@@ -2333,7 +2342,7 @@ def larosatesinformation_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_larosatesinformation_JSON() -> None:
+def test_larosatesinformation_JSON(ladok) -> None:
   r = ladok.larosatesinformation_JSON()
   assert type(r) == dict
 @
@@ -2365,7 +2374,7 @@ def undervisningssprak_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_undervisningssprak_JSON() -> None:
+def test_undervisningssprak_JSON(ladok) -> None:
   r = ladok.undervisningssprak_JSON()
   assert type(r) == dict
 @
@@ -2396,7 +2405,7 @@ def i18n_translation_JSON(self, lang: str = 'sv') -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_i18n_translation_JSON() -> None:
+def test_i18n_translation_JSON(ladok) -> None:
   r = ladok.i18n_translation_JSON()
   assert type(r) == dict
 @
@@ -2427,7 +2436,7 @@ def svenskorter_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_svenskorter_JSON() -> None:
+def test_svenskorter_JSON(ladok) -> None:
   r = ladok.svenskorter_JSON()
   assert type(r) == dict
 @
@@ -2458,7 +2467,7 @@ def kommuner_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_kommuner_JSON() -> None:
+def test_kommuner_JSON(ladok) -> None:
   r = ladok.kommuner_JSON()
   assert type(r) == dict
 @
@@ -2488,7 +2497,7 @@ def lander_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_lander_JSON() -> None:
+def test_lander_JSON(ladok) -> None:
   r = ladok.lander_JSON()
   assert type(r) == dict
 @
@@ -2520,7 +2529,7 @@ def undervisningstid_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_undervisningstid_JSON() -> None:
+def test_undervisningstid_JSON(ladok) -> None:
   r = ladok.undervisningstid_JSON()
   assert type(r) == dict
 @
@@ -2552,7 +2561,7 @@ def successivfordjupning_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_successivfordjupning_JSON() -> None:
+def test_successivfordjupning_JSON(ladok) -> None:
   r = ladok.successivfordjupning_JSON()
   assert type(r) == dict
 @
@@ -2584,7 +2593,7 @@ def undervisningsform_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_undervisningsform_JSON() -> None:
+def test_undervisningsform_JSON(ladok) -> None:
   r = ladok.undervisningsform_JSON()
   assert type(r) == dict
 @
@@ -2615,7 +2624,7 @@ def LokalaPerioder_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_LokalaPerioder_JSON() -> None:
+def test_LokalaPerioder_JSON(ladok) -> None:
   r = ladok.LokalaPerioder_JSON()
   assert type(r) == dict
 @
@@ -2647,7 +2656,7 @@ def nivainomstudieordning_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_nivainomstudieordning_JSON() -> None:
+def test_nivainomstudieordning_JSON(ladok) -> None:
   r = ladok.nivainomstudieordning_JSON()
   assert type(r) == dict
 @
@@ -2679,7 +2688,7 @@ def amnesgrupp_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_amnesgrupp_JSON() -> None:
+def test_amnesgrupp_JSON(ladok) -> None:
   r = ladok.amnesgrupp_JSON()
   assert type(r) == dict
 @
@@ -2711,7 +2720,7 @@ def studietakt_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_studietakt_JSON() -> None:
+def test_studietakt_JSON(ladok) -> None:
   r = ladok.studietakt_JSON()
   assert type(r) == dict
 @
@@ -2744,7 +2753,7 @@ def finansieringsform_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_finansieringsform_JSON() -> None:
+def test_finansieringsform_JSON(ladok) -> None:
   r = ladok.finansieringsform_JSON()
   assert type(r) == dict
 @
@@ -2775,7 +2784,7 @@ def utbildningsomrade_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_utbildningsomrade_JSON() -> None:
+def test_utbildningsomrade_JSON(ladok) -> None:
   r = ladok.utbildningsomrade_JSON()
   assert type(r) == dict
 @
@@ -2806,7 +2815,7 @@ def kravpatidigarestudier_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_kravpatidigarestudier_JSON() -> None:
+def test_kravpatidigarestudier_JSON(ladok) -> None:
   r = ladok.kravpatidigarestudier_JSON()
   assert type(r) == dict
 @
@@ -2839,7 +2848,7 @@ def studieordning_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_studieordning_JSON() -> None:
+def test_studieordning_JSON(ladok) -> None:
   r = ladok.studieordning_JSON()
   assert type(r) == dict
 @
@@ -2870,7 +2879,7 @@ def enhet_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_enhet_JSON() -> None:
+def test_enhet_JSON(ladok) -> None:
   r = ladok.enhet_JSON()
   assert type(r) == dict
 @
@@ -2901,7 +2910,7 @@ def studielokalisering_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_studielokalisering_JSON() -> None:
+def test_studielokalisering_JSON(ladok) -> None:
   r = ladok.studielokalisering_JSON()
   assert type(r) == dict
 @
@@ -2932,7 +2941,7 @@ def antagningsomgang_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_antagningsomgang_JSON() -> None:
+def test_antagningsomgang_JSON(ladok) -> None:
   r = ladok.antagningsomgang_JSON()
   assert type(r) == dict
 @
@@ -2967,7 +2976,7 @@ def utbildningstyp_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_utbildningstyp_JSON() -> None:
+def test_utbildningstyp_JSON(ladok) -> None:
   r = ladok.utbildningstyp_JSON()
   assert type(r) == dict
 @
@@ -2998,7 +3007,7 @@ def aktivitetstillfallestyp_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_aktivitetstillfallestyp_JSON() -> None:
+def test_aktivitetstillfallestyp_JSON(ladok) -> None:
   r = ladok.aktivitetstillfallestyp_JSON()
   assert type(r) == dict
 @
@@ -3029,7 +3038,7 @@ def catalog_service_index_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_catalog_service_index_JSON() -> None:
+def test_catalog_service_index_JSON(ladok) -> None:
   r = ladok.catalog_service_index_JSON()
   assert type(r) == dict
 @
@@ -3065,7 +3074,7 @@ def omradesbehorighet_JSON(self) -> dict:
 Let's add a test.
 This should return a dictionary.
 <<test functions>>=
-def test_omradesbehorighet_JSON() -> None:
+def test_omradesbehorighet_JSON(ladok) -> None:
   r = ladok.omradesbehorighet_JSON()
   assert type(r) == dict
 @
@@ -3150,7 +3159,7 @@ def program_rounds_JSON(self, program_code: str) -> list:
 The test verifies that [[CTFYS_round_id]] appears among the returned
 programme rounds.
 <<test functions>>=
-def test_program_rounds_JSON() -> None:
+def test_program_rounds_JSON(ladok) -> None:
   rounds = ladok.program_rounds_JSON("CTFYS")
   assert len(rounds) > 0
   round_uids = [r["Uid"] for r in rounds]
@@ -3195,7 +3204,7 @@ def program_round_participants_JSON(self, round_uid: str) -> list:
 @
 
 <<test functions>>=
-def test_program_round_participants_JSON() -> None:
+def test_program_round_participants_JSON(ladok) -> None:
   participants = ladok.program_round_participants_JSON(CTFYS_round_id)
   assert len(participants) > 0
   first = participants[0]
@@ -3236,7 +3245,7 @@ def examination_occasions_JSON(self, course_code: str) -> list:
 @
 
 <<test functions>>=
-def test_examination_occasions_JSON() -> None:
+def test_examination_occasions_JSON(ladok) -> None:
   occasions = ladok.examination_occasions_JSON("SH1014")
   assert len(occasions) > 0
   occasion_uids = [o["Uid"] for o in occasions]
@@ -3306,7 +3315,7 @@ def occasion_results_JSON(self, occasion_uid: str,
 @
 
 <<test functions>>=
-def test_occasion_results_JSON() -> None:
+def test_occasion_results_JSON(ladok) -> None:
   results = ladok.occasion_results_JSON(
     SH1014_occasion_id, [SH1014_round_id])
   assert len(results) > 0
@@ -3391,7 +3400,7 @@ def student_result_history_JSON(self, student_uid: str) -> list:
 We test with a student who has two TEN1 entries for SH1014: a failing
 grade from January~2025 and a passing~C from January~2026.
 <<test functions>>=
-def test_student_result_history_JSON() -> None:
+def test_student_result_history_JSON(ladok) -> None:
   history = ladok.student_result_history_JSON(SH1014_retake_student_uid)
   assert isinstance(history, list)
   assert len(history) > 0
@@ -3476,7 +3485,7 @@ We sanity-check that the response is XML rather than empty or HTML
 login page, which [[get_query_text]] doesn't otherwise detect).
 
 <<test functions>>=
-def test_grade_scales_all_text() -> None:
+def test_grade_scales_all_text(ladok) -> None:
   text = ladok.grade_scales_all_text()
   assert text
   assert "<?xml" in text or "<betygsskala" in text.lower() \
@@ -3542,7 +3551,7 @@ wrapper is one line, so any failure in the helper's URL or content-type
 shows up here first.
 
 <<test functions>>=
-def test_program_round_by_uid_JSON() -> None:
+def test_program_round_by_uid_JSON(ladok) -> None:
   record = ladok.program_round_by_uid_JSON(CTFYS_round_id)
   assert record["Uid"] == CTFYS_round_id
   assert "UtbildningsinstansUID" in record
@@ -3576,7 +3585,7 @@ def course_round_details_JSON(self, round_uid: str) -> dict:
 The test uses [[SH1014_round_id]] (a course round of SH1014, the same
 round whose examination occasion we use elsewhere).
 <<test functions>>=
-def test_course_round_details_JSON() -> None:
+def test_course_round_details_JSON(ladok) -> None:
   record = ladok.course_round_details_JSON(SH1014_round_id)
   assert record["Uid"] == SH1014_round_id
 @
@@ -3610,7 +3619,7 @@ def course_round_utbildningsinformation_JSON(self, round_uid: str) -> dict:
 The presence of [[Tillfallesperioder]] is what distinguishes this view
 from [[course_round_details_JSON]] --- so we assert on that key.
 <<test functions>>=
-def test_course_round_utbildningsinformation_JSON() -> None:
+def test_course_round_utbildningsinformation_JSON(ladok) -> None:
   record = ladok.course_round_utbildningsinformation_JSON(SH1014_round_id)
   assert record["Uid"] == SH1014_round_id
   assert "Tillfallesperioder" in record
@@ -3661,7 +3670,7 @@ def student_program_participations_JSON(self, student_uid: str) -> list:
 We use [[SH1014_retake_student_uid]] for this test --- a student we
 know has at least programme enrolment.
 <<test functions>>=
-def test_student_program_participations_JSON() -> None:
+def test_student_program_participations_JSON(ladok) -> None:
   participations = ladok.student_program_participations_JSON(
     SH1014_retake_student_uid)
   assert isinstance(participations, list)
@@ -3716,7 +3725,7 @@ def student_course_participations_JSON(self, student_uid: str) -> list:
 The retake student took SH1014 multiple times, so we expect their
 course-round participations to include at least one entry.
 <<test functions>>=
-def test_student_course_participations_JSON() -> None:
+def test_student_course_participations_JSON(ladok) -> None:
   participations = ladok.student_course_participations_JSON(
     SH1014_retake_student_uid)
   assert isinstance(participations, list)
@@ -3787,17 +3796,17 @@ The validation test ensures a non-URI input is rejected up front
 test constructs a URI in the same shape as a real LADOK hypermedia
 link and verifies it resolves through the proxy.
 <<test functions>>=
-def test_fetch_linked_uri_JSON_rejects_non_uri() -> None:
+def test_fetch_linked_uri_JSON_rejects_non_uri(offline_ladok) -> None:
   with pytest.raises(ladok3.LadokValidationError):
-    ladok.fetch_linked_uri_JSON("not a uri")
+    offline_ladok.fetch_linked_uri_JSON("not a uri")
 
-def test_fetch_linked_uri_JSON_rejects_wrong_host() -> None:
+def test_fetch_linked_uri_JSON_rejects_wrong_host(offline_ladok) -> None:
   with pytest.raises(ladok3.LadokValidationError):
-    ladok.fetch_linked_uri_JSON(
+    offline_ladok.fetch_linked_uri_JSON(
       f"https://example.com/utbildningsinformation/internal/"
       f"utbildningsinstans/{dasak_instance_id}")
 
-def test_fetch_linked_uri_JSON_follows_link() -> None:
+def test_fetch_linked_uri_JSON_follows_link(ladok) -> None:
   uri = ("https://api.test.ladok.se:443/utbildningsinformation"
          f"/internal/utbildningsinstans/{dasak_instance_id}")
   record = ladok.fetch_linked_uri_JSON(
@@ -3826,7 +3835,7 @@ def utbildningsinstans_JSON(self, inst_uid: str) -> dict:
 @
 
 <<test functions>>=
-def test_utbildningsinstans_JSON() -> None:
+def test_utbildningsinstans_JSON(ladok) -> None:
   record = ladok.utbildningsinstans_JSON(dasak_instance_id)
   assert record["Uid"] == dasak_instance_id
 @
@@ -3870,7 +3879,7 @@ a programme instance returns its tracks/specialisations.  We don't
 assert a particular length --- only that the response unwraps cleanly
 to a list.
 <<test functions>>=
-def test_utbildningsinstans_underliggande_JSON() -> None:
+def test_utbildningsinstans_underliggande_JSON(ladok) -> None:
   subs = ladok.utbildningsinstans_underliggande_JSON(dasak_instance_id)
   assert isinstance(subs, list)
 @
@@ -3909,7 +3918,7 @@ record carries an [[UtbildningsinstansUID]] pointing back at its
 parent instance, and listing the rounds of that instance must include
 the round we started from.
 <<test functions>>=
-def test_utbildningstillfalle_lista_JSON() -> None:
+def test_utbildningstillfalle_lista_JSON(ladok) -> None:
   round_record = ladok.program_round_by_uid_JSON(CTFYS_round_id)
   inst_uid = round_record["UtbildningsinstansUID"]
   rounds = ladok.utbildningstillfalle_lista_JSON(inst_uid)

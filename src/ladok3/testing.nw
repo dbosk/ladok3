@@ -1,0 +1,155 @@
+\chapter{Testing}\label{Testing}
+
+The tests live in the same files as the code they verify, right after it,
+and [[make test]] tangles them into [[tests/test_*.py]] and runs [[pytest]].
+This chapter covers what the individual tests share: how a test gets a LADOK
+session, and which tests may talk to LADOK at all.
+
+\section{Three kinds of tests}
+
+The tests fall into three groups, by what they need from LADOK.
+\begin{description}
+\item[Offline tests] exercise our own code: parsing, the command-line
+  interface, the reporting logic, session sharing.
+  They use real objects where they can and small local stand-ins where a
+  LADOK response is needed.
+  They need no network and no credentials, and they are most of the
+  tests.
+\item[Live read tests] send requests to LADOK's test environment and check
+  the responses.
+  Most of them are in the chapters on the API calls.
+\item[Live write tests] create, update, finalize and remove results in the
+  test environment.
+  They are marked [[mutates]].
+\end{description}
+
+LADOK's test environment is not a sandbox filled with made-up data.
+It is a copy of production, synced again every week, so the students in it
+are real people and a write changes a real record until the next sync.
+Logging in also takes multi-factor authentication, which needs a person at
+hand.
+For both reasons the live tests are opt-in:
+\begin{description}
+\item[[[make test]] ] runs only the offline tests and skips the rest, with
+  the reason.
+\item[[[make test PYTESTFLAGS=--live]] ] adds the live read tests.
+\item[[[make test PYTESTFLAGS="--live --live-writes"]] ] adds the write
+  tests as well.
+\end{description}
+
+Earlier, the test modules created their session at import time.
+That had two bad effects.
+Without credentials, the import failed, so [[pytest]] could not collect the
+module, and its offline tests never ran either.
+With credentials, a plain [[make test]] was a live run: it logged in, could
+prompt for MFA and wrote results, and [[make publish]] runs [[make test]]
+before every release.
+Taking the session from a fixture fixes both problems.
+A fixture runs only when a test asks for it, so it can skip that test
+instead of failing the import, and an offline run never creates a session
+at all.
+
+\section{The shared test configuration}
+
+[[pytest]] reads command-line options and shared fixtures from a file
+[[conftest.py]] in the test directory, which we tangle from here.
+<<[[conftest.py]]>>=
+"""Shared pytest configuration for ladok3's tests.
+
+Tangled from src/ladok3/testing.nw; edit that file, not this one.
+"""
+import ladok3
+import pytest
+
+<<command-line options>>
+<<test markers>>
+<<fixtures>>
+<<collection rules>>
+@
+
+\subsection{Opting in to live runs}
+
+The two options are separate because they carry different risks.
+A read test only looks at the data, while a write test changes it.
+<<command-line options>>=
+def pytest_addoption(parser):
+  group = parser.getgroup("ladok3")
+  group.addoption(
+    "--live", action="store_true",
+    help="also run the tests against LADOK's test environment "
+         "(attended: may prompt for MFA)")
+  group.addoption(
+    "--live-writes", action="store_true",
+    help="with --live, also run the tests that change data in LADOK's "
+         "test environment")
+@
+
+We register the [[mutates]] marker so that [[pytest]] knows it and a
+misspelling is reported instead of silently matching nothing.
+<<test markers>>=
+def pytest_configure(config):
+  config.addinivalue_line(
+    "markers",
+    "mutates: the test changes data in LADOK; "
+    "runs only with --live --live-writes")
+@
+
+A [[mutates]] test is skipped unless we asked for writes.
+Without [[--live]] it is skipped anyway, by the [[ladok]] fixture below, but
+with [[--live]] alone, this rule is what keeps it from running.
+<<collection rules>>=
+def pytest_collection_modifyitems(config, items):
+  if config.getoption("--live") and config.getoption("--live-writes"):
+    return
+  skip_writes = pytest.mark.skip(
+    reason="changes data in LADOK; run with --live --live-writes")
+  for item in items:
+    if "mutates" in item.keywords:
+      item.add_marker(skip_writes)
+@
+
+\subsection{Sessions for the tests}
+
+Every live test depends on the [[live]] fixture, directly or through one of
+the session fixtures, and that fixture is what skips the test in an offline
+run.
+<<fixtures>>=
+@pytest.fixture(scope="session")
+def live(request):
+  """Skip the requesting test unless pytest runs with `--live`."""
+  if not request.config.getoption("--live"):
+    pytest.skip("needs LADOK's test environment; run with --live")
+@
+
+The live tests share one session, [[ladok3.test_session]].
+It reuses the cached login from [[ladok login]] (\cref{CachedSession}), so a
+live run usually needs no new MFA prompt.
+When there are no stored credentials, [[ladok3.test_session]] raises
+[[RuntimeError]], and we skip rather than fail: the problem is the machine's
+set-up, not the code.
+Any other error is left to fail the test, because it may well be a bug in
+the login code.
+<<fixtures>>=
+@pytest.fixture(scope="session")
+def ladok(live):
+  """The shared session for LADOK's test environment."""
+  try:
+    return ladok3.test_session
+  except RuntimeError as err:
+    pytest.skip(f"cannot log in to LADOK: {err}")
+@
+
+Some tests check validation that happens before any request is sent, for
+instance that [[fetch_linked_uri_JSON]] refuses a link to another host.
+They need a [[LadokSession]] object, but not a logged-in one.
+Creating the object makes no request, since the login happens on the first
+request, so these tests run offline.
+If one of them sent a request by mistake, it would fail, because that
+request would trigger a login without credentials.
+<<fixtures>>=
+@pytest.fixture(scope="session")
+def offline_ladok():
+  """A session for LADOK's test environment that never logs in."""
+  return ladok3.LadokSession("KTH Royal Institute of Technology",
+                             test_environment=True)
+@
