@@ -20,6 +20,7 @@ Previously we imported the session from [[test_ladok3]], which triggered
 that module's deliberate fresh login---the right thing when testing session
 \emph{establishment}, but a needless MFA prompt for every API test run.
 <<test [[api.py]]>>=
+import datetime
 import json
 import ladok3
 import ladok3.report
@@ -514,9 +515,7 @@ def xsrf_token(self) -> str:
       str: A valid XSRF token for use in authenticated requests.
   """
   <<ensure the XSRF token is fresh>>
-
-  cookies = self.session.cookies.get_dict()
-  return cookies["XSRF-TOKEN"]
+  <<return the XSRF token of our own LADOK environment>>
 @
 
 Now, we must ensure there is a fresh XSRF token.
@@ -547,6 +546,92 @@ if (not self.__access_time
   self.user_info_JSON() # trigger login
 else:
   <<record time of request>>
+@
+
+\subsubsection{Which XSRF token is ours}
+
+A fresh token is not enough; it must also be the token of the right LADOK
+environment.
+Each environment sets its own [[XSRF-TOKEN]] cookie, scoped to its own host:
+[[start.ladok.se]] for production and [[start.test.ladok.se]] for the test
+environment.
+Both cookies can end up in the same cookie jar.
+That is no accident: [[ladok3.test_session]] shares the production session's
+underlying session, and with it the cookie jar, so that the test environment
+can log in on the production SSO cookies (\cref{CachedSession}).
+That shared jar is then pickled into the cache, so once a test run or a
+documentation build has touched the test environment, every later
+production session restored from the cache carries both tokens.
+
+Contrast two ways of reading the token from such a jar.
+An earlier version flattened the jar into a dictionary with
+[[get_dict()]].
+A dictionary has room for only one [[XSRF-TOKEN]], so the cookie that the jar
+lists last wins.
+The jar lists its cookies sorted by domain, and [[start.test.ladok.se]] sorts
+after [[start.ladok.se]], so the test environment's token always won.
+A production session then sent the test environment's token with every PUT,
+POST and DELETE request, and LADOK answered each of them with an
+\enquote{Application error} (status 500).
+GET requests carry no token, so they kept working, which made the problem
+look like a fault in a particular LADOK endpoint rather than in our session.
+
+Instead we ask the jar for the cookie that our own host set.
+This works because the jar records the domain of every cookie, and LADOK sets
+its token on the bare host name, without a leading dot, so the domain matches
+the host of [[self.base_url]] exactly.
+We derive the host inside the property rather than storing it in the
+constructor:
+sessions restored from the cache are unpickled, not constructed, so an
+attribute that only the constructor sets would be missing on them.
+We deliberately leave out the path.
+Should our host ever set a second token on another path, the jar raises
+[[CookieConflictError]] instead of silently choosing one of them, and a loud
+failure is what we want for an ambiguous token.
+If our host has set no token at all, we tell the user to log in again, rather
+than failing with a bare [[KeyError]].
+<<return the XSRF token of our own LADOK environment>>=
+host = urllib.parse.urlparse(self.base_url).hostname
+token = self.session.cookies.get("XSRF-TOKEN", domain=host)
+if token is None:
+  raise LadokAPIError(
+    f"no XSRF token from {host}; log in again with `ladok login`")
+return token
+@
+
+Let's verify that a production session and a test-environment session that
+share one cookie jar each get their own token.
+We set both tokens the way LADOK does and mark both sessions as recently used,
+so that the freshness check makes no request and the test runs offline.
+With [[get_dict()]], the production session would get the test token here.
+<<test functions>>=
+def make_sessions_sharing_one_jar():
+  prod = ladok3.LadokSession("KTH Royal Institute of Technology")
+  test = ladok3.LadokSession("KTH Royal Institute of Technology",
+                             test_environment=True,
+                             session=prod.session)
+  for session in (prod, test):
+    session._LadokSession__access_time = datetime.datetime.now()
+  return prod, test
+
+def test_xsrf_token_comes_from_own_environment() -> None:
+  prod, test = make_sessions_sharing_one_jar()
+  prod.session.cookies.set("XSRF-TOKEN", "prod-token",
+                           domain="start.ladok.se", path="/gui")
+  prod.session.cookies.set("XSRF-TOKEN", "test-token",
+                           domain="start.test.ladok.se", path="/gui")
+  assert prod.xsrf_token == "prod-token"
+  assert test.xsrf_token == "test-token"
+@
+
+The other environment's token must not stand in for a missing one of our own.
+<<test functions>>=
+def test_xsrf_token_missing_for_own_environment() -> None:
+  prod, test = make_sessions_sharing_one_jar()
+  prod.session.cookies.set("XSRF-TOKEN", "test-token",
+                           domain="start.test.ladok.se", path="/gui")
+  with pytest.raises(ladok3.LadokAPIError, match="ladok login"):
+    prod.xsrf_token
 @
 
 

@@ -145,6 +145,9 @@ It also means there is only \emph{one} thing to cache: the production
 session's pickle carries the shared session with both environments'
 handlers and cookies, and re-deriving the facade after a restore is safe
 because [[add_handler]] skips the handlers already present.
+One consequence is that the shared jar holds an XSRF token for each
+environment, so each [[LadokSession]] must pick the token of its own host
+(\cref{XSRFtoken}).
 
 \subsection{Loading and memoizing the production session}
 
