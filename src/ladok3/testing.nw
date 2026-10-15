@@ -95,6 +95,7 @@ Everything that is specific to LADOK we pass to it from here.
 
 Tangled from src/ladok3/testing.nw; edit that file, not this one.
 """
+import datetime
 import hashlib
 import json
 import os
@@ -388,6 +389,16 @@ holds, would depend on which tests ran before it: a test recorded after
 another that filled the cache would, when run alone, make a request that its
 cassette lacks.
 
+The XSRF token needs the same care.
+Before a PUT, POST or DELETE, [[LadokSession]] makes a request to refresh the
+token if it has made none in the last 15 minutes (\cref{XSRFtoken}).
+While recording, the shared session has always just been used, so that
+request never happens; a replay session made a moment ago has not been used
+at all, so it would.
+We therefore mark the replay session as just used, before each test.
+This reaches into a private attribute, which is the price of keeping the
+freshness rule out of the public interface.
+
 Finally, in replay we check that the test made every request its cassette
 holds.
 By default [[vcrpy]] only answers the requests that come; it doesn't notice
@@ -416,6 +427,7 @@ def ladok(request, recording, live_ladok, vcr,
                 "or run with --live")
   session = request.getfixturevalue("replay_ladok")
   session.cache.clear()
+  session._LadokSession__access_time = datetime.datetime.now()
   yield session
   assert vcr.all_played, (
     f"the test made {vcr.play_count} of the {len(vcr)} requests recorded "
@@ -597,6 +609,9 @@ its [[sv]] and [[en]] texts), in codes ([[Kod]]), in the translation table
 Responses from the code tables, the translation table and the course
 information ([[PUBLIC_PATHS]]) hold no people, so all of their text counts as
 public.
+So do the HTTP headers, apart from cookies and credentials: a short word
+recorded as an original once turned up in every cassette, as the [[max]] of
+[[Cache-Control: max-age=0]].
 The staff lists, which the catalogue service also serves, are not among them.
 Allowing per cassette matters: the table of Swedish places holds many words
 that are also surnames, and allowing those in every cassette would let a
@@ -639,6 +654,8 @@ PUBLIC_PATHS = ("/kataloginformation/internal/grunddata/",
                 "/utbildningsinformation/internal/utbildningsinstans",
                 "/utbildningsinformation/internal/utbildningstillfalle",
                 "/utbildningsinformation/internal/struktur/")
+PRIVATE_HEADERS = {"cookie", "set-cookie", "authorization",
+                   "x-xsrf-token", "x-csrf-token"}
 ESCAPE_SEQUENCE = r"\\(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)"
 <<checks after the run>>=
 def public_originals(originals, cassette):
@@ -670,6 +687,7 @@ def public_text(cassette):
   except (yaml.YAMLError, KeyError, TypeError):
     return
   for interaction in interactions:
+    yield from public_header_values(interaction)
     try:
       body = json.loads(interaction["response"]["body"]["string"])
     except (KeyError, TypeError, ValueError):
@@ -677,6 +695,19 @@ def public_text(cassette):
     uri = interaction.get("request", {}).get("uri", "")
     public = any(path in uri for path in PUBLIC_PATHS)
     yield from strings_under(body, PUBLIC_TEXT_KEYS, inside=public)
+
+
+def public_header_values(interaction):
+  """Yield the values of the request and response headers, except those
+  that carry cookies or credentials."""
+  for part in ("request", "response"):
+    headers = (interaction.get(part) or {}).get("headers") or {}
+    for name, values in headers.items():
+      if name.lower() in PRIVATE_HEADERS:
+        continue
+      for value in values if isinstance(values, list) else [values]:
+        if isinstance(value, str):
+          yield value
 
 
 def strings_under(data, keys, inside=False):
@@ -698,11 +729,15 @@ with an escaped \enquote{ö} as in the real cassettes, so it is allowed there.
 In a list of students it sits in a name field that the scrubber missed, so it
 must be reported, even though the other cassette shows that it is also a word
 in a place name.
+\enquote{Max} occurs in a [[Cache-Control]] header and is allowed;
+\enquote{Maxine} occurs only in a cookie, which is not public, and is not.
 <<test functions>>=
 def write_cassette(path, uri, body):
   interaction = {"request": {"uri": uri, "method": "GET"},
-                 "response": {"body": {
-                   "string": json.dumps(body, ensure_ascii=False)}}}
+                 "response": {
+                   "headers": {"Cache-Control": ["no-cache, max-age=0"],
+                               "Set-Cookie": ["Maxine=redacted"]},
+                   "body": {"string": json.dumps(body, ensure_ascii=False)}}}
   path.write_text(yaml.safe_dump({"interactions": [interaction]}))
   return path
 
@@ -719,12 +754,12 @@ def test_public_originals_are_allowed_per_cassette(tmp_path):
     "/studiedeltagande/internal/deltagare",
     {"Resultat": [{"Student": {"Smeknamn": "Hammar"},
                    "Benamning": {"sv": "Datorteknik"}}]})
-  originals = ["Hammar", "POST", "Datorteknik"]
+  originals = ["Hammar", "POST", "Datorteknik", "Max", "Maxine"]
 
   assert "Hammar" in conftest.public_originals(originals, places)
   assert "Hammar" not in conftest.public_originals(originals, students)
   assert set(conftest.public_originals(originals, students)) \
-    == {"POST", "Datorteknik"}
+    == {"POST", "Datorteknik", "Max"}
 @
 
 <<compare the live recordings with the cassettes>>=
