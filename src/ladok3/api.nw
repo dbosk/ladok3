@@ -1834,14 +1834,16 @@ undo:
 \item[Draft] is removed with [[remove_result_draft_JSON]].
 \item[Finalized] must first be turned back into a draft with
   [[finalized_result_to_draft_JSON]], and then removed.
-\item[Attested] can't be undone through the API at all; someone has to
-  remove the attestation in LADOK's web interface.
+\item[Attested] needs the examiner to remove the attestation, which LADOK
+  guards with a forced new login, MFA included.
+  LADOK's API allows it, but ladok3 does not implement attestation yet; the
+  flow and a plan are in issue~63 on GitHub.
 \end{description}
 [[remove_lab_result]] walks the test student's LAB1 result back through these
 steps, whatever state it is in.
 It reads the state from LADOK rather than from the test, since a failed test
 may have stopped between two steps.
-An attested result it can't remove, so it fails and says what to do by hand.
+An attested result it leaves alone, failing and saying what to do by hand.
 The tests never attest, so that only happens if someone attests a result
 that a failed run left behind.
 
@@ -1882,12 +1884,13 @@ def lab_result(ladok):
 def remove_lab_result(ladok):
   """Walk the test student's LAB1 result back to nothing: a finalized
   result goes back to draft, a draft is removed.  Fail if it is attested,
-  since only LADOK's web interface can undo that; a draft on top of the
-  attested result is then left too."""
+  since ladok3 can't remove attestations yet (issue 63); a draft on top of
+  the attested result is then left too."""
   draft, attested = lab_result(ladok)
   if attested:
     pytest.fail(f"LAB1 result {attested['Uid']} of the test student is "
-                "attested; remove the attestation in LADOK, then rerun")
+                "attested; remove the attestation in LADOK's web "
+                "interface, then rerun")
   if draft is None:
     return
   if draft["ProcessStatus"] == FINALIZED:
