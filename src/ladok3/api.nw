@@ -1778,27 +1778,101 @@ def create_result_JSON(self,
                            f"{err}") from err
 @
 
-We test this in the following way.
+These write tests change a real student's record in the test environment,
+so each test must leave the record as it found it, also when it fails
+halfway.
+A result goes through up to three states, and each one needs its own step to
+undo:
+\begin{description}
+\item[Draft] is removed with [[remove_result_draft_JSON]].
+\item[Finalized] must first be turned back into a draft with
+  [[finalized_result_to_draft_JSON]], and then removed.
+\item[Attested] can't be undone through the API at all; someone has to
+  remove the attestation in LADOK's web interface.
+\end{description}
+[[remove_lab_result]] walks the test student's LAB1 result back through these
+steps, whatever state it is in.
+It reads the state from LADOK rather than from the test, since a failed test
+may have stopped between two steps.
+An attested result it can't remove, so it fails and says what to do by hand.
+The tests never attest, so that only happens if someone attests a result
+that a failed run left behind.
+
+Each test gets its result from a fixture: [[draft_result]] creates a draft,
+and [[finalized_result]] finalizes that draft.
+The fixture calls [[remove_lab_result]] both before creating the result, to
+clear anything an aborted run left behind, and after the test, also when the
+test failed.
+An earlier version instead chained the tests through module variables: one
+test created the result, the next updated it, and so on, with the last one
+removing it.
+A single test could not run on its own, and a failure in the middle left the
+result in LADOK.
 <<test functions>>=
 datintro_student_uid = "76291c55-d24a-11ea-a4db-82cca4dd4b3e"
 datintro_instance_id = "2179e02c-d6b5-11e8-8fd5-cf9d2c5c41ba"
 datintro_LAB1_id = "385a4428-73d8-11e8-b4e0-063f9afb40e3"
 
-result_uid = None
-result_last_modified = None
+DRAFT = 1
+FINALIZED = 2
+PASS_GRADE_ID = 131663
+FAIL_GRADE_ID = 131658
 
-@pytest.mark.mutates
-def test_create_result_JSON(ladok) -> None:
+def lab_result(ladok):
+  """Return the test student's LAB1 result on DATINTRO as a pair: the work
+  copy (draft or finalized) and the attested result, each None if absent."""
+  education_id = ladok.course_instance_JSON(
+    datintro_instance_id)["UtbildningUID"]
+  results = ladok.student_results_JSON(datintro_student_uid, education_id)
+  for version in results["Kursversioner"]:
+    for module in version["VersionensModuler"]:
+      if module["UtbildningsinstansUID"] == datintro_LAB1_id:
+        wrapper = module.get("ResultatPaUtbildning", {})
+        return (wrapper.get("Arbetsunderlag"),
+                wrapper.get("SenastAttesteradeResultat"))
+  return None, None
+
+def remove_lab_result(ladok):
+  """Walk the test student's LAB1 result back to nothing: a finalized
+  result goes back to draft, a draft is removed.  Fail if it is attested,
+  since only LADOK's web interface can undo that."""
+  draft, attested = lab_result(ladok)
+  if attested:
+    pytest.fail(f"LAB1 result {attested['Uid']} of the test student is "
+                "attested; remove the attestation in LADOK, then rerun")
+  if draft is None:
+    return
+  if draft["ProcessStatus"] == FINALIZED:
+    draft = ladok.finalized_result_to_draft_JSON(
+      draft["Uid"], draft["SenasteResultatandring"])
+  ladok.remove_result_draft_JSON(draft["Uid"])
+
+@pytest.fixture
+def draft_result(ladok):
+  remove_lab_result(ladok)
   result = ladok.create_result_JSON(
     datintro_student_uid, datintro_instance_id, datintro_LAB1_id,
-    131663, "2022-11-29")
+    PASS_GRADE_ID, "2022-11-29")
+  yield result
+  remove_lab_result(ladok)
 
-  global result_uid
-  result_uid = result["Uid"]
-  global result_last_modified
-  result_last_modified = result["SenasteResultatandring"]
+@pytest.fixture
+def finalized_result(ladok, draft_result):
+  return ladok.finalize_result_JSON(
+    draft_result["Uid"], draft_result["SenasteResultatandring"],
+    reporter_id)
+@
 
-  assert json.dumps(result, indent=2, ensure_ascii=False)
+Creating a result should give us a draft with the grade and date we asked
+for, and LADOK should now list it as the student's LAB1 result.
+<<test functions>>=
+@pytest.mark.mutates
+def test_create_result_JSON(ladok, draft_result) -> None:
+  assert draft_result["ProcessStatus"] == DRAFT
+  assert draft_result["Betygsgrad"] == PASS_GRADE_ID
+  assert draft_result["Examinationsdatum"] == "2022-11-29"
+  draft, _ = lab_result(ladok)
+  assert draft["Uid"] == draft_result["Uid"]
 @
 
 The output looks like this.
@@ -1869,16 +1943,15 @@ def update_result_JSON(self,
 We test this in the following way.
 <<test functions>>=
 @pytest.mark.mutates
-def test_update_result_JSON(ladok) -> None:
-  global result_uid
-  global result_last_modified
-
+def test_update_result_JSON(ladok, draft_result) -> None:
   result = ladok.update_result_JSON(
-    result_uid, 131658, "2022-11-28", result_last_modified)
+    draft_result["Uid"], FAIL_GRADE_ID, "2022-11-28",
+    draft_result["SenasteResultatandring"])
 
-  result_last_modified = result["SenasteResultatandring"]
-
-  assert json.dumps(result, indent=2, ensure_ascii=False)
+  assert result["Uid"] == draft_result["Uid"]
+  assert result["ProcessStatus"] == DRAFT
+  assert result["Betygsgrad"] == FAIL_GRADE_ID
+  assert result["Examinationsdatum"] == "2022-11-28"
 @
 
 The output looks like this.
@@ -1928,13 +2001,11 @@ the path.
 We can test this in the following way.
 <<test functions>>=
 @pytest.mark.mutates
-def test_result_attestants_JSON(ladok) -> None:
-  global result_uid
-  try:
-    attestants = ladok.result_attestants_JSON(result_uid)
-    assert json.dumps(attestants, indent=2, ensure_ascii=False)
-  except Exception as err:
-    assert "Några av angivna resultatidentiter" in str(err)
+def test_result_attestants_JSON(ladok, draft_result) -> None:
+  attestants = ladok.result_attestants_JSON(draft_result["Uid"])
+  assert attestants
+  assert len({attestant["Uid"] for attestant in attestants}) \
+    == len(attestants)
 @
 
 The output looks like this.
@@ -2069,52 +2140,43 @@ We test this in the following way.
 reporter_id = "21f4667a-e864-11ea-adbf-a14961264cf0"
 
 @pytest.mark.mutates
-def test_finalize_result_JSON(ladok) -> None:
-  global result_uid
-  global result_last_modified
-
+def test_finalize_result_JSON(ladok, draft_result) -> None:
   result = ladok.finalize_result_JSON(
-    result_uid, result_last_modified, reporter_id)
+    draft_result["Uid"], draft_result["SenasteResultatandring"], reporter_id)
 
-  result_last_modified = result["SenasteResultatandring"]
-
-  assert result.get("ProcessStatus") == 2
-  assert json.dumps(result, indent=2, ensure_ascii=False)
+  assert result["Uid"] == draft_result["Uid"]
+  assert result["ProcessStatus"] == FINALIZED
+  draft, _ = lab_result(ladok)
+  assert draft["ProcessStatus"] == FINALIZED
 @
 
 We also want to verify that the [[CourseResult]] class correctly reflects the
 finalized state through its [[finalized]] property.
 <<test functions>>=
 @pytest.mark.mutates
-def test_finalized_CourseResult(ladok) -> None:
+def test_finalized_CourseResult(ladok, finalized_result) -> None:
   """Verify CourseResult.finalized property after finalization."""
+  ladok.cache.clear()
   student = ladok.get_student(datintro_student_uid)
 
-  # Find the course participation for datintro
   courses = [c for c in student.courses()
              if c.instance_id == datintro_instance_id]
   assert len(courses) > 0, "Student should have course participation"
-  course = courses[0]
+  lab_results = courses[0].results(component="LAB1")
 
-  # Find the result that was just finalized (should be finalized but not attested)
-  results = course.results()
-  finalized_results = [r for r in results
-                       if r.finalized and not r.attested]
-  assert len(finalized_results) > 0, "Should have a finalized result"
-
-  result = finalized_results[0]
-  assert result.finalized == True
-  assert result.attested == False
+  assert len(lab_results) == 1
+  assert lab_results[0].finalized
+  assert not lab_results[0].attested
 @
 
 
 We can also verify that the reporting helper refuses to silently accept a
 different result once LADOK has a finalized value waiting for attestation.
-This exercises the live create/finalize cycle while keeping the cleanup flow
-unchanged.
+It gets its own finalized result from the [[finalized_result]] fixture.
 <<test functions>>=
 @pytest.mark.mutates
-def test_report_set_grade_rejects_mismatching_finalized_result(ladok) -> None:
+def test_report_set_grade_rejects_mismatching_finalized_result(
+    ladok, finalized_result) -> None:
   ladok.cache.clear()
   student = ladok.get_student(datintro_student_uid)
 
@@ -2184,16 +2246,15 @@ def update_finalized_result_JSON(self,
 We test this in the following way.
 <<test functions>>=
 @pytest.mark.mutates
-def test_update_finalized_result_JSON(ladok) -> None:
-  global result_uid
-  global result_last_modified
-
+def test_update_finalized_result_JSON(ladok, finalized_result) -> None:
   result = ladok.update_finalized_result_JSON(
-    result_uid, 131658, "2022-11-29", result_last_modified)
+    finalized_result["Uid"], FAIL_GRADE_ID, "2022-11-28",
+    finalized_result["SenasteResultatandring"])
 
-  result_last_modified = result["SenasteResultatandring"]
-
-  assert json.dumps(result, indent=2, ensure_ascii=False)
+  assert result["Uid"] == finalized_result["Uid"]
+  assert result["ProcessStatus"] == FINALIZED
+  assert result["Betygsgrad"] == FAIL_GRADE_ID
+  assert result["Examinationsdatum"] == "2022-11-28"
 @
 
 The output looks like this.
@@ -2232,14 +2293,12 @@ def finalized_result_to_draft_JSON(
 We test this in the following way.
 <<test functions>>=
 @pytest.mark.mutates
-def test_finalized_result_to_draft_JSON(ladok) -> None:
-  global result_uid
-  global result_last_modified
-
+def test_finalized_result_to_draft_JSON(ladok, finalized_result) -> None:
   result = ladok.finalized_result_to_draft_JSON(
-    result_uid, result_last_modified)
+    finalized_result["Uid"], finalized_result["SenasteResultatandring"])
 
-  assert json.dumps(result, indent=2, ensure_ascii=False)
+  assert result["Uid"] == finalized_result["Uid"]
+  assert result["ProcessStatus"] == DRAFT
 @
 
 The output looks like this.
@@ -2274,10 +2333,11 @@ def remove_result_draft_JSON(self, result_id: str) -> None:
 We test this in the following way.
 <<test functions>>=
 @pytest.mark.mutates
-def test_remove_result_draft_JSON(ladok) -> None:
-  global result_uid
+def test_remove_result_draft_JSON(ladok, draft_result) -> None:
+  ladok.remove_result_draft_JSON(draft_result["Uid"])
 
-  ladok.remove_result_draft_JSON(result_uid)
+  draft, attested = lab_result(ladok)
+  assert draft is None and attested is None
 @
 
 There is no output.
