@@ -31,7 +31,7 @@ Also, the code has been adapted to use [[self.session]] instead of
 # get_results
 #
 # person_nr          - personnummer, siffror i strängformat
-#            t.ex. 19461212-1212
+#            t.ex. 191212121212
 # course_code          - kurskod t.ex. DD1321
 #
 # RETURNERAR en dictionary från ladok med momentnamn, resultat
