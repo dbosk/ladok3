@@ -145,6 +145,9 @@ It also means there is only \emph{one} thing to cache: the production
 session's pickle carries the shared session with both environments'
 handlers and cookies, and re-deriving the facade after a restore is safe
 because [[add_handler]] skips the handlers already present.
+One consequence is that the shared jar holds an XSRF token for each
+environment, so each [[LadokSession]] must pick the token of its own host
+(\cref{XSRFtoken}).
 
 \subsection{Loading and memoizing the production session}
 
@@ -503,7 +506,7 @@ def test_shared_session_deduplicates_handlers():
 @
 
 
-\subsection{Retry policy for network resilience}
+\subsection{Retry policy for network resilience}\label{RetryPolicy}
 
 Network operations can fail transiently due to temporary connectivity issues, 
 server overload, or other intermittent problems. To make the LADOK API wrapper 
@@ -541,9 +544,28 @@ third waits 4 seconds, and so on.
 prevent excessively long waits on later retries while still allowing the full 
 retry sequence to span approximately 5 minutes total.
 
-\item[{Status forcelist}] We retry on HTTP status codes 500 (Internal Server 
-Error), 502 (Bad Gateway), 503 (Service Unavailable), and 504 (Gateway Timeout). 
+\item[{Status forcelist}] We retry on HTTP status codes 500 (Internal Server
+Error), 502 (Bad Gateway), 503 (Service Unavailable), and 504 (Gateway Timeout).
 These indicate temporary server-side issues that often resolve quickly.
+
+\item[{Status retries}] We allow at most 2 retries because of such a status,
+on top of the total limit above.
+A dropped connection or an overloaded gateway (502--504) usually clears up
+within seconds, but a 500 is often deterministic: LADOK fails the same way
+for the same request every time.
+For example, when we once sent the wrong XSRF token (\cref{XSRFtoken}),
+every PUT got a 500, and the full ten retries made each failing request
+wait for about 13~minutes before giving up.
+That is far too long when a bulk report has one such row per student.
+Capping the status retries separately keeps the ten patient retries for
+network problems while a persistent server error fails within seconds.
+
+\item[{Raise on status}] We turn this off.
+By default, once the status retries are used up, [[urllib3]] raises its own
+[[RetryError]] (\enquote{too many 500 error responses}), and LADOK's
+explanation of the error is lost.
+With [[raise_on_status=False]] we instead get the last response back, so our
+query methods can report what LADOK said (\cref{QueryErrors}).
 
 \item[{Allowed methods}] We allow retries on all HTTP methods including GET, 
 POST, PUT, and DELETE. While POST/PUT/DELETE are not idempotent by HTTP 
@@ -557,6 +579,8 @@ retry_strategy = Retry(
     backoff_factor=1,
     backoff_max=300,
     status_forcelist=[500, 502, 503, 504],
+    status=2,
+    raise_on_status=False,
     allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", 
                      "POST"]
 )
@@ -565,8 +589,26 @@ self.__session.mount("http://", adapter)
 self.__session.mount("https://", adapter)
 @
 
-The [[mount]] method attaches the retry-enabled adapter to both HTTP and HTTPS 
+The [[mount]] method attaches the retry-enabled adapter to both HTTP and HTTPS
 URLs, ensuring all requests through this session benefit from automatic retries.
+
+The adapter is part of the session object, so it is pickled into the cache
+along with it.
+A session restored from the cache therefore keeps the retry policy it was
+created with; a change to the policy reaches the user's cached session only
+with the next fresh login ([[ladok login]]).
+
+Let's verify that a new session fails fast on server errors and hands us the
+last response instead of raising.
+Creating the session makes no request, so this test runs offline.
+<<test functions>>=
+def test_retry_policy_fails_fast_on_server_errors():
+  ls = ladok3.LadokSession("KTH Royal Institute of Technology")
+  retry = ls.session.get_adapter(ls.base_url).max_retries
+  assert retry.total == 10
+  assert retry.status == 2
+  assert retry.raise_on_status is False
+@
 
 
 \section{The [[LadokSession]] data methods}\label{LadokSession-data-methods}
