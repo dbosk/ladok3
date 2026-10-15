@@ -268,12 +268,21 @@ def response_json_or_error(
     return response.json()
   except ValueError as err:
     content_type = response.headers.get("content-type", "<missing>")
-    body = " ".join(response.text.split())
-    if len(body) > 120:
-      body = body[:117] + "..."
     raise LadokAPIError(
       f"{method} request to {path} returned non-JSON response "
-      f"from {response.url} (Content-Type: {content_type}): {body}") from err
+      f"from {response.url} (Content-Type: {content_type}): "
+      f"{compact_body(response.text)}") from err
+@
+
+A whole HTML page in an error message buries the one line that matters, so
+we squeeze its whitespace and cut it short.
+<<functions>>=
+def compact_body(text: str, limit: int = 120) -> str:
+  """Return `text` on one line, shortened to at most `limit` characters."""
+  body = " ".join(text.split())
+  if len(body) > limit:
+    body = body[:limit - 3] + "..."
+  return body
 @
 
 Let's verify the improved error reporting with a synthetic HTML login page. The
@@ -297,6 +306,79 @@ def test_response_json_or_error_reports_html_login_pages() -> None:
     assert "https://start.ladok.se/gui/loggain" in str(err)
   else:
     assert False
+@
+
+\subsubsection{Reporting a failed request}\label{QueryErrors}
+
+The helper above deals with a successful status that carries the wrong kind
+of body; the query methods must also report requests that fail outright.
+When LADOK refuses a request, it usually explains why in the
+[[Meddelande]] field of a JSON body, and that explanation is what the user
+needs to see.
+But not every failure carries such a body.
+The requests that sent the wrong XSRF token (\cref{XSRFtoken}), for
+instance, got an HTML \enquote{Application error} page with status 500.
+Since our retry policy hands such final responses back to us
+(\cref{RetryPolicy}), we must expect them here.
+An earlier version put the whole response body into the message, which for
+such a page meant a screenful of HTML.
+We therefore use LADOK's own message when there is one, and otherwise the
+status and a shortened body.
+
+All five query methods below fail the same way, so they share this helper.
+It returns the exception rather than raising it, so that each method ends
+with an explicit [[raise]] and the reader sees where its control flow stops.
+<<functions>>=
+def query_error(response: requests.Response, path: str,
+                method: str) -> LadokAPIError:
+  """Return a `LadokAPIError` describing the failed `response`.
+
+  Uses LADOK's own error message (`Meddelande`) when the body is LADOK JSON,
+  otherwise the HTTP status and a shortened body.
+  """
+  try:
+    message = response.json()["Meddelande"]
+  except (ValueError, KeyError, TypeError):
+    message = (f"{response.status_code} {response.reason}: "
+               f"{compact_body(response.text)}")
+  return LadokAPIError(f"{method} request to {path} failed: {message}")
+@
+
+Let's verify both kinds of failure: an HTML error page from the proxy and a
+JSON refusal from LADOK.
+<<test functions>>=
+class FakeFailedResponse:
+  def __init__(self, status_code, reason, text, json_data=None):
+    self.status_code = status_code
+    self.reason = reason
+    self.text = text
+    self.__json_data = json_data
+
+  def json(self):
+    if self.__json_data is None:
+      raise ValueError("not json")
+    return self.__json_data
+
+def test_query_error_shortens_html_error_pages() -> None:
+  page = ("<!DOCTYPE html>\n<html>\n<head>\n"
+          "<title>Ladok - Application error</title>\n"
+          + "<meta>\n" * 100 + "</head></html>")
+  err = ladok3.query_error(
+    FakeFailedResponse(500, "Internal Server Error", page),
+    "/resultat/internal/kurstillfalle/moment", "PUT")
+  assert isinstance(err, ladok3.LadokAPIError)
+  assert "PUT request to /resultat/internal/kurstillfalle/moment" in str(err)
+  assert "500 Internal Server Error" in str(err)
+  assert "Application error" in str(err)
+  assert "\n" not in str(err)
+  assert len(str(err)) < 250
+
+def test_query_error_uses_ladok_message() -> None:
+  err = ladok3.query_error(
+    FakeFailedResponse(400, "Bad Request", '{"Meddelande": "..."}',
+                       {"Meddelande": "Resultatet är redan attesterat"}),
+    "/resultat/internal/resultat/uppdatera/1", "PUT")
+  assert str(err).endswith("failed: Resultatet är redan attesterat")
 @
 
 <<LadokSession data methods>>=
@@ -328,12 +410,7 @@ def get_query(self, path: str,
      
   if response.ok:
     return response_json_or_error(response, path, "GET")
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"GET request to {path} failed: {error_msg}")
+  raise query_error(response, path, "GET")
 
 def get_query_text(self, path: str, accept: str) -> str:
   """
@@ -375,12 +452,7 @@ def get_query_text(self, path: str, accept: str) -> str:
         f"GET request to {path} returned unexpected HTML from "
         f"{response.url}")
     return response.text
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"GET request to {path} failed: {error_msg}")
+  raise query_error(response, path, "GET")
 
 def put_query(self, path: str, put_data: dict | list,
               content_type: str = "application/vnd.ladok-resultat+json"
@@ -412,12 +484,7 @@ def put_query(self, path: str, put_data: dict | list,
      
   if response.ok:
     return response_json_or_error(response, path, "PUT")
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"PUT request to {path} failed: {error_msg}")
+  raise query_error(response, path, "PUT")
 
 def post_query(self, path: str, post_data: dict | list,
                content_type: str = "application/vnd.ladok-resultat+json"
@@ -449,12 +516,7 @@ def post_query(self, path: str, post_data: dict | list,
      
   if response.ok:
     return response_json_or_error(response, path, "POST")
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"POST request to {path} failed: {error_msg}")
+  raise query_error(response, path, "POST")
 
 def del_query(self, path: str) -> bool | dict | list | requests.Response:
   """
@@ -485,12 +547,7 @@ def del_query(self, path: str) -> bool | dict | list | requests.Response:
       return response.json()
     except:
       return response
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"DELETE request to {path} failed: {error_msg}")
+  raise query_error(response, path, "DELETE")
 @
 
 \subsection{The XSRF token}\label{XSRFtoken}
