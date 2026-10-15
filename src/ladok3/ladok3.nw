@@ -750,9 +750,45 @@ def method(self, *args):
   pass
 \end{minted}
 
-However, this construction cannot handle non-hashable objects (\eg dictionaries 
+However, this construction cannot handle non-hashable objects (\eg dictionaries
 and lists) as arguments.
 But the JSON representation of objects should be possible to make hashable.
+
+\subsection{Failures must not stick in the cache}\label{FailuresMustNotStick}
+
+The objects that the factories return fill most of their attributes lazily, on
+first use, and then keep them.
+The command-line interface pickles the whole session, cache included, after
+each command and restores it the next time (see [[store_ladok_session]]).
+So whatever an object remembers, it remembers across runs.
+
+That is a problem when LADOK fails while an attribute is being built.
+Suppose that we first set an attribute to an empty list and then fill it from
+LADOK's response.
+If the request fails, the exception reaches the user, but the empty list stays
+behind.
+The next call finds the attribute set and returns the empty list:
+the user is told that the student has no such course, long after LADOK works
+again, until the cache is cleared.
+(The [[cachetools]] decorator above does not have this problem, since it
+stores a value only when the method returns one.)
+
+We therefore follow one rule for every lazily built attribute:
+we assign it only once its value is complete.
+We build the value in a local variable and assign it at the end, so that an
+exception leaves the attribute unset and the next call tries again.
+Where an object refreshes state that it already has, we instead restore the
+old state on failure, so that the object holds the old state or the new one,
+never a mixture.
+In both cases the exception propagates, so the user still sees what went
+wrong.
+The rule applies to a student's courses (\cref{StudentCourses}) and contact
+data (\cref{StudentContact}), a course's components
+(\cref{CourseInstanceFailedPull}) and participants
+(\cref{CourseRoundParticipants}), and a student's results on a course
+(\cref{CourseRegistrationResults}).
+The contact data differ in that we deliberately hide the error from the
+caller, as we explain there.
 
 
 \chapter{Helper functions}
@@ -1281,82 +1317,133 @@ self.__alive = not record['Avliden']
 @
 
 
-\section{Students' contact attributes}
+\section{Students' contact attributes}\label{StudentContact}
 
 The contact attributes include email, phone number, and postal address information.
 We use the [[__get_contact_attributes]] helper method to populate these attributes
 from a separate LADOK API call.
 
+If LADOK does not give us the contact data, we treat the student as having
+none: the email and phone are [[None]] and the address has no lines.
+That way, for instance, [[ladok student --contact]] still prints everything
+else about the student.
+But we must not \emph{remember} that answer (\cref{FailuresMustNotStick}).
+An earlier version stored the empty values when the request failed, and the
+cache then kept them:
+a single server error made the student look as if they had no contact data in
+every later run.
+Now we remember only data that LADOK actually returned.
+After a failure we return the empty values for this call only, and the next
+call asks LADOK again.
+The price is that a student whose contact data LADOK always refuses costs a
+request on each access instead of one in all.
+
+Since a failure leaves nothing to remember, the properties cannot read the
+private attributes after fetching them, as the personal attributes do.
+Instead they all go through [[__contact_attributes]], which returns the
+remembered triple or the one that the fetch returns.
 <<student contact attribute methods>>=
 @property
 def email(self):
   """Return the student's email address"""
-  try:
-    return self.__email
-  except:
-    self.__get_contact_attributes()
-  return self.__email
+  return self.__contact_attributes()[0]
 
 @property
 def phone(self):
   """Return the student's phone number"""
-  try:
-    return self.__phone
-  except:
-    self.__get_contact_attributes()
-  return self.__phone
+  return self.__contact_attributes()[1]
 
 @property
 def address(self):
   """Return the student's postal address as a list of lines"""
+  return self.__contact_attributes()[2]
+
+def __contact_attributes(self):
+  """Returns (email, phone, address), fetching them if needed"""
   try:
-    return self.__address
-  except:
-    self.__get_contact_attributes()
-  return self.__address
+    return self.__email, self.__phone, self.__address
+  except AttributeError:
+    return self.__get_contact_attributes()
 
 def __get_contact_attributes(self):
   """Helper method that fetches contact attributes"""
   <<pull student contact attributes from LADOK>>
 @
+
+We guard only the request itself.
+Extracting the attributes from the response cannot fail on missing data,
+since it checks for every key, so an error there is a bug that should surface
+rather than be taken for a student without contact data.
 <<pull student contact attributes from LADOK>>=
 try:
   contact_data = self.ladok.get_student_contact_data_JSON(self.ladok_id)
-  
-  # Extract email address
-  self.__email = None
-  if 'Epost' in contact_data and contact_data['Epost']:
-    for email in contact_data['Epost']:
-      if 'Adress' in email:
-        self.__email = email['Adress']
-        break
-  
-  # Extract phone number
-  self.__phone = None
-  if 'Telefon' in contact_data and contact_data['Telefon']:
-    for phone in contact_data['Telefon']:
-      if 'Nummer' in phone:
-        self.__phone = phone['Nummer']
-        break
-  
-  # Extract postal address
-  self.__address = []
-  if 'Postadress' in contact_data and contact_data['Postadress']:
-    addr = contact_data['Postadress']
-    if isinstance(addr, list) and len(addr) > 0:
-      addr = addr[0]
-    if isinstance(addr, dict):
-      for field in ['Adressrad1', 'Adressrad2', 'Adressrad3']:
-        if field in addr and addr[field]:
-          self.__address.append(addr[field])
-      if 'Postnummer' in addr and addr['Postnummer'] and 'Postort' in addr and addr['Postort']:
-        self.__address.append(f"{addr['Postnummer']} {addr['Postort']}")
-
 except Exception:
-  # If contact data can't be retrieved, set default empty values
-  self.__email = None
-  self.__phone = None
-  self.__address = []
+  return None, None, []
+
+<<extract [[email]], [[phone]] and [[address]] from [[contact_data]]>>
+
+self.__email, self.__phone, self.__address = email, phone, address
+return email, phone, address
+@
+
+LADOK gives lists of email addresses and phone numbers; we take the first
+entry of each that holds a value.
+The postal address comes either as one record or as a list of them, in which
+case we take the first.
+We turn it into lines as on an envelope, the street lines followed by postal
+code and town.
+<<extract [[email]], [[phone]] and [[address]] from [[contact_data]]>>=
+email = None
+if 'Epost' in contact_data and contact_data['Epost']:
+  for entry in contact_data['Epost']:
+    if 'Adress' in entry:
+      email = entry['Adress']
+      break
+
+phone = None
+if 'Telefon' in contact_data and contact_data['Telefon']:
+  for entry in contact_data['Telefon']:
+    if 'Nummer' in entry:
+      phone = entry['Nummer']
+      break
+
+address = []
+if 'Postadress' in contact_data and contact_data['Postadress']:
+  addr = contact_data['Postadress']
+  if isinstance(addr, list) and len(addr) > 0:
+    addr = addr[0]
+  if isinstance(addr, dict):
+    for field in ['Adressrad1', 'Adressrad2', 'Adressrad3']:
+      if field in addr and addr[field]:
+        address.append(addr[field])
+    if addr.get('Postnummer') and addr.get('Postort'):
+      address.append(f"{addr['Postnummer']} {addr['Postort']}")
+@
+
+Let's verify that a failed request yields no contact data for that call but
+is not remembered, so that the next call gets the real data.
+The fake returns synthetic contact data.
+<<test functions>>=
+class FakeLadokForContactData:
+  def get_student_contact_data_JSON(self, student_id):
+    return {
+      "Epost": [{"Adress": "student@example.org"}],
+      "Telefon": [{"Nummer": "+46 70 000 00 00"}],
+      "Postadress": [{"Adressrad1": "Exempelgatan 1",
+                      "Postnummer": "111 11", "Postort": "Exempelstad"}],
+    }
+
+def test_failed_contact_data_request_is_not_remembered():
+  ladok = FakeLadokForContactData()
+  ladok.get_student_contact_data_JSON = fail_first_call(
+    ladok.get_student_contact_data_JSON)
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+
+  assert student.email is None
+
+  assert student.email == "student@example.org"
+  assert student.phone == "+46 70 000 00 00"
+  assert student.address == ["Exempelgatan 1", "111 11 Exempelstad"]
 @
 
 <<student attribute methods>>=
@@ -1401,18 +1488,65 @@ single course code.
 That is cheap: a [[CourseRegistration]] built from this sparse data sends no
 request until someone needs what the data lacks, such as the components
 (\cref{CourseInstanceLazyPull}).
+
+We collect the courses in a local list and assign [[self.__courses]] only
+once the list is complete (\cref{FailuresMustNotStick}).
+An earlier version started with [[self.__courses]] as an empty list and
+appended to it.
+When [[registrations_JSON]] failed with a server error, the empty list stayed
+behind, [[courses]] found it, and every later run---through the
+cache---reported \enquote{No such course}.
+Now a failure leaves [[self.__courses]] unset, so the next call to [[courses]]
+asks LADOK again.
+When [[pull]] refreshes a student that already has a list, a failure leaves
+the old list in place instead.
 <<create a list of the student's course objects>>=
-self.__courses = []
+courses = []
 
 for course in self.ladok.registrations_JSON(self.ladok_id):
   if not course['Nuvarande'] or \
     'Utbildningskod' not in course['Utbildningsinformation']:
     continue
-  
-  self.__courses.append(CourseRegistration(
+
+  courses.append(CourseRegistration(
     ladok=self.ladok,
     student=self,
     **course["Utbildningsinformation"]))
+
+self.__courses = courses
+@
+
+Let's verify that a failed request is retried rather than remembered.
+We make the first call to a fake LADOK method fail with the kind of server
+error that LADOK sometimes returns, and let later calls through.
+That is an injected failure on top of a fake, the only way to get a failure on
+demand without a live LADOK.
+We use the helper below for the other lazily built attributes too.
+<<test functions>>=
+def fail_first_call(method):
+  """Wrap `method` so that its first call fails with a LADOK server error"""
+  calls = []
+  def method_failing_once(*args, **kwargs):
+    calls.append(args)
+    if len(calls) == 1:
+      raise ladok3.LadokAPIError("GET request to ... failed: 500")
+    return method(*args, **kwargs)
+  return method_failing_once
+@
+
+The fake LADOK is the one we use for lazily pulled courses
+(\cref{CourseInstanceLazyPull}).
+<<test functions>>=
+def test_failed_course_list_is_retried():
+  ladok = FakeLadokForLazyCourses()
+  ladok.registrations_JSON = fail_first_call(ladok.registrations_JSON)
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+
+  with pytest.raises(ladok3.LadokAPIError):
+    student.courses(code="DD2520")
+
+  course, = student.courses(code="DD2520")
+  assert course.code == "DD2520"
 @
 
 
@@ -1648,11 +1782,7 @@ def __assign_attr(self, data):
 
 def __pull_attributes(self):
   <<fetch CourseInstance data from LADOK>>
-  try:
-    self.__assign_attr(data)
-  except:
-    self.__assign_faux(data)
-  self.__pulled = True
+  <<assign pulled CourseInstance data, or keep the old on failure>>
 
 def pull(self):
   self.__pull_attributes()
@@ -1810,6 +1940,7 @@ Let's verify the two properties we want from pulling lazily.
 We give a student two current registrations, built from the sparse data that
 [[registrations_JSON]] returns, and a fake LADOK that counts the components
 requests and can fail them for chosen course rounds.
+(Later tests also ask it for the student's results; it has none recorded.)
 <<test functions>>=
 class FakeLadokForLazyCourses:
   def __init__(self, broken_rounds=()):
@@ -1840,6 +1971,10 @@ class FakeLadokForLazyCourses:
 
   def get_grade_scales(self, /, **kwargs):
     return [self.__grade_scale]
+
+  def student_results_JSON(self, student_id, education_id):
+    return {"Kursversioner": [{"VersionensModuler": [],
+                               "VersionensKurs": {}}]}
 
 def lazy_test_registration(round_id, code):
   return {
@@ -1929,6 +2064,134 @@ try:
                                            **course_component_data))
 except KeyError:
   pass
+@
+
+
+\subsection{When a pull fails}\label{CourseInstanceFailedPull}
+
+Now that we have seen what [[__assign_attr]] does, we can see how a pull can
+fail halfway.
+It first replaces the components with a new list and fills it, and then it
+pops the remaining values from the data one by one.
+Both the components and the course need grade scales, which may cost
+requests of their own.
+An earlier version simply ran
+\begin{minted}{python}
+try:
+  self.__assign_attr(data)
+except:
+  self.__assign_faux(data)
+self.__pulled = True
+\end{minted}
+and that went wrong in three ways.
+\begin{description}
+\item[A failed refresh left partial state.]
+  [[pull]] also refreshes a course that has already been pulled.
+  If it failed after the components had been replaced by an empty list,
+  [[__pulled]] was still true, so the course reported no components---and
+  [[results]] no such component---until the cache was cleared
+  (\cref{FailuresMustNotStick}).
+\item[A failed request was taken for a faux course.]
+  The bare [[except]] sent every failure, a server error included, to
+  [[__assign_faux]], which then marked the course as pulled.
+\item[The faux fallback got data with values missing.]
+  [[__assign_attr]] pops the values that it uses.
+  A faux course has a name and a code, but no credits, so [[__assign_attr]]
+  popped the name and the code before it failed on the credits.
+  [[__assign_faux]] then found neither and set both to [[None]], and the
+  [[name]] property failed on the [[None]].
+\end{description}
+
+We fix the last two by catching only [[KeyError]] and by giving
+[[__assign_attr]] a copy of the data, as the constructor already does.
+Catching only [[KeyError]] is enough because faux data differs from real data
+only in lacking keys:
+[[__assign_faux]] does the same as [[__assign_attr]] except that it tolerates
+missing values.
+Any other exception would occur in [[__assign_faux]] too, unless it came from
+a transient failure, and a transient failure is exactly what we must not take
+for a faux course.
+
+We fix the first by taking a snapshot of the instance's attributes and
+restoring it if anything fails, the same technique that [[CourseResult]] uses
+for its refresh (\cref{CourseResultRefresh}).
+A shallow copy of [[self.__dict__]] suffices, because the assignment only
+rebinds attributes; even the components go into a new list.
+For a course that has not been pulled before, the restored state includes
+[[__pulled]] being false, so the next use pulls again.
+We set [[__pulled]] inside the guarded block, so that it is part of the
+transaction, and we restore on any exception, interrupts included, since
+restoring and re-raising is right for all of them.
+<<assign pulled CourseInstance data, or keep the old on failure>>=
+state = self.__dict__.copy()
+try:
+  try:
+    self.__assign_attr(data.copy())
+  except KeyError:
+    self.__assign_faux(data)
+  self.__pulled = True
+except BaseException:
+  self.__dict__.clear()
+  self.__dict__.update(state)
+  raise
+@
+
+Let's verify each of the three.
+First, a refresh that fails, here because the grade scales cannot be fetched,
+keeps the components and the other values that the course already had.
+<<test functions>>=
+def always_fail_with_500(*args, **kwargs):
+  raise ladok3.LadokAPIError("GET request to ... failed: 500")
+
+def test_failed_course_refresh_keeps_old_state():
+  ladok = FakeLadokForLazyCourses()
+  course, = ladok3.Student(ladok=ladok, id="student-uid").courses(
+    code="DD1315")
+  course.pull()
+
+  ladok.get_grade_scales = always_fail_with_500
+  with pytest.raises(ladok3.LadokAPIError):
+    course.pull()
+
+  assert course.components(code="DD1315")
+  assert course.credits == 7.5
+@
+
+Second, when the first pull of a course fails, the error reaches the caller
+and the next use pulls again.
+<<test functions>>=
+def test_failed_first_course_pull_is_retried():
+  ladok = FakeLadokForLazyCourses()
+  ladok.get_grade_scales = fail_first_call(ladok.get_grade_scales)
+  course, = ladok3.Student(ladok=ladok, id="student-uid").courses(
+    code="DD1315")
+
+  with pytest.raises(ladok3.LadokAPIError):
+    course.components()
+
+  assert course.components(code="DD1315")
+  assert course.credits == 7.5
+@
+
+Third, a faux course keeps the name and the code when it is pulled.
+We make the fake LADOK return faux data by dropping the credits, the
+syllabus version and the grade scale.
+<<test functions>>=
+class FakeLadokForFauxCourses(FakeLadokForLazyCourses):
+  def course_round_components_JSON(self, round_id):
+    data = super().course_round_components_JSON(round_id)
+    for key in ["Omfattning", "Enhet", "Versionsnummer", "BetygsskalaID"]:
+      del data[key]
+    return data
+
+def test_pulled_faux_course_keeps_name_and_code():
+  ladok = FakeLadokForFauxCourses()
+  course, = ladok3.Student(ladok=ladok, id="student-uid").courses(
+    code="DD1315")
+
+  assert course.credits is None
+  assert course.name == "Course"
+  assert course.code == "DD1315"
 @
 
 
@@ -2041,9 +2304,9 @@ def __fetch_results(self):
 @
 
 
-\section{Participants for a course round}
+\section{Participants for a course round}\label{CourseRoundParticipants}
 
-We want to get a list of participants for a course round, \ie a list of 
+We want to get a list of participants for a course round, \ie a list of
 [[Student]] objects.
 <<CourseRound data methods>>=
 def participants(self, /, **kwargs):
@@ -2057,14 +2320,47 @@ def participants(self, /, **kwargs):
 @
 
 When we fetch the participants, we don't create new [[Student]] objects.
-We use the [[get_student]] method of the LADOK session object to fetch objects 
+We use the [[get_student]] method of the LADOK session object to fetch objects
 from the cache if they already exist.
+We build the whole list before we assign it (\cref{FailuresMustNotStick}).
+An earlier version assigned an empty list first and appended to it, so a
+failed [[participants_JSON]] left the course round without participants, in
+the cache too.
 <<CourseRound data methods>>=
 def __fetch_participants(self):
-  self.__participants = []
-  for student in self.ladok.participants_JSON(self.round_id):
-    self.__participants.append(
-      self.ladok.get_student(student["Student"]["Uid"]))
+  self.__participants = [
+    self.ladok.get_student(student["Student"]["Uid"])
+    for student in self.ladok.participants_JSON(self.round_id)]
+@
+
+Let's verify that a failed request for the participants is retried.
+We need a course round, which we construct from the data that
+[[search_course_rounds]] gets from LADOK, but only as much as the constructor
+needs; the rest it would pull on first use.
+<<test functions>>=
+class FakeLadokForParticipants:
+  def participants_JSON(self, round_id):
+    return [{"Student": {"Uid": "student-uid"}}]
+
+  def get_student(self, id):
+    return ladok3.Student(ladok=self, id=id)
+
+def test_failed_participants_request_is_retried():
+  ladok = FakeLadokForParticipants()
+  ladok.participants_JSON = fail_first_call(ladok.participants_JSON)
+  course_round = ladok3.CourseRound(
+    ladok=ladok, Uid="round-uid", TillfallesKod="50001",
+    Startdatum="2026-08-31", Slutdatum="2026-10-23",
+    Utbildningsinstans={"Uid": "instance-uid",
+                        "UtbildningUID": "education-uid",
+                        "Utbildningskod": "DD1315",
+                        "Benamning": {"sv": "Kurs", "en": "Course"}})
+
+  with pytest.raises(ladok3.LadokAPIError):
+    course_round.participants()
+
+  student, = course_round.participants()
+  assert student.ladok_id == "student-uid"
 @
 
 
@@ -2131,14 +2427,32 @@ class CourseRegistration(CourseInstance):
 
   def __fill_results(self):
     """Helper method to fetch results from LADOK"""
+    results = []
     <<pull existing CourseResult objects from LADOK>>
     <<add new CourseResult objects for missing components>>
+    self.__results = results
 
   def push(self):
     """Pushes any new results"""
     for result in self.results():
       result.push()
 @
+
+\label{CourseRegistrationResults}
+[[__fill_results]] collects the results in the local list [[results]] and
+assigns [[self.__results]] only when the list is complete
+(\cref{FailuresMustNotStick}).
+Filling it takes several requests: one for the student's results and, since
+we pull courses lazily (\cref{CourseInstanceLazyPull}), one for the course's
+components the first time the steps below call [[self.components]].
+An earlier version assigned [[self.__results]] an empty list first and
+appended to it.
+When one of those requests failed, the empty or partial list stayed behind,
+and [[results]] found no result for the component---which [[ladok report]]
+reports as \enquote{no such component}---in every later run, through the
+cache.
+Now a failure leaves [[self.__results]] unset, and the next call to
+[[results]] fills it again.
 
 We can pull these from LADOK as well.
 We construct [[CourseResult]] objects using a [[CourseRegistration]] object.
@@ -2195,7 +2509,6 @@ response = self.ladok.student_results_JSON(
   self.__student.ladok_id, self.education_id
 )["Kursversioner"][0]
 
-self.__results = []
 credit_transfers = {}
 
 for result in response["VersionensModuler"]:
@@ -2203,10 +2516,10 @@ for result in response["VersionensModuler"]:
     <<remember [[result]]'s credit-transfer summary>>
     continue
   try:
-    self.__results.append(CourseResult(ladok=self.ladok,
-                                       components=self.components(),
-                                       student=self.__student,
-                                       **result))
+    results.append(CourseResult(ladok=self.ladok,
+                                components=self.components(),
+                                student=self.__student,
+                                **result))
   except (TypeError, KeyError, IndexError) as err:
     raise LadokError(f"couldn't parse existing module result: {result}") \
       from err
@@ -2234,10 +2547,10 @@ is precisely the case where no ordinary course grade will ever appear.
 <<pull existing CourseResult objects from LADOK>>=
 if has_recorded_result(response["VersionensKurs"]):
   try:
-    self.__results.append(CourseResult(ladok=self.ladok,
-                                       components=self.components(),
-                                       student=self.__student,
-                                       **response["VersionensKurs"]))
+    results.append(CourseResult(ladok=self.ladok,
+                                components=self.components(),
+                                student=self.__student,
+                                **response["VersionensKurs"]))
   except (TypeError, KeyError, IndexError) as err:
     raise LadokError(
       "couldn't parse existing course result: "
@@ -2248,19 +2561,41 @@ else:
 @
 
 Now we can see which components from [[self.components]] are missing from
-[[self.__results]] and just add empty results for those.
+[[results]] and just add empty results for those.
 Each placeholder also receives any credit-transfer summary we remembered for
 its component instance, so that a transferred component is visibly different
 from one the student has not started.
 <<add new CourseResult objects for missing components>>=
 for component in self.components():
-  if not list(filter_on_keys(self.__results, component=component.code)):
-    self.__results.append(
+  if not list(filter_on_keys(results, component=component.code)):
+    results.append(
       CourseResult(
         ladok=self.ladok,
         component=component,
         credit_transfer=credit_transfers.get(component.instance_id),
         student=self.__student))
+@
+
+Let's verify that a failure while filling the results is not remembered
+(\cref{CourseRegistrationResults}).
+This is the case that made [[ladok report]] answer \enquote{no such
+component}: the student's results arrive, but the course's components, which
+the course pulls on first use, fail.
+The fake LADOK for lazily pulled courses returns no recorded results, so the
+course grade gets an empty placeholder.
+<<test functions>>=
+def test_failed_results_fill_is_retried():
+  ladok = FakeLadokForLazyCourses()
+  ladok.course_round_components_JSON = fail_first_call(
+    ladok.course_round_components_JSON)
+  course, = ladok3.Student(ladok=ladok, id="student-uid").courses(
+    code="DD1315")
+
+  with pytest.raises(ladok3.LadokAPIError):
+    course.results(component="DD1315")
+
+  result, = course.results(component="DD1315")
+  assert result.grade is None
 @
 
 
@@ -2560,6 +2895,8 @@ elif self.credit_transferred:
   else:
     result += " (credit transfer)"
 @
+
+\subsection{Refreshing a result}\label{CourseResultRefresh}
 
 Because a refresh can fail, [[pull()]] must not clear the cached state until
 LADOK has returned a replacement payload.
