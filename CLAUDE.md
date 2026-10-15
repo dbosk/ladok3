@@ -154,9 +154,28 @@ component_result.finalize()
 
 ## Testing
 
-Tests require authentication credentials via environment variables:
-- `LADOK_INST`, `LADOK_USER`, `LADOK_PASS`
-- `KTH_LOGIN`, `KTH_PASSWD`
+The test setup is described in the Testing chapter, `src/ladok3/testing.nw`
+(tangled to `tests/conftest.py`).
+
+- `make test` is offline: tests that talk to LADOK replay cassettes from
+  `tests/cassettes/` and are skipped if none were recorded. No credentials
+  needed. `make publish` runs it.
+- `make test PYTESTFLAGS=--live` runs against LADOK's test environment
+  (attended; `test_LadokSession_vars` logs in afresh, so expect one MFA push)
+  and compares the fresh recordings' structure with the cassettes (drift).
+- `--record-mode=once` (missing) or `--record-mode=rewrite` records cassettes.
+- Tests marked `mutates` reach LADOK only with `--live-writes`.
+- Live runs and recording need `TEST_PSEUDONYM_KEY`, kept in GNOME Keyring:
+  `TEST_PSEUDONYM_KEY="$(secret-tool lookup service ladok3 key test-pseudonym)"`.
+  Never print it.
+- LADOK's test environment is a weekly copy of production: every person in
+  it is real. The cassettes (pseudonymized, but whole cohorts) are
+  gitignored and stay local. Use the fictive Tolvan, 19121212-1212, in code.
+- `test_LadokSession_vars` also needs `LADOK_INST`, `LADOK_USER`,
+  `LADOK_PASS` in the environment.
+- `make check-doc-privacy` scans the PDF's PythonTeX outputs before
+  publishing (needs the testing skill's `scan_leaks.py`, see `SCAN_LEAKS`).
+- A first run of an unfamiliar change: `~/.claude/skills/testing/scripts/offline_run.py -- make test`.
 
 ## Swedish Education Domain
 
