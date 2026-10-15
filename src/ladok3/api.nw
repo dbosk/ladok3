@@ -668,34 +668,67 @@ Pseudonymization has to protect staff as well as students, so we replace it
 like any other email address.
 Similarly, the delivery-preference records use the bare key [[Epost]] where
 student records use [[Epostadress]], so we must cover both spellings.
+
+Result records name people in three more places.
+[[Beslutsfattare]] (\enquote{decision maker}) is the examiner who attested
+the result, and [[OvrigaMedverkande]] (\enquote{other contributors}) is a
+newline-separated list of the teachers who took part in the grading.
+[[Anteckning]] (\enquote{note}) is free text, found on suspensions and
+results, and free text can name anyone, so we replace it wholesale rather
+than trying to find names in it.
+When we report a result, we send [[Beslutsfattare]] as a list of UIDs (see
+[[finalize_result_JSON]]), but LADOK returns it as the examiner's name.
+We therefore replace only the string form and keep a list of UIDs, which
+carries no name.
+
+The function only knows the keys it lists.
+If LADOK adds a field that names a person, that field goes through
+untouched until someone adds it here.
+This is why the documentation's example outputs are scanned before we publish
+them (the [[check-doc-privacy]] target in the top-level [[Makefile]]):
+the scan counts the distinct values per key, so a new key that carries
+names stands out even though this function doesn't know about it.
+
+We keep the replacements in a table, so a new key is a one-line change.
+The names are deliberately unrealistic (\enquote{Studentzadeh}) and the
+personnummer is the fictive Tolvan's, so that no one mistakes the
+documentation's examples for real records.
+<<constants>>=
+PSEUDONYMS = {
+  "Fornamn": "Student",
+  "Efternamn": "Studentzadeh",
+  "Personnummer": "19121212-1212",
+  "Epostadress": "user@domain.se",
+  "Epost": "user@domain.se",
+  "Anvandarnamn": "user@domain.se",
+  "Utdelningsadress": "Stora vägen 1",
+  "Postnummer": "12345",
+  "Postort": "Byn",
+  "Telefonnummer": "0701234567",
+  "SenastAndradAv": "user@domain.se",
+  "Anteckning": "Anteckning",
+  "OvrigaMedverkande": "Medarbetare",
+}
+
+PSEUDONYMS_IF_STRING = {
+  "Beslutsfattare": "Examinator",
+}
 <<functions>>=
 def pseudonymize(json_obj: dict | list) -> None:
   """
-  Recursively pseudonymizes a JSON data record
+  Recursively pseudonymizes a JSON data record in place.
+
+  Replaces the values of the keys in `PSEUDONYMS` (names, personnummer,
+  contact details, free text) and the string values of the keys in
+  `PSEUDONYMS_IF_STRING`.  UIDs are kept.
   """
   if isinstance(json_obj, dict):
-    if "Fornamn" in json_obj:
-      json_obj["Fornamn"] = "Student"
-    if "Efternamn" in json_obj:
-      json_obj["Efternamn"] = "Studentzadeh"
-    if "Personnummer" in json_obj:
-      json_obj["Personnummer"] = "191234561234"
-    if "Epostadress" in json_obj:
-      json_obj["Epostadress"] = "user@domain.se"
-    if "Epost" in json_obj:
-      json_obj["Epost"] = "user@domain.se"
-    if "Anvandarnamn" in json_obj:
-      json_obj["Anvandarnamn"] = "user@domain.se"
-    if "Utdelningsadress" in json_obj:
-      json_obj["Utdelningsadress"] = "Stora vägen 1"
-    if "Postnummer" in json_obj:
-      json_obj["Postnummer"] = "12345"
-    if "Postort" in json_obj:
-      json_obj["Postort"] = "Byn"
-    if "Telefonnummer" in json_obj:
-      json_obj["Telefonnummer"] = "0701234567"
-    if "SenastAndradAv" in json_obj:
-      json_obj["SenastAndradAv"] = "user@domain.se"
+    for key, pseudonym in PSEUDONYMS.items():
+      if key in json_obj:
+        json_obj[key] = pseudonym
+    for key, pseudonym in PSEUDONYMS_IF_STRING.items():
+      if isinstance(json_obj.get(key), str):
+        json_obj[key] = pseudonym
     for value in json_obj.values():
       pseudonymize(value)
   elif isinstance(json_obj, list):
@@ -703,20 +736,39 @@ def pseudonymize(json_obj: dict | list) -> None:
       pseudonymize(item)
 @
 
-Let's verify that the replacements reach nested records: the observed leak was
-[[SenastAndradAv]] inside a \emph{list} of Rättigheter records, so the test
-mirrors that shape.
+Let's verify that every field we promise to replace is replaced, also when
+the record is nested.
+The observed leaks were in nested records: [[SenastAndradAv]] inside a
+\emph{list} of Rättigheter records, so we put each field both at the top
+level and inside a list of records.
+We list the fields here independently of [[PSEUDONYMS]]: a test that looped
+over the table itself would still pass if someone deleted an entry from it.
 <<test functions>>=
-def test_pseudonymize() -> None:
-  data = {
-    "Fornamn": "Anna",
-    "Epost": "anna@example.com",
-    "Rattigheter": [{"SenastAndradAv": "teacher@example.com"}],
-  }
+PSEUDONYMIZED_KEYS = [
+  "Fornamn", "Efternamn", "Personnummer", "Epostadress", "Epost",
+  "Anvandarnamn", "Utdelningsadress", "Postnummer", "Postort",
+  "Telefonnummer", "SenastAndradAv", "Anteckning", "OvrigaMedverkande",
+  "Beslutsfattare",
+]
+
+@pytest.mark.parametrize("key", PSEUDONYMIZED_KEYS)
+def test_pseudonymize_replaces(key) -> None:
+  original = "Real Value 4711"
+  data = {key: original, "Rattigheter": [{key: original}]}
   ladok3.pseudonymize(data)
-  assert data["Fornamn"] == "Student"
-  assert data["Epost"] == "user@domain.se"
-  assert data["Rattigheter"][0]["SenastAndradAv"] == "user@domain.se"
+  assert data[key] != original
+  assert data["Rattigheter"][0][key] != original
+@
+
+The UIDs must survive: they are what lets a reader follow the same student
+or course round from one example output to the next.
+The list form of [[Beslutsfattare]] is such a list of UIDs.
+<<test functions>>=
+def test_pseudonymize_keeps_uids() -> None:
+  uid = "00000000-0000-0000-0000-000000000001"
+  data = {"Uid": uid, "StudentUID": uid, "Beslutsfattare": [uid]}
+  ladok3.pseudonymize(data)
+  assert data == {"Uid": uid, "StudentUID": uid, "Beslutsfattare": [uid]}
 @
 
 
