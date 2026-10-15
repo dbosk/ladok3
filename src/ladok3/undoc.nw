@@ -417,11 +417,14 @@ def hamtaStudieResultatForStudent_JSON (self, studentUID):
 @
 
 Let's add a test.
-This function should return a dictionary.
+The function should return the student's results as a list under
+[[Resultat]].
+For our test student, the test environment returns an empty list from this
+old endpoint, so we can only check the form of the response.
 <<test functions>>=
 def test_hamtaStudieResultatForStudent_JSON(ladok):
   r = ladok.hamtaStudieResultatForStudent_JSON(student_uid)
-  assert type(r) == dict
+  assert isinstance(r["Resultat"], list)
 @
 
 The output looks like this:

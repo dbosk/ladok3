@@ -811,7 +811,11 @@ If we can convert the return value do JSON, it's probably correct.
 (No this isn't the best of tests.)
 <<test functions>>=
 def test_grade_scales_JSON(ladok) -> None:
-  assert ladok.grade_scales_JSON()
+  scales = ladok.grade_scales_JSON()
+  assert scales
+  assert all(scale["ID"] and scale["Kod"] and scale["Betygsgrader"]
+             for scale in scales)
+  assert len({scale["ID"] for scale in scales}) == len(scales)
 @
 
 The output looks like this.
@@ -934,7 +938,7 @@ def get_student_data_by_uid_JSON(self, uid: str) -> dict:
 To test this function, we do the following.
 <<test functions>>=
 def test_get_student_data_by_uid_JSON(ladok) -> None:
-  assert ladok.get_student_data_by_uid_JSON(student_uid)
+  assert ladok.get_student_data_by_uid_JSON(student_uid)["Uid"] == student_uid
 @
 
 The result is the same for both method.
@@ -972,7 +976,8 @@ def get_student_contact_data_JSON(self, student_id: str) -> dict:
 We test this function.
 <<test functions>>=
 def test_get_student_contact_data_JSON(ladok) -> None:
-  assert ladok.get_student_contact_data_JSON(student_uid)
+  contact = ladok.get_student_contact_data_JSON(student_uid)
+  assert contact["StudentUID"] == student_uid
 @
 
 The output is as follows.
@@ -1010,7 +1015,10 @@ def get_student_suspensions_JSON(self, student_id: str) -> dict:
 We test this function.
 <<test functions>>=
 def test_get_student_suspensions_JSON(ladok) -> None:
-  assert ladok.get_student_suspensions_JSON(student_uid)
+  suspensions = ladok.get_student_suspensions_JSON(student_uid)["Avstangning"]
+  assert isinstance(suspensions, list)
+  assert all(suspension["StudentUID"] == student_uid
+             for suspension in suspensions)
 @
 
 The output looks like this.
@@ -1050,7 +1058,10 @@ We provide the following test.
 <<test functions>>=
 def test_registrations_JSON(ladok) -> None:
   results = ladok.registrations_JSON(student_uid)
-  assert json.dumps(results, indent=2, ensure_ascii=False)
+  assert len({result["Uid"] for result in results}) == len(results)
+  assert any(result["Utbildningsinformation"]["UtbildningUID"]
+               == dasak_education_id
+             for result in results)
 @
 
 The output looks like this.
@@ -1095,7 +1106,13 @@ We add the following test.
 <<test functions>>=
 def test_registrations_on_course_JSON(ladok) -> None:
   results = ladok.registrations_on_course_JSON(dasak_education_id, student_uid)
-  assert json.dumps(results, indent=2, ensure_ascii=False)
+  all_registrations = ladok.registrations_JSON(student_uid)
+  assert results
+  assert all(result["Utbildningsinformation"]["UtbildningUID"]
+               == dasak_education_id
+             for result in results)
+  assert ({result["Uid"] for result in results}
+          <= {result["Uid"] for result in all_registrations})
 @
 
 The output looks like this.
@@ -1128,11 +1145,14 @@ def studystructure_student_JSON(self, uid: str) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The student's study structures each wrap a programme participation, so
+we check that there is at least one and that each has a participation.
 <<test functions>>=
 def test_studystructure_student_JSON(ladok) -> None:
-  r = ladok.studystructure_student_JSON(student_uid)
-  assert type(r) == dict
+  structures = ladok.studystructure_student_JSON(student_uid)["Studiestrukturer"]
+  assert structures
+  assert all(structure["Tillfallesdeltagande"]["Uid"]
+             for structure in structures)
 @
 
 The output looks like this:
@@ -1216,7 +1236,9 @@ We test this method as follows.
 <<test functions>>=
 def test_course_rounds_JSON(ladok) -> None:
   results = ladok.course_rounds_JSON(dasak_instance_id)
-  assert json.dumps(results[:1]+results[-1:], indent=2, ensure_ascii=False)
+  assert results
+  assert all(result["Utbildningsinstans"]["Uid"] == dasak_instance_id
+             for result in results)
 @
 
 The output looks like this.
@@ -1255,8 +1277,8 @@ def course_instance_JSON(self, instance_id: str) -> dict:
 We add the following test.
 <<test functions>>=
 def test_course_instance_JSON(ladok) -> None:
-  results = ladok.course_instance_JSON(dasak_instance_id)
-  assert json.dumps(results, indent=2, ensure_ascii=False)
+  assert ladok.course_instance_JSON(dasak_instance_id)["Uid"] \
+    == dasak_instance_id
 @
 
 The output looks like this.
@@ -1293,11 +1315,15 @@ def course_instances_JSON(self, course_code: str, lang: str = 'sv') -> dict:
 @
 
 Let's add a test.
-This should return a list of dictionaries.
+Every course instance returned should be one of the course we asked for, and
+the count should cover all of them on one page.
 <<test functions>>=
 def test_course_instances_JSON(ladok) -> None:
   r = ladok.course_instances_JSON('DD2395')
-  assert type(r) == dict
+  assert r["Resultat"]
+  assert r["TotaltAntalPoster"] == len(r["Resultat"])
+  assert all(result["Utbildningsinstans"]["Utbildningskod"] == "DD2395"
+             for result in r["Resultat"])
 @
 
 The output looks like this:
@@ -1342,11 +1368,13 @@ def instance_info(
 @
 
 Let's add a test.
-This should return a dictionary.
+The round we get should be the one with the round code we asked for, on
+the course we asked for.
 <<test functions>>=
 def test_instance_info(ladok) -> None:
   r = ladok.instance_info('DD1310', '50429')
-  assert type(r) == dict
+  assert r["TillfallesKod"] == "50429"
+  assert r["Utbildningsinstans"]["Utbildningskod"] == "DD1310"
 @
 
 The output looks like this:
@@ -1382,11 +1410,21 @@ def instance_info_uid(self, instance_uid: str) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The round we get should be the one we asked for, and the codes it refers
+to (study pace, funding, form of teaching, location) should all exist in
+the corresponding code tables (\cref{CodeTables}).
 <<test functions>>=
 def test_instance_info_uid(ladok) -> None:
   r = ladok.instance_info_uid(dasak_round_id)
-  assert type(r) == dict
+  assert r["Uid"] == dasak_round_id
+  assert str(r["StudietaktID"]) in code_table_ids(
+    ladok.studietakt_JSON(), "Studietakt")
+  assert str(r["FinansieringsformID"]) in code_table_ids(
+    ladok.finansieringsform_JSON(), "Finansieringsform")
+  assert str(r["UndervisningsformID"]) in code_table_ids(
+    ladok.undervisningsform_JSON(), "Undervisningsform")
+  assert str(r["StudielokaliseringID"]) in code_table_ids(
+    ladok.studielokalisering_JSON(), "Studielokalisering")
 @
 
 The output looks like this:
@@ -1442,7 +1480,9 @@ We add the following test.
 <<test functions>>=
 def test_course_round_components_JSON(ladok) -> None:
   components = ladok.course_round_components_JSON(dasak_round_id)
-  assert json.dumps(components, indent=2, ensure_ascii=False)
+  assert components["UtbildningsinstansUID"] == dasak_instance_id
+  assert any(component["UtbildningsinstansUID"] == LAB1_instance_id
+             for component in components["IngaendeMoment"])
 @
 
 The output looks like this.
@@ -1494,7 +1534,9 @@ We add the following test code.
 <<test functions>>=
 def test_course_instance_components_JSON(ladok) -> None:
   components = ladok.course_instance_components_JSON(dasak_instance_id)
-  assert json.dumps(components, indent=2, ensure_ascii=False)
+  assert components["Uid"] == dasak_instance_id
+  assert any(module["Uid"] == LAB1_instance_id
+             for module in components["Moduler"])
 @
 
 The output looks like this.
@@ -1564,7 +1606,9 @@ We write the following test.
 def test_search_reported_results_JSON(ladok) -> None:
   results = ladok.search_reported_results_JSON(dasak_round_id,
     LAB1_instance_id)
-  assert json.dumps(results, indent=2, ensure_ascii=False)
+  assert results
+  assert all(result["AktuelltKurstillfalle"] == dasak_round_id
+             for result in results)
 @
 
 The output looks like this.
@@ -1624,7 +1668,13 @@ We test this by the following.
 <<test functions>>=
 def test_search_course_results_JSON(ladok) -> None:
   results = ladok.search_course_results_JSON(dasak_round_id, LAB1_instance_id)
-  assert json.dumps(results, indent=2, ensure_ascii=False)
+  reported = ladok.search_reported_results_JSON(dasak_round_id,
+    LAB1_instance_id)
+  assert results
+  assert all(result["KurstillfalleUID"] == dasak_round_id
+             for result in results)
+  assert ({result["Student"]["Uid"] for result in results}
+          == {result["Student"]["Uid"] for result in reported})
 @
 
 The output looks like this.
@@ -1667,7 +1717,8 @@ We test this in the following way.
 <<test functions>>=
 def test_student_results_JSON(ladok) -> None:
   results = ladok.student_results_JSON(student_uid, dasak_education_id)
-  assert json.dumps(results, indent=2, ensure_ascii=False)
+  assert results["StudentUID"] == student_uid
+  assert results["UtbildningUID"] == dasak_education_id
 @
 
 The output looks like this.
@@ -1918,7 +1969,9 @@ We test this method as follows.
 <<test functions>>=
 def test_result_reporters_JSON(ladok) -> None:
   reporters = ladok.result_reporters_JSON(KTH_org_id)
-  assert json.dumps(reporters, indent=2, ensure_ascii=False)
+  me = ladok.user_info_JSON()
+  assert len({reporter["Uid"] for reporter in reporters}) == len(reporters)
+  assert me["AnvandareUID"] in {reporter["Uid"] for reporter in reporters}
 @
 
 The output looks like this.
@@ -1963,7 +2016,8 @@ We test this as follows.
 <<test functions>>=
 def test_user_info_JSON(ladok) -> None:
   me_teacher = ladok.user_info_JSON()
-  assert json.dumps(me_teacher, indent=2, ensure_ascii=False)
+  assert me_teacher["Uid"]
+  assert me_teacher["AnvandareUID"]
 @
 
 The output looks like this.
@@ -2290,7 +2344,10 @@ We test this as follows.
 <<test functions>>=
 def test_participants_JSON(ladok) -> None:
   results = ladok.participants_JSON(dasak_round_id)
-  assert json.dumps(results, indent=2, ensure_ascii=False)
+  assert len({result["Uid"] for result in results}) == len(results)
+  assert all(result["UtbildningstillfalleUID"] == dasak_round_id
+             for result in results)
+  assert any(result["Student"]["Uid"] == student_uid for result in results)
 @
 
 The output looks like this.
@@ -2313,6 +2370,38 @@ The following API calls were explored and written by Chip Maguire.
 Bosk has merely added tests and generated example output, as well as minor 
 reformatting of the code.
 
+\section{Code tables}\label{CodeTables}
+
+Most of the calls in this chapter fetch one of LADOK's code tables: the
+teaching languages, the municipalities, the forms of funding and so on.
+They all have the same form, a dictionary with a single list of entries,
+each with an [[ID]], a code ([[Kod]]) and a name ([[Benamning]]).
+The [[ID]] is what other records refer to, for instance a course round's
+[[StudietaktID]].
+Note that the tables give the [[ID]] as a string, while the records that refer
+to it use an integer, so we compare them as strings.
+
+We test the tables with the same two checks: the table must have entries,
+each with an ID and a code, and no ID may occur twice.
+These hold for any version of the data in the test environment, so the tests
+need not know what the tables contain.
+Where a table refers to another one, its test also checks that every
+reference resolves, which is what a program using the tables relies on.
+<<test functions>>=
+def assert_code_table(response, key):
+  """Check that `response` holds a code table under `key`: a non-empty
+  list of entries, each with an ID and a code, and no ID twice."""
+  table = response[key]
+  assert table
+  assert all(entry["ID"] and entry["Kod"] for entry in table)
+  ids = [entry["ID"] for entry in table]
+  assert len(set(ids)) == len(ids)
+
+def code_table_ids(response, key):
+  """Return the IDs in the code table under `key`, as strings."""
+  return {str(entry["ID"]) for entry in response[key]}
+@
+
 \section{[[grading_rights]]}
 
 We can get a list of our rights in LADOK.
@@ -2332,12 +2421,14 @@ def grading_rights(self) -> list:
 @
 
 Let's add a test.
-This should return a list of dictionaries.
+The rights we get are the logged-in user's own, so each should name that
+user.
 <<test functions>>=
 def test_grading_rights(ladok) -> None:
   r = ladok.grading_rights()
-  assert type(r) == list
-  assert type(r[0]) == dict
+  me = ladok.user_info_JSON()
+  assert r
+  assert all(right["Anvandare"]["Uid"] == me["AnvandareUID"] for right in r)
 @
 
 The output looks like this:
@@ -2367,11 +2458,11 @@ def organization_info_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+KTH's own organisational unit should be among the units.
 <<test functions>>=
 def test_organization_info_JSON(ladok) -> None:
   r = ladok.organization_info_JSON()
-  assert type(r) == dict
+  assert KTH_org_id in {unit["Uid"] for unit in r["Organisation"]}
 @
 
 The output looks like this:
@@ -2398,11 +2489,11 @@ def larosatesinformation_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_larosatesinformation_JSON(ladok) -> None:
   r = ladok.larosatesinformation_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Larosatesinformation")
 @
 
 The output looks like this:
@@ -2430,11 +2521,11 @@ def undervisningssprak_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_undervisningssprak_JSON(ladok) -> None:
   r = ladok.undervisningssprak_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Undervisningssprak")
 @
 
 The output looks like this:
@@ -2461,11 +2552,16 @@ def i18n_translation_JSON(self, lang: str = 'sv') -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+Each translation should have a text, and no translation key should occur
+twice.
 <<test functions>>=
 def test_i18n_translation_JSON(ladok) -> None:
   r = ladok.i18n_translation_JSON()
-  assert type(r) == dict
+  translations = r["Oversattningar"]
+  assert translations
+  assert all("Text" in translation for translation in translations)
+  keys = [translation["I18nNyckel"] for translation in translations]
+  assert len(set(keys)) == len(keys)
 @
 
 The output looks like this:
@@ -2492,11 +2588,15 @@ def svenskorter_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
+Every place also refers to a municipality, which must exist in the
+municipality table.
 <<test functions>>=
 def test_svenskorter_JSON(ladok) -> None:
   r = ladok.svenskorter_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "SvenskOrt")
+  assert ({str(place["KommunID"]) for place in r["SvenskOrt"]}
+          <= code_table_ids(ladok.kommuner_JSON(), "Kommun"))
 @
 
 The output looks like this:
@@ -2523,11 +2623,11 @@ def kommuner_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_kommuner_JSON(ladok) -> None:
   r = ladok.kommuner_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Kommun")
 @
 
 The output looks like this:
@@ -2553,11 +2653,11 @@ def lander_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_lander_JSON(ladok) -> None:
   r = ladok.lander_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Land")
 @
 
 The output looks like this:
@@ -2585,11 +2685,11 @@ def undervisningstid_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_undervisningstid_JSON(ladok) -> None:
   r = ladok.undervisningstid_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Undervisningstid")
 @
 
 The output looks like this:
@@ -2617,11 +2717,17 @@ def successivfordjupning_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
+The levels it refers to must exist in the table of levels.
 <<test functions>>=
 def test_successivfordjupning_JSON(ladok) -> None:
   r = ladok.successivfordjupning_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "SuccessivFordjupning")
+  assert ({str(entry["NivaInomStudieordningID"])
+           for entry in r["SuccessivFordjupning"]
+           if entry.get("NivaInomStudieordningID") is not None}
+          <= code_table_ids(ladok.nivainomstudieordning_JSON(),
+                            "NivaInomStudieordning"))
 @
 
 The output looks like this:
@@ -2649,11 +2755,11 @@ def undervisningsform_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_undervisningsform_JSON(ladok) -> None:
   r = ladok.undervisningsform_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Undervisningsform")
 @
 
 The output looks like this:
@@ -2680,11 +2786,14 @@ def LokalaPerioder_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
+No period should end before it starts.
 <<test functions>>=
 def test_LokalaPerioder_JSON(ladok) -> None:
   r = ladok.LokalaPerioder_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Period")
+  assert all(period["FromDatum"] <= period["TomDatum"]
+             for period in r["Period"])
 @
 
 The output looks like this:
@@ -2712,11 +2821,11 @@ def nivainomstudieordning_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_nivainomstudieordning_JSON(ladok) -> None:
   r = ladok.nivainomstudieordning_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "NivaInomStudieordning")
 @
 
 The output looks like this:
@@ -2744,11 +2853,11 @@ def amnesgrupp_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_amnesgrupp_JSON(ladok) -> None:
   r = ladok.amnesgrupp_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Amnesgrupp")
 @
 
 The output looks like this:
@@ -2776,11 +2885,11 @@ def studietakt_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_studietakt_JSON(ladok) -> None:
   r = ladok.studietakt_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Studietakt")
 @
 
 The output looks like this:
@@ -2809,11 +2918,11 @@ def finansieringsform_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_finansieringsform_JSON(ladok) -> None:
   r = ladok.finansieringsform_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Finansieringsform")
 @
 
 The output looks like this:
@@ -2840,11 +2949,11 @@ def utbildningsomrade_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_utbildningsomrade_JSON(ladok) -> None:
   r = ladok.utbildningsomrade_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Utbildningsomrade")
 @
 
 The output looks like this:
@@ -2871,11 +2980,11 @@ def kravpatidigarestudier_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_kravpatidigarestudier_JSON(ladok) -> None:
   r = ladok.kravpatidigarestudier_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "KravPaTidigareStudier")
 @
 
 The output looks like this:
@@ -2904,11 +3013,15 @@ def studieordning_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
+The units it refers to must exist in the table of units.
 <<test functions>>=
 def test_studieordning_JSON(ladok) -> None:
   r = ladok.studieordning_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Studieordning")
+  assert ({str(entry["EnhetID"]) for entry in r["Studieordning"]
+           if entry.get("EnhetID") is not None}
+          <= code_table_ids(ladok.enhet_JSON(), "Enhet"))
 @
 
 The output looks like this:
@@ -2935,11 +3048,11 @@ def enhet_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_enhet_JSON(ladok) -> None:
   r = ladok.enhet_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Enhet")
 @
 
 The output looks like this:
@@ -2966,11 +3079,15 @@ def studielokalisering_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
+The places it refers to must exist in the table of places.
 <<test functions>>=
 def test_studielokalisering_JSON(ladok) -> None:
   r = ladok.studielokalisering_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Studielokalisering")
+  assert ({str(entry["OrtID"]) for entry in r["Studielokalisering"]
+           if entry.get("OrtID") is not None}
+          <= code_table_ids(ladok.svenskorter_JSON(), "SvenskOrt"))
 @
 
 The output looks like this:
@@ -2997,11 +3114,11 @@ def antagningsomgang_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_antagningsomgang_JSON(ladok) -> None:
   r = ladok.antagningsomgang_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Antagningsomgang")
 @
 
 The output looks like this:
@@ -3032,11 +3149,11 @@ def utbildningstyp_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_utbildningstyp_JSON(ladok) -> None:
   r = ladok.utbildningstyp_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Utbildningstyp")
 @
 
 The output looks like this:
@@ -3063,11 +3180,11 @@ def aktivitetstillfallestyp_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_aktivitetstillfallestyp_JSON(ladok) -> None:
   r = ladok.aktivitetstillfallestyp_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Aktivitetstillfallestyp")
 @
 
 The output looks like this:
@@ -3094,11 +3211,11 @@ def catalog_service_index_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The index should name the catalogue information service.
 <<test functions>>=
 def test_catalog_service_index_JSON(ladok) -> None:
   r = ladok.catalog_service_index_JSON()
-  assert type(r) == dict
+  assert "kataloginformation" in r["ServiceName"]
 @
 
 The output looks like this:
@@ -3130,11 +3247,11 @@ def omradesbehorighet_JSON(self) -> dict:
 @
 
 Let's add a test.
-This should return a dictionary.
+The response is a code table (\cref{CodeTables}).
 <<test functions>>=
 def test_omradesbehorighet_JSON(ladok) -> None:
   r = ladok.omradesbehorighet_JSON()
-  assert type(r) == dict
+  assert_code_table(r, "Omradesbehorighet")
 @
 
 The output looks like this:
