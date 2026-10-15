@@ -111,6 +111,8 @@ helpers.
 import datetime
 from types import SimpleNamespace
 
+import pytest
+
 import ladok3
 import ladok3.data
 
@@ -542,7 +544,31 @@ def format_program_round(program_code, program_round):
   start = datetime.date.fromisoformat(
     program_round["SammanslagenTillfallesperiod"]["Startdatum"])
   return f"{program_code} {program_round['Utbildningstillfalleskod']} {start.year}"
-@ We need a list of desired rounds.
+@
+
+Let's verify both filters: without [[--rounds]] every round is kept, and with
+it only the rounds asked for.
+The first case matters most, since it is the default: a filter that returned
+nothing there would make every export empty without any error.
+<<test functions>>=
+def test_filter_rounds_keeps_all_without_desired_rounds():
+  rounds = [SimpleNamespace(round_code="HT25"),
+            SimpleNamespace(round_code="VT26")]
+
+  assert list(ladok3.data.filter_rounds(rounds, None)) == rounds
+  assert list(ladok3.data.filter_rounds(rounds, ["VT26"])) == [rounds[1]]
+
+
+def test_filter_program_rounds_keeps_all_without_desired_rounds():
+  rounds = [{"Utbildningstillfalleskod": "HT25"},
+            {"Utbildningstillfalleskod": "VT26"}]
+
+  assert list(ladok3.data.filter_program_rounds(rounds, None)) == rounds
+  assert list(ladok3.data.filter_program_rounds(rounds, ["HT25"])) \
+    == [rounds[0]]
+@
+
+We need a list of desired rounds.
 <<add data command arguments to data parser>>=
 data_parser.add_argument("-r", "--rounds", nargs="+",
   help="The round codes for the rounds to include, "
@@ -844,7 +870,35 @@ if "Betygsgradsobjekt" in result_data:
 else:
   grade = "-"
   normalized_date = None
-@ We must add the command line argument for the limit for the normalized date.
+@
+
+Let's verify the cut-off with a course that runs for 51 days: an exam passed
+37 days in is kept, at $37/51$ of the course, while a lab passed after the
+course ended counts as not finished when we cut off at the course end.
+<<test functions>>=
+def test_time_limit_counts_late_results_as_not_finished():
+  exam = SimpleNamespace(code="TEN1")
+  lab = SimpleNamespace(code="LAB1")
+  course = FakeCourse(
+    code="DD1315",
+    round_code="HT25",
+    start=datetime.date(2025, 8, 25),
+    end=datetime.date(2025, 10, 15),
+    components=[exam, lab],
+    results=[
+      FakeResult(exam, "P", "2025-10-01"),
+      FakeResult(lab, "P", "2025-11-01"),
+    ],
+  )
+  args = SimpleNamespace(normalize_date=True, time_limit=1.0,
+                         components=None)
+
+  rows = list(ladok3.data.extract_data_for_course_registration(course, args))
+
+  assert rows == [(exam, "P", pytest.approx(37 / 51)), (lab, "-", None)]
+@
+
+We must add the command line argument for the limit for the normalized date.
 <<add data command arguments to data parser>>=
 data_parser.add_argument("-t", "--time-limit", type=float,
   help="The time (normalized) for cutting off results, "
