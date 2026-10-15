@@ -889,10 +889,16 @@ def get_student_data_JSON(self, person_nr_raw: str, lang: str = 'sv') -> dict:
   return record[0]
 @
 
-To test this function, we do the following.
+To test this function, we look a student up by personnummer and check that
+we get the student we expected.
+Rather than writing a personnummer into the test, we take it from the
+student's own record, looked up by UID, so the test holds no personal data
+and keeps working when the test environment changes.
 <<test functions>>=
 def test_get_student_data_JSON(ladok) -> None:
-  assert ladok.get_student_data_JSON("8506097891")
+  personnummer = ladok.get_student_data_by_uid_JSON(student_uid)["Personnummer"]
+  record = ladok.get_student_data_JSON(personnummer)
+  assert record["Uid"] == student_uid
 @
 
 We also have the corresponding for LADOK's UID, which fetches the record 
