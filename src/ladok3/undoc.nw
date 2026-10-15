@@ -3,6 +3,20 @@
 Below are the original [[LadokSession]] methods by Baltatzis and Maguire.
 These are merely kept for backwards compatibility.
 
+Their tests go into a file of their own, [[test_undoc.py]].
+Each test file is tangled from one source file only, so test chunks here
+would otherwise never reach a test file.
+Like the other live tests, they take the session as the [[ladok]] fixture
+(\cref{Testing}), and they use the same test student as the tests of the
+API calls.
+<<test [[undoc.py]]>>=
+import ladok3
+
+student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
+
+<<test functions>>
+@
+
 The one missing is the constructor, that has been replaced by the code above.
 Also, the code has been adapted to use [[self.session]] instead of 
 [[self.__session]] etc.
@@ -405,7 +419,7 @@ def hamtaStudieResultatForStudent_JSON (self, studentUID):
 Let's add a test.
 This function should return a dictionary.
 <<test functions>>=
-def test_hamtaStudieResultatForStudent_JSON():
+def test_hamtaStudieResultatForStudent_JSON(ladok):
   r = ladok.hamtaStudieResultatForStudent_JSON(student_uid)
   assert type(r) == dict
 @
