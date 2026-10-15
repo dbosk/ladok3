@@ -78,12 +78,13 @@ errors with a single exception handler.
 
 \begin{description}
 \item[{[[LadokError]]}] Base exception class for all LADOK-related errors.
-\item[{[[LadokServerError]]}] For server-side LADOK errors (uses 
-[[response.json()["Meddelande"]]]).
 \item[{[[LadokValidationError]]}] For data validation errors (invalid person 
 numbers, grades, etc.).
 \item[{[[LadokAPIError]]}] For API/HTTP related errors (network failures, 
 unexpected responses).
+\item[{[[LadokServerError]]}] A subclass of [[LadokAPIError]] for requests
+that LADOK refused with an explanation (uses
+[[response.json()["Meddelande"]]]).
 \item[{[[LadokNotFoundError]]}] For resource not found errors (missing courses, 
 components, etc.).
 \end{description}
@@ -120,23 +121,6 @@ class LadokError(Exception):
 
   All other LADOK exception classes inherit from this class, ensuring
   backward compatibility with existing code that catches generic exceptions.
-  """
-  pass
-
-class LadokServerError(LadokError):
-  """
-  Exception for server-side LADOK errors.
-
-  This exception is raised when the LADOK server returns an error response,
-  typically containing an error message in the response JSON under the
-  "Meddelande" key. This indicates that the request reached the server
-  successfully, but the server was unable to process it due to business
-  logic constraints or data validation issues on the server side.
-
-  Examples:
-  - Attempting to register a grade for a student not enrolled in the course
-  - Trying to access data that the authenticated user doesn't have permission to view
-  - Server-side validation failures
   """
   pass
 
@@ -189,6 +173,62 @@ class LadokNotFoundError(LadokError):
   - Non-existent course rounds
   """
   pass
+@
+
+A [[LadokServerError]] is a special kind of [[LadokAPIError]]: the request
+failed, but LADOK itself explains why.
+We make it a subclass for the sake of existing code.
+For a long time the query methods never raised [[LadokServerError]] at all:
+they raised it inside a bare [[try]]/[[except]] that immediately caught it
+again, so every failure surfaced as a [[LadokAPIError]].
+Code that catches [[LadokAPIError]] to skip a failing request, for instance
+when exporting a whole programme's results, therefore relies on it covering
+LADOK's refusals as well.
+As a subclass, [[LadokServerError]] keeps such handlers working, while new code
+can catch the more specific error.
+The subclass must be defined after its parent, which is why it comes last.
+There is one consequence for handlers that treat the two differently, such
+as the usage example above or the API methods below that add context to an
+error before raising it again: they must catch [[LadokServerError]] first.
+Python tries the [[except]] clauses in order, and a clause for
+[[LadokAPIError]] also matches its subclass, so listed first it would turn
+every server error into a plain API error.
+
+<<classes>>=
+class LadokServerError(LadokAPIError):
+  """
+  Exception for server-side LADOK errors.
+
+  This exception is raised when the LADOK server returns an error response,
+  typically containing an error message in the response JSON under the
+  "Meddelande" key. This indicates that the request reached the server
+  successfully, but the server was unable to process it due to business
+  logic constraints or data validation issues on the server side.
+
+  It is a subclass of `LadokAPIError`, since it is also a failed API
+  request, so handlers for `LadokAPIError` catch it too.
+
+  Examples:
+  - Attempting to register a grade for a student not enrolled in the course
+  - Trying to access data that the authenticated user doesn't have permission to view
+  - Server-side validation failures
+  """
+  pass
+@
+
+Let's verify that such a method lets a server error through as one, with its
+context added.
+We take [[get_student_contact_data_JSON]] as an example and replace its query
+with one that LADOK refuses, so the test runs offline.
+<<test functions>>=
+def test_api_method_keeps_server_error_type(monkeypatch) -> None:
+  ls = ladok3.LadokSession("KTH Royal Institute of Technology")
+  def refused(*args, **kwargs):
+    raise ladok3.LadokServerError("GET request to ... failed: Nekad")
+  monkeypatch.setattr(ls, "get_query", refused)
+  with pytest.raises(ladok3.LadokServerError,
+                     match="contact data for student s-uid.*Nekad"):
+    ls.get_student_contact_data_JSON("s-uid")
 @
 
 \section{HTTP queries to LADOK}
@@ -324,6 +364,10 @@ An earlier version put the whole response body into the message, which for
 such a page meant a screenful of HTML.
 We therefore use LADOK's own message when there is one, and otherwise the
 status and a shortened body.
+The two cases also differ in kind.
+With a [[Meddelande]], LADOK understood the request and refused it, which is
+what [[LadokServerError]] stands for (\cref{ExceptionClasses}); without one,
+we only know that the request failed, a plain [[LadokAPIError]].
 
 All five query methods below fail the same way, so they share this helper.
 It returns the exception rather than raising it, so that each method ends
@@ -331,17 +375,19 @@ with an explicit [[raise]] and the reader sees where its control flow stops.
 <<functions>>=
 def query_error(response: requests.Response, path: str,
                 method: str) -> LadokAPIError:
-  """Return a `LadokAPIError` describing the failed `response`.
+  """Return an exception describing the failed `response`.
 
-  Uses LADOK's own error message (`Meddelande`) when the body is LADOK JSON,
-  otherwise the HTTP status and a shortened body.
+  If the body is LADOK JSON with an error message (`Meddelande`), returns a
+  `LadokServerError` with that message. Otherwise returns a `LadokAPIError`
+  with the HTTP status and a shortened body.
   """
+  failed = f"{method} request to {path} failed"
   try:
     message = response.json()["Meddelande"]
   except (ValueError, KeyError, TypeError):
-    message = (f"{response.status_code} {response.reason}: "
-               f"{compact_body(response.text)}")
-  return LadokAPIError(f"{method} request to {path} failed: {message}")
+    return LadokAPIError(f"{failed}: {response.status_code} {response.reason}: "
+                         f"{compact_body(response.text)}")
+  return LadokServerError(f"{failed}: {message}")
 @
 
 Let's verify both kinds of failure: an HTML error page from the proxy and a
@@ -366,7 +412,7 @@ def test_query_error_shortens_html_error_pages() -> None:
   err = ladok3.query_error(
     FakeFailedResponse(500, "Internal Server Error", page),
     "/resultat/internal/kurstillfalle/moment", "PUT")
-  assert isinstance(err, ladok3.LadokAPIError)
+  assert type(err) is ladok3.LadokAPIError
   assert "PUT request to /resultat/internal/kurstillfalle/moment" in str(err)
   assert "500 Internal Server Error" in str(err)
   assert "Application error" in str(err)
@@ -378,6 +424,8 @@ def test_query_error_uses_ladok_message() -> None:
     FakeFailedResponse(400, "Bad Request", '{"Meddelande": "..."}',
                        {"Meddelande": "Resultatet är redan attesterat"}),
     "/resultat/internal/resultat/uppdatera/1", "PUT")
+  assert isinstance(err, ladok3.LadokServerError)
+  assert isinstance(err, ladok3.LadokAPIError)
   assert str(err).endswith("failed: Resultatet är redan attesterat")
 @
 
@@ -1045,12 +1093,12 @@ def get_student_contact_data_JSON(self, student_id: str) -> dict:
       f"/studentinformation/internal/student/{student_id}/kontaktuppgifter",
       "application/vnd.ladok-studentinformation+json"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get contact data for "
-                        f"student {student_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting contact data for "
                            f"student {student_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get contact data for "
+                        f"student {student_id}: {err}") from err
 @
 
 We test this function.
@@ -1083,12 +1131,12 @@ def get_student_suspensions_JSON(self, student_id: str) -> dict:
       f"/studentinformation/internal/avstangning/student/{student_id}",
       "application/vnd.ladok-studentinformation+json"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get suspensions for "
-                        f"student {student_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting suspensions for "
                            f"student {student_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get suspensions for "
+                        f"student {student_id}: {err}") from err
 @
 
 We test this function.
@@ -1328,12 +1376,12 @@ def course_instance_JSON(self, instance_id: str) -> dict:
     return self.get_query(
       f"/resultat/internal/utbildningsinstans/kursinstans/{instance_id}"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get course instance data for "
-                        f"{instance_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting course instance data for "
                            f"{instance_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get course instance data for "
+                        f"{instance_id}: {err}") from err
 @
 
 We add the following test.
@@ -1738,13 +1786,13 @@ def student_results_JSON(
       "/resultat/internal/studentenskurser/kursinformation"
       f"/student/{student_id}/kursUID/{course_education_id}"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get results for student {student_id} "
-                        f"on course {course_education_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting results for "
                            f"student {student_id} on course {course_education_id}: "
                            f"{err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get results for student {student_id} "
+                        f"on course {course_education_id}: {err}") from err
 @
  
 We test this in the following way.
@@ -1802,13 +1850,13 @@ def create_result_JSON(self,
         "Projekttitel": project_title
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to create result for student {student_id} "
-                        f"on component {component_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when creating result for "
                            f"student {student_id} on component {component_id}: "
                            f"{err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to create result for student {student_id} "
+                        f"on component {component_id}: {err}") from err
 @
 
 We test this in the following way.
@@ -1891,11 +1939,11 @@ def update_result_JSON(self,
         'SenasteResultatandring': last_modified
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to update result {result_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when updating result "
                            f"{result_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to update result {result_id}: {err}") from err
 @
 
 We test this in the following way.
@@ -2033,11 +2081,11 @@ def user_info_JSON(self) -> dict:
       "/kataloginformation/internal/anvandare/anvandarinformation",
       "application/vnd.ladok-kataloginformation+json"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get user info: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting user info: "
                            f"{err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get user info: {err}") from err
 @
 
 We test this as follows.
@@ -2084,11 +2132,11 @@ def finalize_result_JSON(self,
         "ResultatetsSenastSparad": last_modified
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to finalize result {result_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when finalizing result "
                            f"{result_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to finalize result {result_id}: {err}") from err
 @ This method returns a copy of the finalized result.
 
 We test this in the following way.
@@ -2197,12 +2245,12 @@ def update_finalized_result_JSON(self,
         'SenasteResultatandring': last_modified
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to update finalized result {result_id}: "
-                        f"{err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when updating finalized result "
                            f"{result_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to update finalized result {result_id}: "
+                        f"{err}") from err
 @
 
 We test this in the following way.
@@ -2244,12 +2292,12 @@ def finalized_result_to_draft_JSON(
         'ResultatetsSenastSparad': last_modified
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to change finalized result {result_id} to draft: "
-                        f"{err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when changing finalized result "
                            f"{result_id} to draft: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to change finalized result {result_id} to draft: "
+                        f"{err}") from err
 @
 
 We test this in the following way.
@@ -2284,13 +2332,13 @@ def remove_result_draft_JSON(self, result_id: str) -> None:
     data = self.del_query(
       f"/resultat/internal/resultat/tabort/{result_id}"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"LADOK request to remove draft result "
-                        f"{result_id} failed: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when removing "
                            f"draft result {result_id}: "
                            f"{err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"LADOK request to remove draft result "
+                        f"{result_id} failed: {err}") from err
 @
 
 We test this in the following way.
