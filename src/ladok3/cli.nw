@@ -802,17 +802,24 @@ The [[format]] string carries the level name so users can distinguish
 warnings from errors without the legacy [[sys.argv[0]:]] prefix that
 [[warn]]/[[err]] used to add by hand.
 <<configure logging based on verbose flag>>=
-net_verbosity = args.verbose - args.quiet
-
-<<determine logging level from net verbosity>>
-logging.basicConfig(level=level,
+logging.basicConfig(level=logging_level(args.verbose, args.quiet),
                     format='[%(levelname)s] %(message)s')
 @
 
-We extract the verbosity-to-level mapping into its own chunk so both the
-runtime configuration above and the parametrised tests below tangle the
-exact same code.  Drifting the mapping in one place but not the other
-would silently change CLI behaviour without breaking any test.
+We put the arithmetic and the mapping in a function of their own, so the
+tests can call exactly the code that [[main]] runs, without parsing
+arguments or configuring the logging system.
+An earlier version shared only the mapping, as a chunk included both here
+and in the tests, and the tests computed the net verbosity themselves.
+A sign error in the subtraction then broke the command line while every test
+still passed.
+<<functions>>=
+def logging_level(verbose, quiet):
+  """Return the logging level for `-v` given `verbose` times and `-q`
+  given `quiet` times.  The flags offset each other."""
+  net_verbosity = verbose - quiet
+  <<determine logging level from net verbosity>>
+  return level
 <<determine logging level from net verbosity>>=
 if net_verbosity <= -3:
   level = logging.CRITICAL + 1   # silent
@@ -832,29 +839,9 @@ else:                            # >= 3: even library logs
 
 Let's pin the net-verbosity arithmetic and the level mapping with tests.
 The mapping in particular is a small table that's easy to typo when
-adding a new level later; a parametrised test catches that the moment
-the chunk is recompiled.
+adding a new level later, and the cases with both [[-v]] and [[-q]] check
+that the flags offset each other rather than add up.
 <<test functions>>=
-class TestVerbositySystem:
-  """Net verbosity is verbose count minus quiet count."""
-
-  def test_net_verbosity_calculation(self):
-    args = argparse.Namespace(verbose=2, quiet=1)
-    assert args.verbose - args.quiet == 1
-
-  def test_multiple_verbose_flags(self):
-    args = argparse.Namespace(verbose=3, quiet=0)
-    assert args.verbose - args.quiet == 3
-
-  def test_multiple_quiet_flags(self):
-    args = argparse.Namespace(verbose=0, quiet=3)
-    assert args.verbose - args.quiet == -3
-
-  def test_offsetting_flags(self):
-    args = argparse.Namespace(verbose=2, quiet=1)
-    assert args.verbose - args.quiet == 1
-
-
 class TestVerbosityLevelMapping:
   """The full mapping from net verbosity to Python logging levels."""
 
@@ -872,11 +859,7 @@ class TestVerbosityLevelMapping:
   ])
   def test_verbosity_to_logging_level(self, verbose, quiet,
                                       expected_level):
-    net_verbosity = verbose - quiet
-
-    <<determine logging level from net verbosity>>
-
-    assert level == expected_level
+    assert ladok3.cli.logging_level(verbose, quiet) == expected_level
 @
 
 
