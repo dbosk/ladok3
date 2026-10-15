@@ -36,6 +36,7 @@ These illustrate how to the [[ladok3]] module and provide testing using
 import json
 import ladok3
 import os
+import pytest
 
 <<test functions>>
 @
@@ -1405,7 +1406,7 @@ except Exception:
 @
 
 
-\section{Students' study-related attributes}
+\section{Students' study-related attributes}\label{StudentCourses}
 
 The study related attributes are courses and course results.
 Similarly to above, we use the [[__get_study_attributes]] helper method to 
@@ -1437,6 +1438,11 @@ self.__get_study_attributes()
 
 To create a list of the student's course registrations, we use the 
 [[registrations_JSON]] API method.
+We construct every current registration, even when the caller filters on a
+single course code.
+That is cheap: a [[CourseRegistration]] built from this sparse data sends no
+request until someone needs what the data lacks, such as the components
+(\cref{CourseInstanceLazyPull}).
 <<create a list of the student's course objects>>=
 self.__courses = []
 
@@ -1669,15 +1675,15 @@ Exchanges.
 These faux courses have a name and code, but no credits or version of syllabus.
 Consequently they don't have any grading scales either.
 
-Our approach will be to try to assign the attributes using [[kwargs]], and if 
-that fails, we will fetch the data (pull from LADOK).
-If that pull fails with missing data, then we will assume that it's one of 
+Our approach will be to try to assign the attributes using [[kwargs]], and if
+that fails, we will fetch the data (pull from LADOK) once it is needed.
+If that pull fails with missing data, then we will assume that it's one of
 these faux courses.
 <<CourseInstance constructor body>>=
 try:
-  self.__assign_attr(kwargs)
-except:
-  self.__pull_attributes()
+  self.__assign_attr(kwargs.copy())
+except Exception:
+  self.__assign_sparse(kwargs)
 <<CourseInstance methods>>=
 def __assign_attr(self, data):
   <<assign CourseInstance data to private attributes>>
@@ -1688,12 +1694,64 @@ def __pull_attributes(self):
     self.__assign_attr(data)
   except:
     self.__assign_faux(data)
+  self.__pulled = True
 
 def pull(self):
   self.__pull_attributes()
 
 def __assign_faux(self, data):
   <<assign faux CourseInstance data to private attributes>>
+@
+
+\subsection{Pulling course data only when it is needed}%
+\label{CourseInstanceLazyPull}
+
+An earlier version pulled at once, in the constructor.
+That made constructing a course cost one request, and the data we most often
+construct from is sparse.
+A student's registrations (\cref{StudentCourses}) carry the course's name,
+code and education ID, but not its credits, syllabus version, grade scale or
+components.
+Since [[Student.courses]] constructs every course the student is registered
+on before it filters on the code, reporting one result for one course sent one
+components request for each of the student's courses.
+It also meant that if LADOK failed to deliver the components of \emph{any} of
+them, we could report on none of them.
+
+We therefore keep what the sparse data has and pull the rest on first use.
+Filtering courses on their code then costs no requests, and only the course
+we actually work with is pulled, so another course's failure no longer
+affects it.
+The attributes that the sparse data lacks call [[__ensure_pulled]] before
+they read their value.
+We keep the sparse name, code and education ID in the same private
+attributes as the pulled values, so that the properties need no special
+case: a pull simply overwrites them.
+
+We pass [[__assign_attr]] a copy of [[kwargs]] above, because it pops the
+values it uses and may fail halfway, after taking the name and the code.
+And we catch [[Exception]] rather than everything, so that, for instance, an
+interrupt from the user is not mistaken for sparse data.
+<<CourseInstance methods>>=
+def __assign_sparse(self, data):
+  self.__pulled = False
+  self.__name = data.get("Benamning")
+  self.__code = data.get("Utbildningskod")
+  self.__education_id = data.get("UtbildningUID")
+
+def __ensure_pulled(self):
+  if not self.__pulled:
+    self.__pull_attributes()
+@
+
+A course that was complete from the start needs no flag of its own, so we
+let a class attribute supply the default.
+That default also matters for the cache:
+a course pickled by an earlier version has no [[__pulled]] attribute, but it
+was always complete, so it should count as pulled.
+Python falls back to the class attribute when an instance lacks one.
+<<CourseInstance methods>>=
+__pulled = True
 @
 
 By trial-and-error, it seems like the faux courses has none of the attributes 
@@ -1738,6 +1796,9 @@ except KeyError:
 @
 
 Finally, we want to have properties to access the private attributes.
+The name, code and education ID are usually there already, so those
+properties pull only when the value is missing; the others always make sure
+that we have pulled (\cref{CourseInstanceLazyPull}).
 <<CourseInstance methods>>=
 @property
 def instance_id(self):
@@ -1745,35 +1806,144 @@ def instance_id(self):
 
 @property
 def education_id(self):
+  if self.__education_id is None:
+    self.__ensure_pulled()
   return self.__education_id
 
 @property
 def code(self):
+  if self.__code is None:
+    self.__ensure_pulled()
   return self.__code
 
 @property
 def name(self):
+  if self.__name is None:
+    self.__ensure_pulled()
   return self.__name["en"]
 
 @property
 def version(self):
+  self.__ensure_pulled()
   return self.__version
 
 @property
 def grade_scale(self):
+  self.__ensure_pulled()
   return self.__grade_scale
 
 @property
 def credits(self):
+  self.__ensure_pulled()
   return self.__credits
 
 @property
 def unit(self):
+  self.__ensure_pulled()
   return self.__unit
 
 def components(self, /, **kwargs):
   """Returns the list of components, filtered on keywords"""
+  self.__ensure_pulled()
   return filter_on_keys(self.__components, **kwargs)
+@
+
+Let's verify the two properties we want from pulling lazily.
+We give a student two current registrations, built from the sparse data that
+[[registrations_JSON]] returns, and a fake LADOK that counts the components
+requests and can fail them for chosen course rounds.
+<<test functions>>=
+class FakeLadokForLazyCourses:
+  def __init__(self, broken_rounds=()):
+    self.components_requests = []
+    self.__broken_rounds = set(broken_rounds)
+    self.__grade_scale = ladok3.GradeScale(
+      ID=1, Kod="PF", Benamning={"sv": "Pass/fail"},
+      Betygsgrader=[{"ID": 11, "Kod": "P", "GiltigSomSlutbetyg": True}])
+
+  def registrations_JSON(self, student_id):
+    return [lazy_test_registration("round-ok", "DD1315"),
+            lazy_test_registration("round-broken", "DD2520")]
+
+  def course_round_components_JSON(self, round_id):
+    self.components_requests.append(round_id)
+    if round_id in self.__broken_rounds:
+      raise ladok3.LadokAPIError("PUT request to ... failed: 500")
+    return {
+      "UtbildningsinstansUID": f"instance-{round_id}",
+      "UtbildningUID": f"education-{round_id}",
+      "Utbildningskod": "DD1315",
+      "Benamning": {"sv": "Kurs", "en": "Course"},
+      "Omfattning": 7.5,
+      "Enhet": "hp",
+      "Versionsnummer": "1",
+      "BetygsskalaID": 1,
+    }
+
+  def get_grade_scales(self, /, **kwargs):
+    return [self.__grade_scale]
+
+def lazy_test_registration(round_id, code):
+  return {
+    "Nuvarande": True,
+    "Utbildningsinformation": {
+      "UtbildningstillfalleUID": round_id,
+      "Utbildningstillfalleskod": "50001",
+      "Studieperiod": {"Startdatum": "2026-08-31",
+                       "Slutdatum": "2026-10-23"},
+      "UtbildningsinstansUID": f"instance-{round_id}",
+      "UtbildningUID": f"education-{round_id}",
+      "Utbildningskod": code,
+      "Benamning": {"sv": "Kurs", "en": "Course"},
+    },
+  }
+@
+
+First, finding a student's course by its code costs no requests, and the
+course is pulled once, when we first need data it lacks.
+<<test functions>>=
+def test_finding_a_course_sends_no_components_request():
+  ladok = FakeLadokForLazyCourses()
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+
+  course, = student.courses(code="DD1315")
+  assert course.name == "Course"
+  assert ladok.components_requests == []
+
+  assert course.credits == 7.5
+  assert course.components()
+  assert ladok.components_requests == ["round-ok"]
+@
+
+Second, a course whose components LADOK fails to deliver no longer stops us
+from working with another course; the failure surfaces only when we use the
+broken course itself.
+<<test functions>>=
+def test_broken_course_does_not_affect_another():
+  ladok = FakeLadokForLazyCourses(broken_rounds={"round-broken"})
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+
+  course, = student.courses(code="DD1315")
+  assert course.components()
+
+  broken, = student.courses(code="DD2520")
+  with pytest.raises(ladok3.LadokAPIError):
+    broken.components()
+@
+
+Finally, a course pickled by an earlier version lacks the [[__pulled]]
+attribute but is complete; it must not be pulled again.
+We mimic one by removing the attribute from a pulled course.
+<<test functions>>=
+def test_course_without_pulled_flag_counts_as_pulled():
+  ladok = FakeLadokForLazyCourses()
+  course, = ladok3.Student(ladok=ladok, id="student-uid").courses(
+    code="DD1315")
+  course.pull()
+  del course._CourseInstance__pulled
+
+  assert course.credits == 7.5
+  assert ladok.components_requests == ["round-ok"]
 @
 
 
