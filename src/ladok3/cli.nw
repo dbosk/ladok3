@@ -460,8 +460,10 @@ classes as hard failures.
 To get a cache that refers to a missing module, we make a handler class
 importable under that module's name, store a session holding it, and then
 remove the module again before we restore.
-The cache goes through the real encryption, in a temporary directory. We also verify that the commands dispatched before
-session creation really bypass [[get_session]].
+The cache goes through the real encryption, in a temporary directory.
+
+We also verify that the commands dispatched before session creation really
+bypass [[get_session]].
 
 <<test [[cli.py]]>>=
 import argparse
@@ -665,12 +667,18 @@ Let's verify the encryption itself, with the real key derivation and the real
 [[Fernet]] protocol, storing to a temporary directory.
 An earlier version of these tests replaced all of the cryptography with
 stand-ins, so a cache written in plain text would have passed them.
-We check three properties.
+We check four properties.
 A stored session can be restored with the same credentials.
 The file on disk does not reveal the pickled session: the names of the
 classes in the pickle must not be readable in it.
 And the key depends on both the username, which is the salt, and the password:
 changing either one makes the cache unreadable.
+Finally, we pin how the key is derived, by decrypting the file with a key we
+derive ourselves: PBKDF2 with SHA-256 over the password, the username as salt
+and 100\,000 iterations.
+That is the format of every cache already on users' disks, so a change would
+make them unreadable; it would also catch a weakened derivation, such as fewer
+iterations, which the other tests can't see.
 We use a real [[LadokSession]], which logs in only on its first request, so
 storing it needs no network.
 <<test functions>>=
@@ -702,6 +710,22 @@ def test_session_cache_is_encrypted(cache_dir):
 
   assert b"LadokSession" not in data
   assert b"ladok3" not in data
+
+def test_session_cache_key_derivation(cache_dir):
+  from cryptography.fernet import Fernet
+  from cryptography.hazmat.primitives import hashes
+  from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+  import base64
+  ladok3.cli.store_ladok_session(offline_session(), CACHE_CREDENTIALS)
+
+  kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32,
+                   salt=CACHE_CREDENTIALS["username"].encode("utf-8"),
+                   iterations=100000)
+  key = base64.urlsafe_b64encode(
+    kdf.derive(CACHE_CREDENTIALS["password"].encode("utf-8")))
+  pickled = Fernet(key).decrypt((cache_dir / "LadokSession").read_bytes())
+
+  assert isinstance(pickle.loads(pickled), ladok3.LadokSession)
 
 @pytest.mark.parametrize("credentials", [
   {"username": "other", "password": "secret"},

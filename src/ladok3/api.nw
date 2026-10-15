@@ -21,8 +21,9 @@ cache is warm.
 By default, though, the tests don't talk to LADOK: they replay the
 responses recorded in [[tests/cassettes/test_api]], which is what the
 [[vcr]] mark on every test in the file asks for.
-The few tests that check our own validation, before any request is sent,
-take [[offline_ladok]] instead, a session that never logs in.
+The few tests that send no request at all, such as those of our own
+validation and pagination, take [[offline_ladok]] instead, a session that
+never logs in.
 <<test [[api.py]]>>=
 import json
 import ladok3
@@ -621,6 +622,9 @@ ask for fits on one page, so a helper that stopped after the first page
 would still pass them.
 We therefore test it offline, with a [[request_fn]] that serves a list of
 five items two at a time, just as LADOK would with a page size of two.
+A page that comes back empty must end the loop too, even if the total
+promises more items, or a total that is too high would make us ask for pages
+for ever.
 <<test functions>>=
 def test_all_pages_walks_every_page(offline_ladok) -> None:
   items = list(range(5))
@@ -634,6 +638,14 @@ def test_all_pages_walks_every_page(offline_ladok) -> None:
 
   assert offline_ladok._all_pages(request_fn, page_size=2) == items
   assert pages == [1, 2, 3]
+
+def test_all_pages_stops_at_an_empty_page(offline_ladok) -> None:
+  def request_fn(page, limit):
+    assert page <= 2, "asked for another page after an empty one"
+    return {"Resultat": [page] if page == 1 else [],
+            "TotaltAntalPoster": 5}
+
+  assert offline_ladok._all_pages(request_fn, page_size=2) == [1]
 
 def test_all_pages_rejects_unpaginated_response(offline_ladok) -> None:
   with pytest.raises(ladok3.LadokAPIError, match="TotaltAntalPoster"):
@@ -771,6 +783,10 @@ The observed leaks were in nested records: [[SenastAndradAv]] inside a
 level and inside a list of records.
 We list the fields here independently of [[PSEUDONYMS]]: a test that looped
 over the table itself would still pass if someone deleted an entry from it.
+It is not enough that the value changes, since a transformation of it, say
+the name spelt backwards, would also be a change.
+We therefore pseudonymize two different people and require the same result
+for both: then nothing of the original can remain.
 <<test functions>>=
 PSEUDONYMIZED_KEYS = [
   "Fornamn", "Efternamn", "Personnummer", "Epostadress", "Epost",
@@ -781,11 +797,12 @@ PSEUDONYMIZED_KEYS = [
 
 @pytest.mark.parametrize("key", PSEUDONYMIZED_KEYS)
 def test_pseudonymize_replaces(key) -> None:
-  original = "Real Value 4711"
-  data = {key: original, "Rattigheter": [{key: original}]}
-  ladok3.pseudonymize(data)
-  assert data[key] != original
-  assert data["Rattigheter"][0][key] != original
+  first = {key: "Anna Andersson", "Rattigheter": [{key: "Anna Andersson"}]}
+  second = {key: "Bo Berg", "Rattigheter": [{key: "Bo Berg"}]}
+  ladok3.pseudonymize(first)
+  ladok3.pseudonymize(second)
+  assert first[key] not in ("Anna Andersson", "Bo Berg")
+  assert first == second
 @
 
 The UIDs must survive: they are what lets a reader follow the same student
@@ -835,8 +852,8 @@ def grade_scales_JSON(self) -> list:
 @
 
 We add the following test.
-If we can convert the return value do JSON, it's probably correct.
-(No this isn't the best of tests.)
+Every grade scale should have an ID, a code and its grades, and no ID should
+occur twice, since the grades of a result refer to their scale by ID.
 <<test functions>>=
 def test_grade_scales_JSON(ladok) -> None:
   scales = ladok.grade_scales_JSON()
@@ -1865,7 +1882,8 @@ def lab_result(ladok):
 def remove_lab_result(ladok):
   """Walk the test student's LAB1 result back to nothing: a finalized
   result goes back to draft, a draft is removed.  Fail if it is attested,
-  since only LADOK's web interface can undo that."""
+  since only LADOK's web interface can undo that; a draft on top of the
+  attested result is then left too."""
   draft, attested = lab_result(ladok)
   if attested:
     pytest.fail(f"LAB1 result {attested['Uid']} of the test student is "
