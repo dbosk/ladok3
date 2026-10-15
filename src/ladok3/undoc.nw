@@ -11,6 +11,9 @@ Like the other live tests, they take the session as the [[ladok]] fixture
 API calls.
 <<test [[undoc.py]]>>=
 import ladok3
+import pytest
+
+pytestmark = pytest.mark.vcr
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 

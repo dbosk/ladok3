@@ -16,16 +16,20 @@ We will use the following to test the API methods.
 Each test that talks to LADOK takes the session as its [[ladok]] argument,
 a fixture that reuses the cached test-environment session through
 [[ladok3.test_session]] (see \cref{Testing}).
-Running the API tests then requires no MFA at all when the cache is warm,
-and without [[--live]] these tests are skipped rather than run.
+Running the API tests against LADOK then requires no MFA at all when the
+cache is warm.
+By default, though, the tests don't talk to LADOK: they replay the
+responses recorded in [[tests/cassettes/test_api]], which is what the
+[[vcr]] mark on every test in the file asks for.
 The few tests that check our own validation, before any request is sent,
-take [[offline_ladok]] instead, a session that never logs in, so they run
-offline.
+take [[offline_ladok]] instead, a session that never logs in.
 <<test [[api.py]]>>=
 import json
 import ladok3
 import ladok3.report
 import pytest
+
+pytestmark = pytest.mark.vcr
 
 student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
 dasak_instance_id = "39c56d6a-73d8-11e8-b4e0-063f9afb40e3"
@@ -898,8 +902,10 @@ we get the student we expected.
 Rather than writing a personnummer into the test, we take it from the
 student's own record, looked up by UID, so the test holds no personal data
 and keeps working when the test environment changes.
+The request carries the personnummer in its URL, so the test is never
+recorded and runs only live (\cref{Testing}).
 <<test functions>>=
-def test_get_student_data_JSON(ladok) -> None:
+def test_get_student_data_JSON(live, ladok) -> None:
   personnummer = ladok.get_student_data_by_uid_JSON(student_uid)["Personnummer"]
   record = ladok.get_student_data_JSON(personnummer)
   assert record["Uid"] == student_uid
