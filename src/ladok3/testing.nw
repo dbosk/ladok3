@@ -110,12 +110,32 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import vcr_support  # noqa: E402
 
+pytest_plugins = ["pytester"]
+
 <<constants>>
 <<command-line options>>
 <<test configuration>>
 <<collection rules>>
 <<fixtures>>
 <<checks after the run>>
+@
+
+The configuration is code like any other, and parts of it guard against
+writing to real records and leaking personal data, so it has tests of its
+own, in [[test_testing.py]].
+They import the functions from [[conftest]], which [[pytest]] has already
+loaded.
+Some of them run [[pytest]] itself on a small test file, through the
+[[pytester]] fixture, which comes in a plugin that we enable above.
+<<test [[testing.py]]>>=
+import json
+
+import pytest
+import yaml
+
+import conftest
+
+<<test functions>>
 @
 
 Replay must never reach the network, not even by mistake.
@@ -214,6 +234,29 @@ def prepare_live_dir(live_dir, root):
     "written by pytest --live; safe to delete\n")
 @
 
+Let's verify that a live run empties only its own directory.
+<<test functions>>=
+def test_prepare_live_dir_empties_only_its_own(tmp_path):
+  project = tmp_path / "project"
+  live = tmp_path / "live"
+  conftest.prepare_live_dir(live, project)
+  (live / "old.yaml").write_text("from an earlier live run")
+  conftest.prepare_live_dir(live, project)
+  assert not (live / "old.yaml").exists()
+
+def test_prepare_live_dir_refuses_foreign_files(tmp_path):
+  live = tmp_path / "live"
+  live.mkdir()
+  (live / "precious.txt").write_text("not ours")
+  with pytest.raises(pytest.exit.Exception):
+    conftest.prepare_live_dir(live, tmp_path / "project")
+  assert (live / "precious.txt").exists()
+
+def test_prepare_live_dir_refuses_the_project(tmp_path):
+  with pytest.raises(pytest.exit.Exception):
+    conftest.prepare_live_dir(tmp_path, tmp_path / "project")
+@
+
 A [[mutates]] test is skipped when it would reach LADOK, in a live run or
 while recording, unless we asked for writes.
 In replay it runs: then its writes go to the cassette, not to LADOK.
@@ -227,6 +270,45 @@ def pytest_collection_modifyitems(config, items):
   for item in items:
     if "mutates" in item.keywords:
       item.add_marker(skip_writes)
+@
+
+Let's verify the rule in each mode, by running [[pytest]] on a small test
+file with this configuration.
+The inner run replaces the login fixture, so it never logs in to LADOK,
+whatever mode it is in.
+<<test functions>>=
+INNER_TESTS = """
+import pytest
+
+@pytest.fixture(scope="session", autouse=True)
+def live_ladok():
+  return "the inner run never logs in"
+
+@pytest.mark.mutates
+def test_writes():
+  pass
+
+def test_reads():
+  pass
+"""
+
+@pytest.mark.parametrize("options,passed,skipped", [
+  ([], 2, 0),
+  (["--live"], 1, 1),
+  (["--live", "--live-writes"], 2, 0),
+])
+def test_mutates_tests_reach_ladok_only_with_live_writes(
+    pytester, monkeypatch, tmp_path, options, passed, skipped):
+  monkeypatch.setenv("TEST_PSEUDONYM_KEY", "a key for the inner run")
+  pytester.makeconftest(pathlib_text(conftest.__file__))
+  pytester.makepyfile(test_inner=INNER_TESTS)
+  result = pytester.runpytest_inprocess(
+    *options, f"--live-dir={tmp_path / 'live'}", "-p", "no:cacheprovider")
+  result.assert_outcomes(passed=passed, skipped=skipped)
+
+def pathlib_text(path):
+  with open(path, encoding="utf-8") as file:
+    return file.read()
 @
 
 
@@ -293,21 +375,51 @@ def replay_ladok():
 The tests ask for [[ladok]] and get whichever session fits the mode.
 In replay, a test without a cassette is skipped: without one, its first
 request would only fail on the network block.
+A test that uses [[ladok]] must be marked [[vcr]], though, or it is never
+recorded: it would be skipped in replay for ever and talk to LADOK unrecorded
+in a live run, outside the drift check.
+We fail such a test rather than let it skip quietly.
+
+Each test starts with an empty cache.
+[[LadokSession]] caches some responses, such as the grade scales, and the
+session is shared by all tests.
+Without clearing it, what a test requests, and therefore what its cassette
+holds, would depend on which tests ran before it: a test recorded after
+another that filled the cache would, when run alone, make a request that its
+cassette lacks.
+
+Finally, in replay we check that the test made every request its cassette
+holds.
+By default [[vcrpy]] only answers the requests that come; it doesn't notice
+one that never comes.
+A write test whose DELETE was never sent would then still pass, because the
+requests after it replay the recorded state, in which the result is gone.
+The check runs after the test's other fixtures are torn down, since they were
+set up after [[ladok]], so it covers the cleanup's requests too.
 <<fixtures>>=
 @pytest.fixture
-def ladok(request, recording, live_ladok,
+def ladok(request, recording, live_ladok, vcr,
           vcr_cassette_dir, default_cassette_name):
   """The LADOK session for a test: logged in when talking to LADOK, an
   offline one that replays the test's cassette otherwise."""
+  if request.node.get_closest_marker("vcr") is None:
+    pytest.fail("a test that uses the ladok fixture must be marked vcr")
   if recording:
     if isinstance(live_ladok, str):
       pytest.skip(live_ladok)
-    return live_ladok
-  cassette = Path(vcr_cassette_dir) / f"{default_cassette_name}.yaml"
-  if not cassette.exists():
+    live_ladok.cache.clear()
+    yield live_ladok
+    return
+  cassette_file = Path(vcr_cassette_dir) / f"{default_cassette_name}.yaml"
+  if not cassette_file.exists():
     pytest.skip("no recording; record it with --record-mode=once, "
                 "or run with --live")
-  return request.getfixturevalue("replay_ladok")
+  session = request.getfixturevalue("replay_ladok")
+  session.cache.clear()
+  yield session
+  assert vcr.all_played, (
+    f"the test made {vcr.play_count} of the {len(vcr)} requests recorded "
+    "in its cassette")
 @
 
 Some tests check validation that happens before any request is sent, for
@@ -417,7 +529,17 @@ def pseudonymizer(request, recording):
 
 @pytest.fixture
 def vcr_config(pseudonymizer):
-  return pseudonymizer.vcr_config()
+  return {**pseudonymizer.vcr_config(), "match_on": REQUEST_MATCHERS}
+@
+
+[[vcrpy]] matches a request to a recorded one by its method and URL.
+That is enough for reading, but not for writing: a write test that sent the
+wrong grade would get the recorded response, with the right grade, and pass.
+We therefore match the body too, so that in replay a write must send exactly
+what was recorded.
+<<constants>>=
+REQUEST_MATCHERS = ["method", "scheme", "host", "port", "path", "query",
+                    "body"]
 @
 
 
@@ -466,15 +588,22 @@ a free-text note are replaced with it.
 The first recording found such values hundreds of times: a city in the
 names of courses given there, a short word in the translation table, and
 [[POST]] as the method of the write requests.
+
 Finding a value in LADOK's own public text says nothing about a person, so
-we allow the originals that occur there: in course and code-table names
-([[Benamning]] and its [[sv]] and [[en]] texts), in codes ([[Kod]]), in the
-translation table ([[Text]]), and as HTTP methods.
-Responses from LADOK's catalogue and course-information services
-([[kataloginformation]], [[utbildningsinformation]]) hold code tables and
-course data, not people, so all of their text counts as public.
-A name that happens to be a word in a course title is allowed too, but there
-it only names the course.
+when we scan a cassette we allow the originals that occur in the public text
+of \emph{that cassette}: in course and code-table names ([[Benamning]] and
+its [[sv]] and [[en]] texts), in codes ([[Kod]]), in the translation table
+([[Text]]), and as HTTP methods.
+Responses from the code tables, the translation table and the course
+information ([[PUBLIC_PATHS]]) hold no people, so all of their text counts as
+public.
+The staff lists, which the catalogue service also serves, are not among them.
+Allowing per cassette matters: the table of Swedish places holds many words
+that are also surnames, and allowing those in every cassette would let a
+surname that the scrubber missed in a student's record go unnoticed.
+Within one cassette, a surname that is also a word in a course name there is
+still allowed; that is the price of not reading the cassettes by eye.
+
 The cassettes store characters outside ASCII escaped, as in
 [[Malm\xF6]], and the scan reads the file as it is stored, so it sees the
 part before an escape as a word of its own; we therefore also take the words
@@ -485,9 +614,9 @@ originals = vcr_support.read_list(getattr(config, "_originals_path", None))
 written_files = [path for _, written in sorted(pairs)
                  for path in vcr_support.iter_files([written])
                  if path.name != LIVE_MARKER_FILE]
-allow = public_originals(originals, written_files)
 leaks = []
 for path in written_files:
+  allow = public_originals(originals, path)
   leaks += [(path, where, kind, hit)
             for where, kind, hit in vcr_support.scan_file(path, originals,
                                                           allow=allow)]
@@ -500,24 +629,29 @@ if leaks:
   session.exitstatus = 1
 @
 
-We collect the public text from the response bodies in the cassettes.
+We collect the public text from the response bodies in the cassette.
 <<constants>>=
 PUBLIC_TEXT_KEYS = {"sv", "en", "Text", "Benamning", "Kod"}
 HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
-PUBLIC_SERVICES = ("/kataloginformation/", "/utbildningsinformation/")
+PUBLIC_PATHS = ("/kataloginformation/internal/grunddata/",
+                "/kataloginformation/internal/i18n/",
+                "/kataloginformation/internal/service/",
+                "/utbildningsinformation/internal/utbildningsinstans",
+                "/utbildningsinformation/internal/utbildningstillfalle",
+                "/utbildningsinformation/internal/struktur/")
 ESCAPE_SEQUENCE = r"\\(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)"
 <<checks after the run>>=
-def public_originals(originals, cassettes):
-  """Return the originals that occur in LADOK's public text in the
-  cassettes, or that are HTTP methods."""
-  text = "\n".join(public_text(cassettes)).lower()
+def public_originals(originals, cassette):
+  """Return the originals that occur in LADOK's public text in `cassette`,
+  or that are HTTP methods."""
+  text = "\n".join(public_text(cassette)).lower()
   words = set(re.findall(r"\w+", text))
   escaped = re.sub(ESCAPE_SEQUENCE, " ", yaml.safe_dump(text))
   words |= set(re.findall(r"\w+", escaped))
   phrases = sorted({original.lower() for original in originals
                     if original.lower() not in words}, key=len, reverse=True)
   found = set()
-  if phrases:
+  if phrases and text:
     pattern = re.compile(r"(?<!\w)(?:" + "|".join(map(re.escape, phrases))
                          + r")(?!\w)")
     found = {match.group(0) for match in pattern.finditer(text)}
@@ -527,23 +661,22 @@ def public_originals(originals, cassettes):
           or original.lower() in found]
 
 
-def public_text(cassettes):
-  """Yield the public strings in the JSON response bodies of the
-  cassettes: all of them from `PUBLIC_SERVICES`, otherwise those under
+def public_text(cassette):
+  """Yield the public strings in the JSON response bodies of `cassette`:
+  all of them from `PUBLIC_PATHS`, otherwise those under
   `PUBLIC_TEXT_KEYS`."""
-  for path in cassettes:
+  try:
+    interactions = yaml.safe_load(cassette.read_text())["interactions"]
+  except (yaml.YAMLError, KeyError, TypeError):
+    return
+  for interaction in interactions:
     try:
-      interactions = yaml.safe_load(path.read_text())["interactions"]
-    except (yaml.YAMLError, KeyError, TypeError):
+      body = json.loads(interaction["response"]["body"]["string"])
+    except (KeyError, TypeError, ValueError):
       continue
-    for interaction in interactions:
-      try:
-        body = json.loads(interaction["response"]["body"]["string"])
-      except (KeyError, TypeError, ValueError):
-        continue
-      uri = interaction.get("request", {}).get("uri", "")
-      public = any(service in uri for service in PUBLIC_SERVICES)
-      yield from strings_under(body, PUBLIC_TEXT_KEYS, inside=public)
+    uri = interaction.get("request", {}).get("uri", "")
+    public = any(path in uri for path in PUBLIC_PATHS)
+    yield from strings_under(body, PUBLIC_TEXT_KEYS, inside=public)
 
 
 def strings_under(data, keys, inside=False):
@@ -556,6 +689,42 @@ def strings_under(data, keys, inside=False):
       yield from strings_under(item, keys, inside)
   elif inside and isinstance(data, str):
     yield data
+@
+
+Let's verify the allow list with two small cassettes that both contain the
+original \enquote{Hammar}, invented for the test.
+In the table of municipalities it is part of a public place name, written
+with an escaped \enquote{ö} as in the real cassettes, so it is allowed there.
+In a list of students it sits in a name field that the scrubber missed, so it
+must be reported, even though the other cassette shows that it is also a word
+in a place name.
+<<test functions>>=
+def write_cassette(path, uri, body):
+  interaction = {"request": {"uri": uri, "method": "GET"},
+                 "response": {"body": {
+                   "string": json.dumps(body, ensure_ascii=False)}}}
+  path.write_text(yaml.safe_dump({"interactions": [interaction]}))
+  return path
+
+def test_public_originals_are_allowed_per_cassette(tmp_path):
+  places = write_cassette(
+    tmp_path / "places.yaml",
+    "https://start.test.ladok.se/gui/proxy"
+    "/kataloginformation/internal/grunddata/kommun",
+    {"Kommun": [{"ID": "1", "Kod": "1880",
+                 "Benamning": {"sv": "Hammarö", "en": "Hammarö"}}]})
+  students = write_cassette(
+    tmp_path / "students.yaml",
+    "https://start.test.ladok.se/gui/proxy"
+    "/studiedeltagande/internal/deltagare",
+    {"Resultat": [{"Student": {"Smeknamn": "Hammar"},
+                   "Benamning": {"sv": "Datorteknik"}}]})
+  originals = ["Hammar", "POST", "Datorteknik"]
+
+  assert "Hammar" in conftest.public_originals(originals, places)
+  assert "Hammar" not in conftest.public_originals(originals, students)
+  assert set(conftest.public_originals(originals, students)) \
+    == {"POST", "Datorteknik"}
 @
 
 <<compare the live recordings with the cassettes>>=
