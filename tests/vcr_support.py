@@ -77,6 +77,10 @@ CONTACT_KEYS = {
     "utdelningsadress", "coadress", "postnummer", "postort", "telefonnummer",
     "mobilnummer",
 }
+# Contact keys whose values are replaced but not logged as originals: a
+# place name or postal code also names courses and fills code tables, so
+# the leak scan would report every such mention.
+UNLOGGED_CONTACT_KEYS = {"city", "postort", "postal_code", "zip", "zip_code", "postnummer"}
 # Prose can mention anyone, so it is replaced wholesale.
 FREE_TEXT_KEYS = {
     "body", "message", "comment", "comments", "text_comment", "description",
@@ -401,7 +405,8 @@ class Pseudonymizer:
                     elif lk in self.pnr_keys:
                         v = self.personnummer(v)
                     elif lk in self.contact_keys:
-                        self._log(v)
+                        if lk not in UNLOGGED_CONTACT_KEYS:
+                            self._log(v)
                         v = CONTACT_PLACEHOLDER
                     elif lk in self.login_keys and person:
                         v = self.login(v)
@@ -501,6 +506,10 @@ class Pseudonymizer:
             "decode_compressed_response": True,  # else gzip bodies escape scrubbing
             "before_record_request": self.before_record_request,
             "before_record_response": self.before_record_response,
+            # The body too: else a write test passes in replay while it sends
+            # the wrong data.  vcrpy scrubs the live request the same way
+            # before matching, so pseudonymized bodies still match.
+            "match_on": ("method", "scheme", "host", "port", "path", "query", "body"),
         }
 
 
@@ -543,11 +552,51 @@ def read_list(path: str | os.PathLike | None) -> list[str]:
 URL_HOST_RE = re.compile(r"//(?:[^@/\s]*@)?([^/\s:?#'\"]+)")
 
 
-def _needle_pattern(needles: Iterable[str]) -> re.Pattern | None:
-    words = sorted({n for n in needles if len(n) >= 3}, key=len, reverse=True)
-    if not words:
-        return None
-    return re.compile(r"(?<!\w)(?:" + "|".join(map(re.escape, words)) + r")(?!\w)", re.I)
+WORD_RE = re.compile(r"\w+")
+
+
+class Needles:
+    """Whole-word, case-insensitive search for many strings at once.
+
+    Thousands of originals make one regex alternation slow on every line,
+    so each needle is indexed by its first word: only where a line has
+    that word is the rest of the needle compared.  Build it once per scan.
+    """
+
+    def __init__(self, needles: Iterable[str]):
+        self.by_first: dict[str, list[str]] = {}
+        odd = []  # needles that do not start with a word character
+        for n in sorted({n.lower() for n in needles if len(n) >= 3}, key=len, reverse=True):
+            m = WORD_RE.match(n)
+            if m:
+                self.by_first.setdefault(m.group(0), []).append(n)
+            else:
+                odd.append(n)
+        self.odd = (re.compile(r"(?<!\w)(?:" + "|".join(map(re.escape, odd)) + r")(?!\w)")
+                    if odd else None)
+
+    def __bool__(self):
+        return bool(self.by_first or self.odd)
+
+    def finditer(self, line: str) -> Iterator[tuple[int, int, str]]:
+        """(start, end, matched text) of each needle in `line`."""
+        lower = line.lower()
+        if len(lower) != len(line):  # a case mapping changed the length
+            lower, line = line, line
+        for m in WORD_RE.finditer(lower):
+            for needle in self.by_first.get(m.group(0), ()):  # longest first
+                end = m.start() + len(needle)
+                if lower.startswith(needle, m.start()) and not (
+                        end < len(lower) and (lower[end].isalnum() or lower[end] == "_")):
+                    yield m.start(), end, line[m.start():end]
+                    break
+        if self.odd:
+            for m in self.odd.finditer(lower):
+                yield m.start(), m.end(), line[m.start():m.end()]
+
+
+def _needles(values) -> Needles:
+    return values if isinstance(values, Needles) else Needles(values)
 
 
 def allowed(value: str, allow: Iterable[str]) -> bool:
@@ -561,17 +610,18 @@ def allowed(value: str, allow: Iterable[str]) -> bool:
     return False
 
 
-def scan_text(text: str, originals: Iterable[str] = (), denylist: Iterable[str] = (),
+def scan_text(text: str, originals: Iterable[str] | Needles = (),
+              denylist: Iterable[str] | Needles = (),
               allow: Iterable[str] = ()) -> Iterator[tuple[int, str, str]]:
     """Yield (line number, kind, redacted hit) for every leak in `text`.
 
     Each line is also checked percent-decoded, so that an email in a query
-    string (anna%40uni.example.se) is found too.  Hits on the allowlist
+    string (written name%40host) is found too.  Hits on the allowlist
     and well-known fictive personnummer (Tolvan) are not reported.
     """
     allow = list(allow)
-    patterns = [(p, kind) for p, kind in ((_needle_pattern(originals), "original"),
-                                          (_needle_pattern(denylist), "denylist")) if p]
+    patterns = [(p, kind) for p, kind in ((_needles(originals), "original"),
+                                          (_needles(denylist), "denylist")) if p]
     for no, raw in enumerate(text.splitlines(), 1):
         decoded = urllib.parse.unquote_plus(raw)
         seen = set()
@@ -588,8 +638,8 @@ def scan_text(text: str, originals: Iterable[str] = (), denylist: Iterable[str] 
             hits += [("bearer-token", m.group(0)) for m in BEARER_RE.finditer(line)]
             hits += [("assigned-secret", m.group(1)) for m in ASSIGNED_SECRET_RE.finditer(line)]
             for pattern, kind in patterns:  # a name part in a host is not a leak
-                hits += [(kind, m.group(0)) for m in pattern.finditer(line)
-                         if not any(a <= m.start() and m.end() <= b for a, b in hosts)]
+                hits += [(kind, text) for start, end, text in pattern.finditer(line)
+                         if not any(a <= start and end <= b for a, b in hosts)]
             for kind, value in hits:
                 if allowed(value, allow):
                     continue
@@ -619,10 +669,11 @@ def cassette_strings(path: Path) -> Iterator[str]:
                 yield text
 
 
-def scan_file(path: Path, originals: Iterable[str] = (), denylist: Iterable[str] = (),
+def scan_file(path: Path, originals: Iterable[str] | Needles = (),
+              denylist: Iterable[str] | Needles = (),
               allow: Iterable[str] = ()) -> Iterator[tuple[str, str, str]]:
     """Yield (location, kind, redacted hit) for a file; cassettes also unfolded."""
-    originals, denylist, allow = list(originals), list(denylist), list(allow)
+    originals, denylist, allow = _needles(originals), _needles(denylist), list(allow)
     text = path.read_text(encoding="utf-8", errors="replace")
     found = set()
     for no, kind, hit in scan_text(text, originals, denylist, allow):

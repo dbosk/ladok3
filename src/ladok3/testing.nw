@@ -88,7 +88,7 @@ We add the live mode, the LADOK session, and the privacy protection.
 The scrubbing and the drift comparison come from [[vcr_support.py]].
 It is not ours: it is a helper from the [[testing]] skill for Claude Code,
 committed unchanged in [[tests/]] so that it can be updated from its source
-(the copy is from commit 007b521 of the skills repository).
+(the copy is from commit d2de183 of the skills repository).
 Everything that is specific to LADOK we pass to it from here.
 <<[[conftest.py]]>>=
 """Shared pytest configuration for ladok3's tests.
@@ -541,18 +541,15 @@ def pseudonymizer(request, recording):
 
 @pytest.fixture
 def vcr_config(pseudonymizer):
-  return {**pseudonymizer.vcr_config(), "match_on": REQUEST_MATCHERS}
+  return pseudonymizer.vcr_config()
 @
 
-[[vcrpy]] matches a request to a recorded one by its method and URL.
+By default [[vcrpy]] matches a request to a recorded one by its method and
+URL.
 That is enough for reading, but not for writing: a write test that sent the
 wrong grade would get the recorded response, with the right grade, and pass.
-We therefore match the body too, so that in replay a write must send exactly
-what was recorded.
-<<constants>>=
-REQUEST_MATCHERS = ["method", "scheme", "host", "port", "path", "query",
-                    "body"]
-@
+The configuration from [[vcr_support]] therefore matches the body too, so
+that in replay a write must send exactly what was recorded.
 
 
 \section{Checks after the run}\label{Drift}
@@ -629,11 +626,12 @@ originals = vcr_support.read_list(getattr(config, "_originals_path", None))
 written_files = [path for _, written in sorted(pairs)
                  for path in vcr_support.iter_files([written])
                  if path.name != LIVE_MARKER_FILE]
+needles = vcr_support.Needles(originals)
 leaks = []
 for path in written_files:
   allow = public_originals(originals, path)
   leaks += [(path, where, kind, hit)
-            for where, kind, hit in vcr_support.scan_file(path, originals,
+            for where, kind, hit in vcr_support.scan_file(path, needles,
                                                           allow=allow)]
 if leaks:
   write("PRIVACY: the recordings contain personal data or secrets (values "
@@ -665,13 +663,10 @@ def public_originals(originals, cassette):
   words = set(re.findall(r"\w+", text))
   escaped = re.sub(ESCAPE_SEQUENCE, " ", yaml.safe_dump(text))
   words |= set(re.findall(r"\w+", escaped))
-  phrases = sorted({original.lower() for original in originals
-                    if original.lower() not in words}, key=len, reverse=True)
-  found = set()
-  if phrases and text:
-    pattern = re.compile(r"(?<!\w)(?:" + "|".join(map(re.escape, phrases))
-                         + r")(?!\w)")
-    found = {match.group(0) for match in pattern.finditer(text)}
+  phrases = vcr_support.Needles(original for original in originals
+                                 if original.lower() not in words)
+  found = {match.lower() for line in text.splitlines()
+           for _, _, match in phrases.finditer(line)}
   return [original for original in originals
           if original.upper() in HTTP_METHODS
           or original.lower() in words
