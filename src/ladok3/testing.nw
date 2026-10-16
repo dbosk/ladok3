@@ -102,6 +102,7 @@ import os
 import re
 import shutil
 import sys
+import urllib.parse
 from pathlib import Path
 
 import ladok3
@@ -363,13 +364,24 @@ In replay, the tests get a session that never logs in.
 It needs one thing that a logged-in session has: LADOK's [[XSRF-TOKEN]]
 cookie, which the write requests send back (\cref{XSRFtoken}).
 The cassettes keep the cookie but not its value, so a placeholder is enough.
+Its value can be anything, but its domain cannot.
+A session takes only the token that its own host set, so that the test
+environment's token never stands in for production's
+(\cref{XSRFtoken}).
+A cookie set without a domain is not one that any host set, so the session
+would not find it and every write request would fail before it is sent.
+We therefore set the placeholder the way LADOK sets the real cookie: on the
+bare host name of the session's [[base_url]], derived the same way the
+session derives it when it looks the token up.
 <<fixtures>>=
 @pytest.fixture(scope="session")
 def replay_ladok():
   """A session for LADOK's test environment that never logs in."""
   session = ladok3.LadokSession("KTH Royal Institute of Technology",
                                 test_environment=True)
-  session.session.cookies.set("XSRF-TOKEN", vcr_support.SECRET_PLACEHOLDER)
+  host = urllib.parse.urlparse(session.base_url).hostname
+  session.session.cookies.set("XSRF-TOKEN", vcr_support.SECRET_PLACEHOLDER,
+                              domain=host)
   return session
 @
 
