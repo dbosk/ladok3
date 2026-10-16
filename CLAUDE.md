@@ -122,11 +122,12 @@ noweave -latex -x -index file.nw > output.tex  # Generate LaTeX with cross-refs
 ### Exception Hierarchy (api.nw)
 ```
 LadokError
-├── LadokServerError      # Server-side errors
 ├── LadokValidationError  # Data validation errors
 ├── LadokAPIError         # HTTP/API errors
+│   └── LadokServerError  # LADOK refused, with a Meddelande
 └── LadokNotFoundError    # Resource not found
 ```
+Catch `LadokServerError` before `LadokAPIError` when handling them differently.
 
 ### CLI Commands
 - `ladok login` - Authenticate and cache credentials
