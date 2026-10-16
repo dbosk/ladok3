@@ -456,11 +456,18 @@ except (AttributeError,
 
 Let's verify that the tolerant restore path preserves the cache when an
 optional handler class is unavailable, while still leaving core missing
-classes as hard failures. We also verify that the commands dispatched before
-session creation really bypass [[get_session]].
+classes as hard failures.
+To get a cache that refers to a missing module, we make a handler class
+importable under that module's name, store a session holding it, and then
+remove the module again before we restore.
+The cache goes through the real encryption, in a temporary directory.
+
+We also verify that the commands dispatched before session creation really
+bypass [[get_session]].
 
 <<test [[cli.py]]>>=
 import argparse
+import contextlib
 import io
 import logging
 import pickle
@@ -469,12 +476,40 @@ import types
 
 import pytest
 
+import ladok3
 import ladok3.cli
 
 
 class RestorableHandler:
   def __init__(self, value):
     self.value = value
+
+
+@contextlib.contextmanager
+def importable_handler(module_name):
+  """Make a handler class importable from `module_name` while active.
+
+  Yields a subclass of `RestorableHandler` that pickles as
+  `module_name.RestorableHandler`.  Afterwards the module is gone again,
+  as in an environment where the optional package isn't installed.
+  """
+  handler_class = type("RestorableHandler", (RestorableHandler,),
+                       {"__module__": module_name})
+  parts = module_name.split(".")
+  names = [".".join(parts[:i]) for i in range(1, len(parts) + 1)]
+  saved = {name: sys.modules.get(name) for name in names}
+  for name in names:
+    if saved[name] is None or name == module_name:
+      sys.modules[name] = types.ModuleType(name)
+  sys.modules[module_name].RestorableHandler = handler_class
+  try:
+    yield handler_class
+  finally:
+    for name in names:
+      if saved[name] is None:
+        del sys.modules[name]
+      else:
+        sys.modules[name] = saved[name]
 
 
 class FakeSession:
@@ -491,28 +526,9 @@ class FakeLadokSession:
 @
 
 <<test functions>>=
-def test_tolerant_pickle_loads_replaces_missing_optional_handlers(monkeypatch):
-  handler = RestorableHandler("cached")
-  handler.__class__.__module__ = "optional.handlers"
-  original_optional = sys.modules.get("optional")
-  original_handlers = sys.modules.get("optional.handlers")
-  optional_module = types.ModuleType("optional")
-  handlers_module = types.ModuleType("optional.handlers")
-  handlers_module.RestorableHandler = RestorableHandler
-  optional_module.handlers = handlers_module
-  sys.modules["optional"] = optional_module
-  sys.modules["optional.handlers"] = handlers_module
-  try:
-    payload = pickle.dumps(FakeLadokSession([handler]))
-  finally:
-    if original_optional is None:
-      del sys.modules["optional"]
-    else:
-      sys.modules["optional"] = original_optional
-    if original_handlers is None:
-      del sys.modules["optional.handlers"]
-    else:
-      sys.modules["optional.handlers"] = original_handlers
+def test_tolerant_pickle_loads_replaces_missing_optional_handlers():
+  with importable_handler("optional.handlers") as handler_class:
+    payload = pickle.dumps(FakeLadokSession([handler_class("cached")]))
 
   restored = ladok3.cli.tolerant_pickle_loads(payload)
 
@@ -523,19 +539,8 @@ def test_tolerant_pickle_loads_replaces_missing_optional_handlers(monkeypatch):
 
 
 def test_tolerant_pickle_loads_keeps_core_failures():
-  handler = RestorableHandler("cached")
-  handler.__class__.__module__ = "ladok3.missing"
-  original_module = sys.modules.get("ladok3.missing")
-  missing_module = types.ModuleType("ladok3.missing")
-  missing_module.RestorableHandler = RestorableHandler
-  sys.modules["ladok3.missing"] = missing_module
-  try:
-    payload = pickle.dumps(FakeLadokSession([handler]))
-  finally:
-    if original_module is None:
-      del sys.modules["ladok3.missing"]
-    else:
-      sys.modules["ladok3.missing"] = original_module
+  with importable_handler("ladok3.missing") as handler_class:
+    payload = pickle.dumps(FakeLadokSession([handler_class("cached")]))
 
   with pytest.raises(ModuleNotFoundError):
     ladok3.cli.tolerant_pickle_loads(payload)
@@ -562,54 +567,26 @@ def test_drop_unimportable_handlers_warns_and_prunes(monkeypatch):
 
 def test_restore_ladok_session_retries_with_tolerant_unpickler(monkeypatch,
                                                                tmp_path):
-  cache_dir = tmp_path / "cache"
-  cache_dir.mkdir()
-  cache_file = cache_dir / "LadokSession"
-  cache_file.write_bytes(b"encrypted")
-  fake_dirs = types.SimpleNamespace(user_cache_dir=str(cache_dir))
+  credentials = {"username": "alice", "password": "secret"}
   warnings = []
-
-  monkeypatch.setattr(ladok3.cli, "dirs", fake_dirs)
+  monkeypatch.setattr(ladok3.cli, "dirs",
+                      types.SimpleNamespace(user_cache_dir=str(tmp_path)))
   monkeypatch.setattr(ladok3.cli, "warn", warnings.append)
-  monkeypatch.setattr(ladok3.cli, "PBKDF2HMAC",
-                      lambda **kwargs: types.SimpleNamespace(
-                        derive=lambda password: b"0" * 32))
-  monkeypatch.setattr(ladok3.cli.base64,
-                      "urlsafe_b64encode",
-                      lambda data: b"A" * 44)
-  monkeypatch.setattr(ladok3.cli,
-                      "Fernet",
-                      lambda key: types.SimpleNamespace(
-                        decrypt=lambda data: b"pickle-data"))
 
-  calls = []
+  with importable_handler("optional.handlers") as handler_class:
+    ladok3.cli.store_ladok_session(
+      FakeLadokSession([handler_class("cached")]), credentials)
 
-  def fake_pickle_loads(data):
-    calls.append(data)
-    raise AttributeError("Can't get attribute 'MissingHandler'")
+  ls = ladok3.cli.restore_ladok_session(credentials)
 
-  restored_ls = FakeLadokSession([
-    ladok3.cli.dropped_handler_class(
-      "optional.handlers", "MissingHandler")()])
-
-  monkeypatch.setattr(ladok3.cli.pickle, "loads", fake_pickle_loads)
-  monkeypatch.setattr(ladok3.cli,
-                      "tolerant_pickle_loads",
-                      lambda data: restored_ls)
-
-  ls = ladok3.cli.restore_ladok_session({
-    "username": "alice",
-    "password": "secret",
-  })
-
-  assert ls is restored_ls
-  assert calls == [b"pickle-data"]
-  assert warnings == [
+  assert ls.session._AutologinSession__handlers == []
+  assert len(warnings) == 2
+  assert warnings[0].startswith(
     "cache refers to unavailable optional classes, retrying without "
-    "those handlers: Can't get attribute 'MissingHandler'",
-    "dropped cached handler optional.handlers.MissingHandler: "
-    "module unavailable"
-  ]
+    "those handlers: ")
+  assert warnings[1] == (
+    "dropped cached handler optional.handlers.RestorableHandler: "
+    "module unavailable")
 
 
 def test_main_runs_login_before_restoring_session(monkeypatch):
@@ -684,6 +661,85 @@ key = base64.urlsafe_b64encode(kdf.derive(passwd.encode("utf-8")))
 <<get salt and passwd from credentials list>>=
 salt = credentials[0]
 passwd = credentials[1]
+@
+
+Let's verify the encryption itself, with the real key derivation and the real
+[[Fernet]] protocol, storing to a temporary directory.
+An earlier version of these tests replaced all of the cryptography with
+stand-ins, so a cache written in plain text would have passed them.
+We check four properties.
+A stored session can be restored with the same credentials.
+The file on disk does not reveal the pickled session: the names of the
+classes in the pickle must not be readable in it.
+And the key depends on both the username, which is the salt, and the password:
+changing either one makes the cache unreadable.
+Finally, we pin how the key is derived, by decrypting the file with a key we
+derive ourselves: PBKDF2 with SHA-256 over the password, the username as salt
+and 100\,000 iterations.
+That is the format of every cache already on users' disks, so a change would
+make them unreadable; it would also catch a weakened derivation, such as fewer
+iterations, which the other tests can't see.
+We use a real [[LadokSession]], which logs in only on its first request, so
+storing it needs no network.
+<<test functions>>=
+CACHE_CREDENTIALS = {"username": "tolvan", "password": "secret"}
+
+@pytest.fixture
+def cache_dir(monkeypatch, tmp_path):
+  monkeypatch.setattr(ladok3.cli, "dirs",
+                      types.SimpleNamespace(user_cache_dir=str(tmp_path)))
+  return tmp_path
+
+def offline_session():
+  return ladok3.LadokSession("KTH Royal Institute of Technology",
+                             test_environment=True)
+
+def test_session_cache_round_trip(cache_dir):
+  ls = offline_session()
+  ladok3.cli.store_ladok_session(ls, CACHE_CREDENTIALS)
+
+  restored = ladok3.cli.restore_ladok_session(CACHE_CREDENTIALS)
+
+  assert isinstance(restored, ladok3.LadokSession)
+  assert restored.base_url == ls.base_url
+
+def test_session_cache_is_encrypted(cache_dir):
+  ladok3.cli.store_ladok_session(offline_session(), CACHE_CREDENTIALS)
+
+  data = (cache_dir / "LadokSession").read_bytes()
+
+  assert b"LadokSession" not in data
+  assert b"ladok3" not in data
+
+def test_session_cache_key_derivation(cache_dir):
+  from cryptography.fernet import Fernet
+  from cryptography.hazmat.primitives import hashes
+  from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+  import base64
+  ladok3.cli.store_ladok_session(offline_session(), CACHE_CREDENTIALS)
+
+  kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32,
+                   salt=CACHE_CREDENTIALS["username"].encode("utf-8"),
+                   iterations=100000)
+  key = base64.urlsafe_b64encode(
+    kdf.derive(CACHE_CREDENTIALS["password"].encode("utf-8")))
+  pickled = Fernet(key).decrypt((cache_dir / "LadokSession").read_bytes())
+
+  assert isinstance(pickle.loads(pickled), ladok3.LadokSession)
+
+@pytest.mark.parametrize("credentials", [
+  {"username": "other", "password": "secret"},
+  {"username": "tolvan", "password": "other"},
+])
+def test_session_cache_needs_same_credentials(cache_dir, monkeypatch,
+                                              credentials):
+  warnings = []
+  monkeypatch.setattr(ladok3.cli, "warn", warnings.append)
+  ladok3.cli.store_ladok_session(offline_session(), CACHE_CREDENTIALS)
+
+  assert ladok3.cli.restore_ladok_session(credentials) is None
+  assert len(warnings) == 1
+  assert "cannot decrypt" in warnings[0]
 @
 
 
@@ -770,17 +826,24 @@ The [[format]] string carries the level name so users can distinguish
 warnings from errors without the legacy [[sys.argv[0]:]] prefix that
 [[warn]]/[[err]] used to add by hand.
 <<configure logging based on verbose flag>>=
-net_verbosity = args.verbose - args.quiet
-
-<<determine logging level from net verbosity>>
-logging.basicConfig(level=level,
+logging.basicConfig(level=logging_level(args.verbose, args.quiet),
                     format='[%(levelname)s] %(message)s')
 @
 
-We extract the verbosity-to-level mapping into its own chunk so both the
-runtime configuration above and the parametrised tests below tangle the
-exact same code.  Drifting the mapping in one place but not the other
-would silently change CLI behaviour without breaking any test.
+We put the arithmetic and the mapping in a function of their own, so the
+tests can call exactly the code that [[main]] runs, without parsing
+arguments or configuring the logging system.
+An earlier version shared only the mapping, as a chunk included both here
+and in the tests, and the tests computed the net verbosity themselves.
+A sign error in the subtraction then broke the command line while every test
+still passed.
+<<functions>>=
+def logging_level(verbose, quiet):
+  """Return the logging level for `-v` given `verbose` times and `-q`
+  given `quiet` times.  The flags offset each other."""
+  net_verbosity = verbose - quiet
+  <<determine logging level from net verbosity>>
+  return level
 <<determine logging level from net verbosity>>=
 if net_verbosity <= -3:
   level = logging.CRITICAL + 1   # silent
@@ -800,29 +863,9 @@ else:                            # >= 3: even library logs
 
 Let's pin the net-verbosity arithmetic and the level mapping with tests.
 The mapping in particular is a small table that's easy to typo when
-adding a new level later; a parametrised test catches that the moment
-the chunk is recompiled.
+adding a new level later, and the cases with both [[-v]] and [[-q]] check
+that the flags offset each other rather than add up.
 <<test functions>>=
-class TestVerbositySystem:
-  """Net verbosity is verbose count minus quiet count."""
-
-  def test_net_verbosity_calculation(self):
-    args = argparse.Namespace(verbose=2, quiet=1)
-    assert args.verbose - args.quiet == 1
-
-  def test_multiple_verbose_flags(self):
-    args = argparse.Namespace(verbose=3, quiet=0)
-    assert args.verbose - args.quiet == 3
-
-  def test_multiple_quiet_flags(self):
-    args = argparse.Namespace(verbose=0, quiet=3)
-    assert args.verbose - args.quiet == -3
-
-  def test_offsetting_flags(self):
-    args = argparse.Namespace(verbose=2, quiet=1)
-    assert args.verbose - args.quiet == 1
-
-
 class TestVerbosityLevelMapping:
   """The full mapping from net verbosity to Python logging levels."""
 
@@ -840,11 +883,7 @@ class TestVerbosityLevelMapping:
   ])
   def test_verbosity_to_logging_level(self, verbose, quiet,
                                       expected_level):
-    net_verbosity = verbose - quiet
-
-    <<determine logging level from net verbosity>>
-
-    assert level == expected_level
+    assert ladok3.cli.logging_level(verbose, quiet) == expected_level
 @
 
 

@@ -2,7 +2,7 @@ import ladok3
 
 ladok = ladok3.test_session  # LADOK's test environment, for experiments
 
-me = ladok.get_student("8506097891")
+me = ladok.get_student("19121212-1212")
 me2 = ladok.get_student("de709f81-a867-11e7-8dbf-78e86dc2470c")
 
 print(f"{me.personnummer} {me.last_name}, {me.first_name}")

@@ -21,11 +21,16 @@ TESTS=	$(shell ${find_tests})
 $(foreach files,${TESTS},$(eval $(call def_target, ${files})))
 
 .PHONY: all
+all: conftest.py
 all: $(foreach files,${TESTS},$(shell echo ${files} | cut -d: -f1))
 	poetry run pytest ${PYTESTFLAGS}
 
+conftest.py: ../src/ladok3/testing.nw
+	notangle ${NOTANGLEFLAGS.py} "-R[[conftest.py]]" $^ > $@
+
 .PHONY: clean
 clean:
+	${RM} conftest.py
 	${RM} $(foreach files,${TESTS},$(shell echo ${files} | cut -d: -f1))
 	${RM} -Rf __pycache__
 

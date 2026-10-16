@@ -3,6 +3,23 @@
 Below are the original [[LadokSession]] methods by Baltatzis and Maguire.
 These are merely kept for backwards compatibility.
 
+Their tests go into a file of their own, [[test_undoc.py]].
+Each test file is tangled from one source file only, so test chunks here
+would otherwise never reach a test file.
+Like the other live tests, they take the session as the [[ladok]] fixture
+(\cref{Testing}), and they use the same test student as the tests of the
+API calls.
+<<test [[undoc.py]]>>=
+import ladok3
+import pytest
+
+pytestmark = pytest.mark.vcr
+
+student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
+
+<<test functions>>
+@
+
 The one missing is the constructor, that has been replaced by the code above.
 Also, the code has been adapted to use [[self.session]] instead of 
 [[self.__session]] etc.
@@ -31,7 +48,7 @@ Also, the code has been adapted to use [[self.session]] instead of
 # get_results
 #
 # person_nr          - personnummer, siffror i strängformat
-#            t.ex. 19461212-1212
+#            t.ex. 191212121212
 # course_code          - kurskod t.ex. DD1321
 #
 # RETURNERAR en dictionary från ladok med momentnamn, resultat
@@ -403,11 +420,14 @@ def hamtaStudieResultatForStudent_JSON (self, studentUID):
 @
 
 Let's add a test.
-This function should return a dictionary.
+The function should return the student's results as a list under
+[[Resultat]].
+For our test student, the test environment returns an empty list from this
+old endpoint, so we can only check the form of the response.
 <<test functions>>=
-def test_hamtaStudieResultatForStudent_JSON():
+def test_hamtaStudieResultatForStudent_JSON(ladok):
   r = ladok.hamtaStudieResultatForStudent_JSON(student_uid)
-  assert type(r) == dict
+  assert isinstance(r["Resultat"], list)
 @
 
 The output looks like this:

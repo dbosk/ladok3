@@ -1,2 +1,6 @@
 test_*.py
 
+conftest.py
+# Recordings of LADOK hold real people's records, pseudonymized, so they
+# stay on the machine that made them (see the Testing chapter).
+cassettes/

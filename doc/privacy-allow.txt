@@ -1,0 +1,12 @@
+# Values that scan_leaks.py may find in the manual (make check-doc-privacy).
+# Placeholders that pseudonymize() and the examples use:
+user@domain.se
+email@institution.se
+someone@kth.se
+x@kth.se
+# Authors' and contributors' addresses, given on purpose:
+alba@kth.se
+dbosk@kth.se
+dbosk@ug.kth.se
+maguire@kth.se
+tyler.clair@usu.edu

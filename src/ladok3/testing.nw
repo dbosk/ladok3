@@ -1,0 +1,809 @@
+\chapter{Testing}\label{Testing}
+
+The tests live in the same files as the code they verify, right after it,
+and [[make test]] tangles them into [[tests/test_*.py]] and runs [[pytest]].
+This chapter covers what the individual tests share: how a test gets a LADOK
+session, how the tests that talk to LADOK can run without it, and how we keep
+personal data out of what we record.
+
+\section{Three kinds of tests}
+
+The tests fall into three groups, by what they need from LADOK.
+\begin{description}
+\item[Offline tests] exercise our own code: parsing, the command-line
+  interface, the reporting logic, session sharing.
+  They use real objects where they can and small local stand-ins where a
+  LADOK response is needed.
+  They need no network and no credentials.
+\item[Read tests] send requests to LADOK and check the responses.
+  Most of them are in the chapters on the API calls.
+\item[Write tests] create, update, finalize and remove results.
+  They are marked [[mutates]].
+\end{description}
+
+LADOK's test environment is not a sandbox filled with made-up data.
+It is a copy of production, synced again every week, so the students in it
+are real people and a write changes a real record until the next sync.
+Logging in also takes multi-factor authentication, which needs a person at
+hand.
+Yet we want [[make test]] to check the code that talks to LADOK, offline and
+without anyone at hand.
+
+We therefore record LADOK's responses once and replay them.
+The read and write tests run in three modes, with the same test code:
+\begin{description}
+\item[Replay] is the default: [[make test]].
+  Each test that talks to LADOK gets its responses from a recording, a
+  \emph{cassette} in [[tests/cassettes]].
+  No request leaves the machine, and no credentials are needed.
+  A test without a cassette is skipped, with the reason.
+\item[Live] is [[make test PYTESTFLAGS=--live]].
+  Every test runs against LADOK's test environment, and the responses are
+  recorded afresh, but into a temporary directory, never over the cassettes
+  in [[tests/cassettes]].
+  Afterwards we compare the structure of the fresh recordings with the
+  ones we replay (\cref{Drift}).
+  This tells us when LADOK has changed under us, which a replay never can.
+\item[Recording] is [[make test PYTESTFLAGS=--record-mode=once]], which
+  records the cassettes that are missing, or [[--record-mode=rewrite]], which
+  records them all again.
+  It talks to LADOK like a live run but writes to [[tests/cassettes]].
+\end{description}
+Write tests change data, so they reach LADOK only when we also give
+[[--live-writes]]; in replay they replay like the others.
+
+The cassettes are not in the repository.
+Even pseudonymized, they hold the records of whole groups of real students
+(the participants of a course round, their grades and dates), linked by
+LADOK's UIDs, and whoever holds the key can undo the pseudonyms.
+They therefore stay on the machine that recorded them, and [[tests/.gitignore]]
+keeps them out of git.
+Anyone who can log in to LADOK's test environment can record their own
+(\cref{RecordingOwn}); without cassettes, the tests that talk to LADOK are
+skipped, and the offline tests still run.
+Both live runs and recording need the key that pseudonymizes the recordings
+(\cref{Pseudonymization}).
+
+Earlier, the test modules created their session at import time.
+That had two bad effects.
+Without credentials, the import failed, so [[pytest]] could not collect the
+module, and its offline tests never ran either.
+With credentials, a plain [[make test]] was a live run: it logged in, could
+prompt for MFA and wrote results, and [[make publish]] runs [[make test]]
+before every release.
+Taking the session from a fixture fixes both problems.
+A fixture runs only when a test asks for it, so it can skip that test or hand
+it an offline session instead of failing the import.
+
+\section{The shared test configuration}
+
+[[pytest]] reads command-line options and shared fixtures from a file
+[[conftest.py]] in the test directory, which we tangle from here.
+The recording itself is done by the [[pytest-recording]] plugin, which wraps
+[[vcrpy]].
+A test marked [[@pytest.mark.vcr]] gets a cassette named after the test,
+and [[--record-mode]] chooses between replaying and recording.
+We add the live mode, the LADOK session, and the privacy protection.
+
+The scrubbing and the drift comparison come from [[vcr_support.py]].
+It is not ours: it is a helper from the [[testing]] skill for Claude Code,
+committed unchanged in [[tests/]] so that it can be updated from its source
+(the copy is from commit d2de183 of the skills repository).
+Everything that is specific to LADOK we pass to it from here.
+<<[[conftest.py]]>>=
+"""Shared pytest configuration for ladok3's tests.
+
+Tangled from src/ladok3/testing.nw; edit that file, not this one.
+"""
+import datetime
+import hashlib
+import json
+import os
+import re
+import shutil
+import sys
+from pathlib import Path
+
+import ladok3
+import pytest
+import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import vcr_support  # noqa: E402
+
+pytest_plugins = ["pytester"]
+
+<<constants>>
+<<command-line options>>
+<<test configuration>>
+<<collection rules>>
+<<fixtures>>
+<<checks after the run>>
+@
+
+The configuration is code like any other, and parts of it guard against
+writing to real records and leaking personal data, so it has tests of its
+own, in [[test_testing.py]].
+They import the functions from [[conftest]], which [[pytest]] has already
+loaded.
+Some of them run [[pytest]] itself on a small test file, through the
+[[pytester]] fixture, which comes in a plugin that we enable above.
+<<test [[testing.py]]>>=
+import json
+
+import pytest
+import yaml
+
+import conftest
+
+<<test functions>>
+@
+
+Replay must never reach the network, not even by mistake.
+In [[pyproject.toml]] we therefore give [[pytest]] the options
+[[--block-network --allowed-hosts=127.0.0.1,::1,localhost]]: any request to
+another host then fails, unless a live run or a recording turns the block off.
+
+
+\section{Choosing the mode}
+
+The two live options are separate because they carry different risks.
+A read test only looks at the data, while a write test changes it.
+<<command-line options>>=
+def pytest_addoption(parser):
+  group = parser.getgroup("ladok3")
+  group.addoption(
+    "--live", action="store_true",
+    help="run the tests against LADOK's test environment, record into a "
+         "temporary directory and compare with the cassettes "
+         "(attended: may prompt for MFA)")
+  group.addoption(
+    "--live-writes", action="store_true",
+    help="with --live or --record-mode, also run the tests that change "
+         "data in LADOK's test environment")
+  group.addoption(
+    "--live-dir", default=None,
+    help="where --live records, as --live-dir=PATH "
+         "(default: a private directory under the temporary directory)")
+@
+
+A live run is a recording that goes elsewhere.
+We set the record mode to [[all]], so every request goes to LADOK, and turn
+the network block off.
+We have to set the options themselves rather than the fixtures, because
+[[pytest-recording]] reads its network block from the options.
+Recording needs the pseudonymization key; without it we refuse to start
+rather than record anyone's data in clear.
+<<test configuration>>=
+def pytest_configure(config):
+  config.addinivalue_line(
+    "markers",
+    "mutates: the test changes data in LADOK; reaches LADOK only with "
+    "--live-writes")
+  config._recorded_dirs = set()
+  if config.getoption("--live"):
+    config.option.record_mode = "all"
+    config.option.block_network = False
+    config._live_dir = live_directory(config)
+    prepare_live_dir(config._live_dir, Path(str(config.rootpath)).resolve())
+  if record_mode_of(config) != "none" \
+      and not os.environ.get(vcr_support.KEY_ENV):
+    pytest.exit(f"refusing to record: set {vcr_support.KEY_ENV} so that "
+                "personal data is pseudonymized", returncode=2)
+
+
+def record_mode_of(config):
+  """Return the record mode, `none` meaning replay."""
+  return config.getoption("--record-mode") or "none"
+@
+
+The live recordings hold real people's data, pseudonymized, so they go in a
+private directory outside the repository rather than in the shared temporary
+directory.
+The directory name includes a hash of the project's path, so two checkouts
+don't share one.
+<<test configuration>>=
+def live_directory(config):
+  """Return the directory that a live run records into."""
+  root = Path(str(config.rootpath))
+  tag = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:10]
+  return Path(config.getoption("--live-dir")
+              or vcr_support.private_dir()
+                 / f"{root.name}-{tag}-live-cassettes").resolve()
+@
+
+A live run starts with an empty directory, so that recordings from an earlier
+run can't hide that a request is no longer made.
+Emptying a directory is dangerous if the path is mistyped, so we only empty a
+directory that an earlier live run wrote, as shown by a marker file, and we
+never accept a directory that contains the project.
+<<constants>>=
+LIVE_MARKER_FILE = ".pytest-live-cassettes"
+<<test configuration>>=
+def prepare_live_dir(live_dir, root):
+  """Empty `live_dir` for a live run, if an earlier live run made it."""
+  if live_dir == root or live_dir in root.parents:
+    pytest.exit(f"refusing --live-dir={live_dir}: it contains the project",
+                returncode=2)
+  if live_dir.exists() and any(live_dir.iterdir()):
+    if not (live_dir / LIVE_MARKER_FILE).exists():
+      pytest.exit(f"refusing to empty --live-dir={live_dir}: it has files "
+                  "that an earlier live run did not write", returncode=2)
+    shutil.rmtree(live_dir)
+  live_dir.mkdir(parents=True, exist_ok=True)
+  (live_dir / LIVE_MARKER_FILE).write_text(
+    "written by pytest --live; safe to delete\n")
+@
+
+Let's verify that a live run empties only its own directory.
+<<test functions>>=
+def test_prepare_live_dir_empties_only_its_own(tmp_path):
+  project = tmp_path / "project"
+  live = tmp_path / "live"
+  conftest.prepare_live_dir(live, project)
+  (live / "old.yaml").write_text("from an earlier live run")
+  conftest.prepare_live_dir(live, project)
+  assert not (live / "old.yaml").exists()
+
+def test_prepare_live_dir_refuses_foreign_files(tmp_path):
+  live = tmp_path / "live"
+  live.mkdir()
+  (live / "precious.txt").write_text("not ours")
+  with pytest.raises(pytest.exit.Exception):
+    conftest.prepare_live_dir(live, tmp_path / "project")
+  assert (live / "precious.txt").exists()
+
+def test_prepare_live_dir_refuses_the_project(tmp_path):
+  with pytest.raises(pytest.exit.Exception):
+    conftest.prepare_live_dir(tmp_path, tmp_path / "project")
+@
+
+A [[mutates]] test is skipped when it would reach LADOK, in a live run or
+while recording, unless we asked for writes.
+In replay it runs: then its writes go to the cassette, not to LADOK.
+<<collection rules>>=
+def pytest_collection_modifyitems(config, items):
+  talks_to_ladok = record_mode_of(config) != "none"
+  if not talks_to_ladok or config.getoption("--live-writes"):
+    return
+  skip_writes = pytest.mark.skip(
+    reason="changes data in LADOK; add --live-writes")
+  for item in items:
+    if "mutates" in item.keywords:
+      item.add_marker(skip_writes)
+@
+
+Let's verify the rule in each mode, by running [[pytest]] on a small test
+file with this configuration.
+The inner run replaces the login fixture, so it never logs in to LADOK,
+whatever mode it is in.
+<<test functions>>=
+INNER_TESTS = """
+import pytest
+
+@pytest.fixture(scope="session", autouse=True)
+def live_ladok():
+  return "the inner run never logs in"
+
+@pytest.mark.mutates
+def test_writes():
+  pass
+
+def test_reads():
+  pass
+"""
+
+@pytest.mark.parametrize("options,passed,skipped", [
+  ([], 2, 0),
+  (["--live"], 1, 1),
+  (["--live", "--live-writes"], 2, 0),
+])
+def test_mutates_tests_reach_ladok_only_with_live_writes(
+    pytester, monkeypatch, tmp_path, options, passed, skipped):
+  monkeypatch.setenv("TEST_PSEUDONYM_KEY", "a key for the inner run")
+  pytester.makeconftest(pathlib_text(conftest.__file__))
+  pytester.makepyfile(test_inner=INNER_TESTS)
+  result = pytester.runpytest_inprocess(
+    *options, f"--live-dir={tmp_path / 'live'}", "-p", "no:cacheprovider")
+  result.assert_outcomes(passed=passed, skipped=skipped)
+
+def pathlib_text(path):
+  with open(path, encoding="utf-8") as file:
+    return file.read()
+@
+
+
+\section{Sessions for the tests}
+
+When we talk to LADOK, all tests share one session,
+[[ladok3.test_session]].
+It reuses the cached login from [[ladok login]] (\cref{CachedSession}), so
+a live run usually needs no new MFA prompt.
+
+The login must not end up in a cassette.
+The SAML response that the login posts back to LADOK is the signed identity
+of whoever logged in, and no scrubber can read it.
+We therefore log in before any cassette opens.
+[[pytest-recording]] opens a test's cassette in a function-scoped fixture,
+and [[pytest]] sets up session-scoped fixtures before function-scoped ones,
+so a session-scoped fixture that makes the first request does the login
+outside every cassette.
+It must be [[autouse]], because a fixture that a test asks for by name may
+be set up after the cassette is already open.
+When there are no stored credentials, [[ladok3.test_session]] raises
+[[RuntimeError]].
+The tests that need LADOK are then skipped rather than failed, since the
+problem is the machine's set-up, not the code; the fixture itself must not
+skip, because skipping an [[autouse]] fixture would skip the offline tests
+too.
+Any other error is left to fail, because it may well be a bug in the login
+code.
+<<fixtures>>=
+@pytest.fixture(scope="session")
+def recording(record_mode):
+  """True when the tests talk to LADOK: a live run or a recording."""
+  return record_mode != "none"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def live_ladok(recording):
+  """The logged-in session for LADOK's test environment, or the reason why
+  there is none.  Logs in before any cassette opens."""
+  if not recording:
+    return "replaying"
+  try:
+    session = ladok3.test_session
+    session.user_info_JSON()
+  except RuntimeError as err:
+    return f"cannot log in to LADOK: {err}"
+  return session
+@
+
+In replay, the tests get a session that never logs in.
+It needs one thing that a logged-in session has: LADOK's [[XSRF-TOKEN]]
+cookie, which the write requests send back (\cref{XSRFtoken}).
+The cassettes keep the cookie but not its value, so a placeholder is enough.
+<<fixtures>>=
+@pytest.fixture(scope="session")
+def replay_ladok():
+  """A session for LADOK's test environment that never logs in."""
+  session = ladok3.LadokSession("KTH Royal Institute of Technology",
+                                test_environment=True)
+  session.session.cookies.set("XSRF-TOKEN", vcr_support.SECRET_PLACEHOLDER)
+  return session
+@
+
+The tests ask for [[ladok]] and get whichever session fits the mode.
+In replay, a test without a cassette is skipped: without one, its first
+request would only fail on the network block.
+A test that uses [[ladok]] must be marked [[vcr]], though, or it is never
+recorded: it would be skipped in replay for ever and talk to LADOK unrecorded
+in a live run, outside the drift check.
+We fail such a test rather than let it skip quietly.
+
+Each test starts with an empty cache.
+[[LadokSession]] caches some responses, such as the grade scales, and the
+session is shared by all tests.
+Without clearing it, what a test requests, and therefore what its cassette
+holds, would depend on which tests ran before it: a test recorded after
+another that filled the cache would, when run alone, make a request that its
+cassette lacks.
+
+The XSRF token needs the same care.
+Before a PUT, POST or DELETE, [[LadokSession]] makes a request to refresh the
+token if it has made none in the last 15 minutes (\cref{XSRFtoken}).
+While recording, the shared session has always just been used, so that
+request never happens; a replay session made a moment ago has not been used
+at all, so it would.
+We therefore mark the replay session as just used, before each test.
+This reaches into a private attribute, which is the price of keeping the
+freshness rule out of the public interface.
+
+Finally, in replay we check that the test made every request its cassette
+holds.
+By default [[vcrpy]] only answers the requests that come; it doesn't notice
+one that never comes.
+A write test whose DELETE was never sent would then still pass, because the
+requests after it replay the recorded state, in which the result is gone.
+The check runs after the test's other fixtures are torn down, since they were
+set up after [[ladok]], so it covers the cleanup's requests too.
+<<fixtures>>=
+@pytest.fixture
+def ladok(request, recording, live_ladok, vcr,
+          vcr_cassette_dir, default_cassette_name):
+  """The LADOK session for a test: logged in when talking to LADOK, an
+  offline one that replays the test's cassette otherwise."""
+  if request.node.get_closest_marker("vcr") is None:
+    pytest.fail("a test that uses the ladok fixture must be marked vcr")
+  if recording:
+    if isinstance(live_ladok, str):
+      pytest.skip(live_ladok)
+    live_ladok.cache.clear()
+    yield live_ladok
+    return
+  cassette_file = Path(vcr_cassette_dir) / f"{default_cassette_name}.yaml"
+  if not cassette_file.exists():
+    pytest.skip("no recording; record it with --record-mode=once, "
+                "or run with --live")
+  session = request.getfixturevalue("replay_ladok")
+  session.cache.clear()
+  session._LadokSession__access_time = datetime.datetime.now()
+  yield session
+  assert vcr.all_played, (
+    f"the test made {vcr.play_count} of the {len(vcr)} requests recorded "
+    "in its cassette")
+@
+
+Some tests check validation that happens before any request is sent, for
+instance that [[fetch_linked_uri_JSON]] refuses a link to another host.
+They need a [[LadokSession]] object but no recording.
+Creating the object makes no request, since the login happens on the first
+request, so they get the replay session in every mode.
+If one of them sent a request by mistake, the network block would fail it.
+<<fixtures>>=
+@pytest.fixture(scope="session")
+def offline_ladok(replay_ladok):
+  """A session that never logs in, for tests that send no request."""
+  return replay_ladok
+@
+
+A few tests must not be recorded at all and run only live; they ask for
+the [[live]] fixture, which skips them otherwise.
+One logs in afresh, to test the login itself.
+Another sends a personnummer in the URL: the recording would pseudonymize
+it with the key, so the cassette could only be replayed by someone holding
+the key.
+<<fixtures>>=
+@pytest.fixture(scope="session")
+def live(request):
+  """Skip the requesting test unless pytest runs with `--live`."""
+  if not request.config.getoption("--live"):
+    pytest.skip("runs only against LADOK; run with --live")
+@
+
+
+\section{Recording}
+
+Each test module gets its own cassette directory under [[tests/cassettes]],
+named after the module.
+In a live run the same relative path is used, but under the live directory.
+We note which directories were written, so that we can scan them and, in a
+live run, compare them after the run.
+<<fixtures>>=
+@pytest.fixture(scope="module")
+def vcr_cassette_dir(request):
+  module = Path(request.node.path)
+  committed = module.parent / "cassettes" / module.stem
+  config = request.config
+  if config.getoption("--live"):
+    target = config._live_dir / committed.relative_to(config.rootpath)
+    config._recorded_dirs.add((committed, target))
+    return str(target)
+  if record_mode_of(config) != "none":
+    config._recorded_dirs.add((committed, committed))
+  return str(committed)
+@
+
+\subsection{Pseudonymization}\label{Pseudonymization}
+
+The responses we record are about real people.
+[[vcr_support]] scrubs each response before it is written: secrets such as
+cookies and tokens are removed, names, email addresses, usernames and
+personnummer are replaced by pseudonyms, and free text is replaced
+wholesale, since prose can name anyone.
+The pseudonyms are keyed hashes, so the same person gets the same pseudonym
+in every cassette, and only someone with the key can link a pseudonym to a
+person.
+The key, in the environment variable [[TEST_PSEUDONYM_KEY]], must therefore
+never be committed; keep it in the keyring.
+It must also stay the same between recordings, or every pseudonym changes and
+a re-recording becomes impossible to review.
+
+[[vcr_support]] already knows LADOK's main field names, such as [[Fornamn]],
+[[Personnummer]] and [[SenastAndradAv]].
+We adjust its lists in three places.
+\begin{description}
+\item[[[Uid]] ] is a login name in many services, so [[vcr_support]] replaces
+  it.
+  In LADOK it is the opaque identifier of a record, which is what lets a
+  reader follow a student or a course round from one response to the next,
+  and the tests request records by it.
+  We keep it.
+\item[[[OvrigaMedverkande]] ] (\enquote{other contributors}) lists the
+  teachers who took part in grading a result, as free text.
+\item[[[Fodelsedata]] ] is the student's date of birth.
+\end{description}
+<<constants>>=
+LADOK_LOGIN_KEYS = vcr_support.LOGIN_KEYS - {"uid"}
+LADOK_FREE_TEXT_KEYS = vcr_support.FREE_TEXT_KEYS | {"ovrigamedverkande"}
+LADOK_CONTACT_KEYS = vcr_support.CONTACT_KEYS | {"fodelsedata"}
+@
+
+The pseudonymizer also notes every original value it replaced, in a private
+file outside the repository, so that the scan after the run
+(\cref{Drift}) can look for any of them that slipped through elsewhere.
+In replay nothing is written, and any key will do.
+<<fixtures>>=
+@pytest.fixture(scope="session")
+def pseudonymizer(request, recording):
+  key = os.environ.get(vcr_support.KEY_ENV, "")
+  originals = Path(os.environ.get(vcr_support.ORIGINALS_ENV)
+                   or vcr_support.default_originals_path(
+                        request.config.rootpath))
+  request.config._originals_path = originals
+  return vcr_support.Pseudonymizer(
+    (key or "replay-only").encode(),
+    originals if recording else None,
+    login_keys=LADOK_LOGIN_KEYS,
+    free_text_keys=LADOK_FREE_TEXT_KEYS,
+    contact_keys=LADOK_CONTACT_KEYS)
+
+
+@pytest.fixture
+def vcr_config(pseudonymizer):
+  return pseudonymizer.vcr_config()
+@
+
+By default [[vcrpy]] matches a request to a recorded one by its method and
+URL.
+That is enough for reading, but not for writing: a write test that sent the
+wrong grade would get the recorded response, with the right grade, and pass.
+The configuration from [[vcr_support]] therefore matches the body too, so
+that in replay a write must send exactly what was recorded.
+
+
+\section{Checks after the run}\label{Drift}
+
+After a run that recorded anything, we scan what was written for personal
+data and secrets: every original value that the pseudonymizer replaced, and
+anything shaped like an email address, a personnummer or a token.
+A hit fails the run and is reported as a file, a line and a redacted stub,
+never the value.
+
+After a live run we also compare the fresh recordings with the ones we
+replay.
+The comparison looks at structure only: status codes, content types, and the
+paths and types of the keys in the JSON bodies, never the values.
+A removed key, a changed type or a request that is no longer made is
+\emph{drift}: the cassettes no longer describe LADOK, and the tests that
+replay them may pass on behaviour that LADOK has dropped.
+Drift fails the run.
+The fix is to adapt the code if needed and then record the affected tests
+again with [[--record-mode=rewrite -k]] \emph{test}, never to edit a
+cassette by hand.
+<<checks after the run>>=
+def pytest_sessionfinish(session, exitstatus):
+  config = session.config
+  pairs = getattr(config, "_recorded_dirs", set())
+  if not pairs:
+    return
+  reporter = config.pluginmanager.get_plugin("terminalreporter")
+
+  def write(message, **markup):
+    if reporter:
+      reporter.write_line(message, **markup)
+    else:
+      print(message)
+
+  <<scan the recordings for personal data>>
+  if config.getoption("--live"):
+    <<compare the live recordings with the cassettes>>
+@
+
+The list of originals holds every value the pseudonymizer replaced, and not
+all of them identify anyone.
+A student's city ([[Postort]]) is replaced as contact data, and the words of
+a free-text note are replaced with it.
+The first recording found such values hundreds of times: a city in the
+names of courses given there, a short word in the translation table, and
+[[POST]] as the method of the write requests.
+
+Finding a value in LADOK's own public text says nothing about a person, so
+when we scan a cassette we allow the originals that occur in the public text
+of \emph{that cassette}: in course and code-table names ([[Benamning]] and
+its [[sv]] and [[en]] texts), in codes ([[Kod]]), in the translation table
+([[Text]]), and as HTTP methods.
+Responses from the code tables, the translation table and the course
+information ([[PUBLIC_PATHS]]) hold no people, so all of their text counts as
+public.
+So do the HTTP headers, apart from cookies and credentials: a short word
+recorded as an original once turned up in every cassette, as the [[max]] of
+[[Cache-Control: max-age=0]].
+The staff lists, which the catalogue service also serves, are not among them.
+Allowing per cassette matters: the table of Swedish places holds many words
+that are also surnames, and allowing those in every cassette would let a
+surname that the scrubber missed in a student's record go unnoticed.
+Within one cassette, a surname that is also a word in a course name there is
+still allowed; that is the price of not reading the cassettes by eye.
+
+The cassettes store characters outside ASCII escaped, as in
+[[Malm\xF6]], and the scan reads the file as it is stored, so it sees the
+part before an escape as a word of its own; we therefore also take the words
+of the public text in its escaped form, with the escapes themselves taken
+out, or the [[n]] of an escaped line break would stick to the next word.
+<<scan the recordings for personal data>>=
+originals = vcr_support.read_list(getattr(config, "_originals_path", None))
+written_files = [path for _, written in sorted(pairs)
+                 for path in vcr_support.iter_files([written])
+                 if path.name != LIVE_MARKER_FILE]
+needles = vcr_support.Needles(originals)
+leaks = []
+for path in written_files:
+  allow = public_originals(originals, path)
+  leaks += [(path, where, kind, hit)
+            for where, kind, hit in vcr_support.scan_file(path, needles,
+                                                          allow=allow)]
+if leaks:
+  write("PRIVACY: the recordings contain personal data or secrets (values "
+        "redacted below). Extend the key lists in testing.nw, delete the "
+        "cassettes, and record again.", red=True)
+  for path, where, kind, hit in leaks:
+    write(f"  {path}:{where}: {kind} {hit}")
+  session.exitstatus = 1
+@
+
+We collect the public text from the response bodies in the cassette.
+<<constants>>=
+PUBLIC_TEXT_KEYS = {"sv", "en", "Text", "Benamning", "Kod"}
+HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+PUBLIC_PATHS = ("/kataloginformation/internal/grunddata/",
+                "/kataloginformation/internal/i18n/",
+                "/kataloginformation/internal/service/",
+                "/utbildningsinformation/internal/utbildningsinstans",
+                "/utbildningsinformation/internal/utbildningstillfalle",
+                "/utbildningsinformation/internal/struktur/")
+PRIVATE_HEADERS = {"cookie", "set-cookie", "authorization",
+                   "x-xsrf-token", "x-csrf-token"}
+ESCAPE_SEQUENCE = r"\\(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)"
+<<checks after the run>>=
+def public_originals(originals, cassette):
+  """Return the originals that occur in LADOK's public text in `cassette`,
+  or that are HTTP methods."""
+  text = "\n".join(public_text(cassette)).lower()
+  words = set(re.findall(r"\w+", text))
+  escaped = re.sub(ESCAPE_SEQUENCE, " ", yaml.safe_dump(text))
+  words |= set(re.findall(r"\w+", escaped))
+  phrases = vcr_support.Needles(original for original in originals
+                                 if original.lower() not in words)
+  found = {match.lower() for line in text.splitlines()
+           for _, _, match in phrases.finditer(line)}
+  return [original for original in originals
+          if original.upper() in HTTP_METHODS
+          or original.lower() in words
+          or original.lower() in found]
+
+
+def public_text(cassette):
+  """Yield the public strings in the JSON response bodies of `cassette`:
+  all of them from `PUBLIC_PATHS`, otherwise those under
+  `PUBLIC_TEXT_KEYS`."""
+  try:
+    interactions = yaml.safe_load(cassette.read_text())["interactions"]
+  except (yaml.YAMLError, KeyError, TypeError):
+    return
+  for interaction in interactions:
+    yield from public_header_values(interaction)
+    try:
+      body = json.loads(interaction["response"]["body"]["string"])
+    except (KeyError, TypeError, ValueError):
+      continue
+    uri = interaction.get("request", {}).get("uri", "")
+    public = any(path in uri for path in PUBLIC_PATHS)
+    yield from strings_under(body, PUBLIC_TEXT_KEYS, inside=public)
+
+
+def public_header_values(interaction):
+  """Yield the values of the request and response headers, except those
+  that carry cookies or credentials."""
+  for part in ("request", "response"):
+    headers = (interaction.get(part) or {}).get("headers") or {}
+    for name, values in headers.items():
+      if name.lower() in PRIVATE_HEADERS:
+        continue
+      for value in values if isinstance(values, list) else [values]:
+        if isinstance(value, str):
+          yield value
+
+
+def strings_under(data, keys, inside=False):
+  """Yield the strings in `data` that sit under one of `keys`."""
+  if isinstance(data, dict):
+    for key, value in data.items():
+      yield from strings_under(value, keys, inside or key in keys)
+  elif isinstance(data, list):
+    for item in data:
+      yield from strings_under(item, keys, inside)
+  elif inside and isinstance(data, str):
+    yield data
+@
+
+Let's verify the allow list with two small cassettes that both contain the
+original \enquote{Hammar}, invented for the test.
+In the table of municipalities it is part of a public place name, written
+with an escaped \enquote{ö} as in the real cassettes, so it is allowed there.
+In a list of students it sits in a name field that the scrubber missed, so it
+must be reported, even though the other cassette shows that it is also a word
+in a place name.
+\enquote{Max} occurs in a [[Cache-Control]] header and is allowed;
+\enquote{Maxine} occurs only in a cookie, which is not public, and is not.
+<<test functions>>=
+def write_cassette(path, uri, body):
+  interaction = {"request": {"uri": uri, "method": "GET"},
+                 "response": {
+                   "headers": {"Cache-Control": ["no-cache, max-age=0"],
+                               "Set-Cookie": ["Maxine=redacted"]},
+                   "body": {"string": json.dumps(body, ensure_ascii=False)}}}
+  path.write_text(yaml.safe_dump({"interactions": [interaction]}))
+  return path
+
+def test_public_originals_are_allowed_per_cassette(tmp_path):
+  places = write_cassette(
+    tmp_path / "places.yaml",
+    "https://start.test.ladok.se/gui/proxy"
+    "/kataloginformation/internal/grunddata/kommun",
+    {"Kommun": [{"ID": "1", "Kod": "1880",
+                 "Benamning": {"sv": "Hammarö", "en": "Hammarö"}}]})
+  students = write_cassette(
+    tmp_path / "students.yaml",
+    "https://start.test.ladok.se/gui/proxy"
+    "/studiedeltagande/internal/deltagare",
+    {"Resultat": [{"Student": {"Smeknamn": "Hammar"},
+                   "Benamning": {"sv": "Datorteknik"}}]})
+  originals = ["Hammar", "POST", "Datorteknik", "Max", "Maxine"]
+
+  assert "Hammar" in conftest.public_originals(originals, places)
+  assert "Hammar" not in conftest.public_originals(originals, students)
+  assert set(conftest.public_originals(originals, students)) \
+    == {"POST", "Datorteknik", "Max"}
+@
+
+<<compare the live recordings with the cassettes>>=
+drift = []
+for committed, live in sorted(pairs):
+  if committed.exists() and live.exists():
+    drift += vcr_support.compare_directories(committed, live)
+for severity, name, key, message in drift:
+  if message != "not re-recorded in the live run":
+    write(f"  {severity}: {name} {key}: {message}",
+          red=severity == "drift")
+if any(severity == "drift" for severity, *_ in drift):
+  write("DRIFT: LADOK no longer matches the cassettes. Fix the "
+        "code if needed, then record the affected tests again with "
+        "--record-mode=rewrite -k <test> and review the diff.", red=True)
+  session.exitstatus = 1
+else:
+  write(f"live: no structural drift ({config._live_dir})", green=True)
+@
+
+
+\section{Recording your own cassettes}\label{RecordingOwn}
+
+To record, we need a login to LADOK's test environment, through
+[[ladok login]], and a pseudonymization key.
+Any long random string will do as a key, but it must stay the same between
+recordings and it must never be written to the repository or printed.
+With GNOME Keyring we can create one without ever seeing it:
+\begin{minted}{bash}
+python3 -c "import secrets; print(secrets.token_urlsafe(32), end='')" \
+  | secret-tool store --label='ladok3 test pseudonymization key' \
+      service ladok3 key test-pseudonym
+\end{minted}
+Then we record the cassettes that are missing, writes included, reading the
+key from the keyring for this command only:
+\begin{minted}{bash}
+TEST_PSEUDONYM_KEY="$(secret-tool lookup service ladok3 key test-pseudonym)" \
+  make test PYTESTFLAGS="--record-mode=once --live-writes"
+\end{minted}
+A live run takes the key the same way, with [[PYTESTFLAGS=--live]].
+The recording fails if the scan afterwards finds personal data
+(\cref{Drift}); then extend the key lists in \cref{Pseudonymization}, delete
+the cassettes and record again.
+
+The tests use records in KTH's part of the test environment: a test student,
+the courses DD2395 and DD1301, their rounds and LAB1 modules,
+KTH's organisational unit and a result reporter.
+Their UIDs are constants in the tests of the API calls.
+At another institution, those constants must be replaced by records there,
+and the write tests need a login with the right to report results on the
+module they write to.
+
