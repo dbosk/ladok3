@@ -20,6 +20,7 @@ Previously we imported the session from [[test_ladok3]], which triggered
 that module's deliberate fresh login---the right thing when testing session
 \emph{establishment}, but a needless MFA prompt for every API test run.
 <<test [[api.py]]>>=
+import datetime
 import json
 import ladok3
 import ladok3.report
@@ -77,12 +78,13 @@ errors with a single exception handler.
 
 \begin{description}
 \item[{[[LadokError]]}] Base exception class for all LADOK-related errors.
-\item[{[[LadokServerError]]}] For server-side LADOK errors (uses 
-[[response.json()["Meddelande"]]]).
 \item[{[[LadokValidationError]]}] For data validation errors (invalid person 
 numbers, grades, etc.).
 \item[{[[LadokAPIError]]}] For API/HTTP related errors (network failures, 
 unexpected responses).
+\item[{[[LadokServerError]]}] A subclass of [[LadokAPIError]] for requests
+that LADOK refused with an explanation (uses
+[[response.json()["Meddelande"]]]).
 \item[{[[LadokNotFoundError]]}] For resource not found errors (missing courses, 
 components, etc.).
 \end{description}
@@ -119,23 +121,6 @@ class LadokError(Exception):
 
   All other LADOK exception classes inherit from this class, ensuring
   backward compatibility with existing code that catches generic exceptions.
-  """
-  pass
-
-class LadokServerError(LadokError):
-  """
-  Exception for server-side LADOK errors.
-
-  This exception is raised when the LADOK server returns an error response,
-  typically containing an error message in the response JSON under the
-  "Meddelande" key. This indicates that the request reached the server
-  successfully, but the server was unable to process it due to business
-  logic constraints or data validation issues on the server side.
-
-  Examples:
-  - Attempting to register a grade for a student not enrolled in the course
-  - Trying to access data that the authenticated user doesn't have permission to view
-  - Server-side validation failures
   """
   pass
 
@@ -188,6 +173,62 @@ class LadokNotFoundError(LadokError):
   - Non-existent course rounds
   """
   pass
+@
+
+A [[LadokServerError]] is a special kind of [[LadokAPIError]]: the request
+failed, but LADOK itself explains why.
+We make it a subclass for the sake of existing code.
+For a long time the query methods never raised [[LadokServerError]] at all:
+they raised it inside a bare [[try]]/[[except]] that immediately caught it
+again, so every failure surfaced as a [[LadokAPIError]].
+Code that catches [[LadokAPIError]] to skip a failing request, for instance
+when exporting a whole programme's results, therefore relies on it covering
+LADOK's refusals as well.
+As a subclass, [[LadokServerError]] keeps such handlers working, while new code
+can catch the more specific error.
+The subclass must be defined after its parent, which is why it comes last.
+There is one consequence for handlers that treat the two differently, such
+as the usage example above or the API methods below that add context to an
+error before raising it again: they must catch [[LadokServerError]] first.
+Python tries the [[except]] clauses in order, and a clause for
+[[LadokAPIError]] also matches its subclass, so listed first it would turn
+every server error into a plain API error.
+
+<<classes>>=
+class LadokServerError(LadokAPIError):
+  """
+  Exception for server-side LADOK errors.
+
+  This exception is raised when the LADOK server returns an error response,
+  typically containing an error message in the response JSON under the
+  "Meddelande" key. This indicates that the request reached the server
+  successfully, but the server was unable to process it due to business
+  logic constraints or data validation issues on the server side.
+
+  It is a subclass of `LadokAPIError`, since it is also a failed API
+  request, so handlers for `LadokAPIError` catch it too.
+
+  Examples:
+  - Attempting to register a grade for a student not enrolled in the course
+  - Trying to access data that the authenticated user doesn't have permission to view
+  - Server-side validation failures
+  """
+  pass
+@
+
+Let's verify that such a method lets a server error through as one, with its
+context added.
+We take [[get_student_contact_data_JSON]] as an example and replace its query
+with one that LADOK refuses, so the test runs offline.
+<<test functions>>=
+def test_api_method_keeps_server_error_type(monkeypatch) -> None:
+  ls = ladok3.LadokSession("KTH Royal Institute of Technology")
+  def refused(*args, **kwargs):
+    raise ladok3.LadokServerError("GET request to ... failed: Nekad")
+  monkeypatch.setattr(ls, "get_query", refused)
+  with pytest.raises(ladok3.LadokServerError,
+                     match="contact data for student s-uid.*Nekad"):
+    ls.get_student_contact_data_JSON("s-uid")
 @
 
 \section{HTTP queries to LADOK}
@@ -267,12 +308,21 @@ def response_json_or_error(
     return response.json()
   except ValueError as err:
     content_type = response.headers.get("content-type", "<missing>")
-    body = " ".join(response.text.split())
-    if len(body) > 120:
-      body = body[:117] + "..."
     raise LadokAPIError(
       f"{method} request to {path} returned non-JSON response "
-      f"from {response.url} (Content-Type: {content_type}): {body}") from err
+      f"from {response.url} (Content-Type: {content_type}): "
+      f"{compact_body(response.text)}") from err
+@
+
+A whole HTML page in an error message buries the one line that matters, so
+we squeeze its whitespace and cut it short.
+<<functions>>=
+def compact_body(text: str, limit: int = 120) -> str:
+  """Return `text` on one line, shortened to at most `limit` characters."""
+  body = " ".join(text.split())
+  if len(body) > limit:
+    body = body[:limit - 3] + "..."
+  return body
 @
 
 Let's verify the improved error reporting with a synthetic HTML login page. The
@@ -296,6 +346,87 @@ def test_response_json_or_error_reports_html_login_pages() -> None:
     assert "https://start.ladok.se/gui/loggain" in str(err)
   else:
     assert False
+@
+
+\subsubsection{Reporting a failed request}\label{QueryErrors}
+
+The helper above deals with a successful status that carries the wrong kind
+of body; the query methods must also report requests that fail outright.
+When LADOK refuses a request, it usually explains why in the
+[[Meddelande]] field of a JSON body, and that explanation is what the user
+needs to see.
+But not every failure carries such a body.
+The requests that sent the wrong XSRF token (\cref{XSRFtoken}), for
+instance, got an HTML \enquote{Application error} page with status 500.
+Since our retry policy hands such final responses back to us
+(\cref{RetryPolicy}), we must expect them here.
+An earlier version put the whole response body into the message, which for
+such a page meant a screenful of HTML.
+We therefore use LADOK's own message when there is one, and otherwise the
+status and a shortened body.
+The two cases also differ in kind.
+With a [[Meddelande]], LADOK understood the request and refused it, which is
+what [[LadokServerError]] stands for (\cref{ExceptionClasses}); without one,
+we only know that the request failed, a plain [[LadokAPIError]].
+
+All five query methods below fail the same way, so they share this helper.
+It returns the exception rather than raising it, so that each method ends
+with an explicit [[raise]] and the reader sees where its control flow stops.
+<<functions>>=
+def query_error(response: requests.Response, path: str,
+                method: str) -> LadokAPIError:
+  """Return an exception describing the failed `response`.
+
+  If the body is LADOK JSON with an error message (`Meddelande`), returns a
+  `LadokServerError` with that message. Otherwise returns a `LadokAPIError`
+  with the HTTP status and a shortened body.
+  """
+  failed = f"{method} request to {path} failed"
+  try:
+    message = response.json()["Meddelande"]
+  except (ValueError, KeyError, TypeError):
+    return LadokAPIError(f"{failed}: {response.status_code} {response.reason}: "
+                         f"{compact_body(response.text)}")
+  return LadokServerError(f"{failed}: {message}")
+@
+
+Let's verify both kinds of failure: an HTML error page from the proxy and a
+JSON refusal from LADOK.
+<<test functions>>=
+class FakeFailedResponse:
+  def __init__(self, status_code, reason, text, json_data=None):
+    self.status_code = status_code
+    self.reason = reason
+    self.text = text
+    self.__json_data = json_data
+
+  def json(self):
+    if self.__json_data is None:
+      raise ValueError("not json")
+    return self.__json_data
+
+def test_query_error_shortens_html_error_pages() -> None:
+  page = ("<!DOCTYPE html>\n<html>\n<head>\n"
+          "<title>Ladok - Application error</title>\n"
+          + "<meta>\n" * 100 + "</head></html>")
+  err = ladok3.query_error(
+    FakeFailedResponse(500, "Internal Server Error", page),
+    "/resultat/internal/kurstillfalle/moment", "PUT")
+  assert type(err) is ladok3.LadokAPIError
+  assert "PUT request to /resultat/internal/kurstillfalle/moment" in str(err)
+  assert "500 Internal Server Error" in str(err)
+  assert "Application error" in str(err)
+  assert "\n" not in str(err)
+  assert len(str(err)) < 250
+
+def test_query_error_uses_ladok_message() -> None:
+  err = ladok3.query_error(
+    FakeFailedResponse(400, "Bad Request", '{"Meddelande": "..."}',
+                       {"Meddelande": "Resultatet är redan attesterat"}),
+    "/resultat/internal/resultat/uppdatera/1", "PUT")
+  assert isinstance(err, ladok3.LadokServerError)
+  assert isinstance(err, ladok3.LadokAPIError)
+  assert str(err).endswith("failed: Resultatet är redan attesterat")
 @
 
 <<LadokSession data methods>>=
@@ -327,12 +458,7 @@ def get_query(self, path: str,
      
   if response.ok:
     return response_json_or_error(response, path, "GET")
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"GET request to {path} failed: {error_msg}")
+  raise query_error(response, path, "GET")
 
 def get_query_text(self, path: str, accept: str) -> str:
   """
@@ -374,12 +500,7 @@ def get_query_text(self, path: str, accept: str) -> str:
         f"GET request to {path} returned unexpected HTML from "
         f"{response.url}")
     return response.text
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"GET request to {path} failed: {error_msg}")
+  raise query_error(response, path, "GET")
 
 def put_query(self, path: str, put_data: dict | list,
               content_type: str = "application/vnd.ladok-resultat+json"
@@ -411,12 +532,7 @@ def put_query(self, path: str, put_data: dict | list,
      
   if response.ok:
     return response_json_or_error(response, path, "PUT")
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"PUT request to {path} failed: {error_msg}")
+  raise query_error(response, path, "PUT")
 
 def post_query(self, path: str, post_data: dict | list,
                content_type: str = "application/vnd.ladok-resultat+json"
@@ -448,12 +564,7 @@ def post_query(self, path: str, post_data: dict | list,
      
   if response.ok:
     return response_json_or_error(response, path, "POST")
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"POST request to {path} failed: {error_msg}")
+  raise query_error(response, path, "POST")
 
 def del_query(self, path: str) -> bool | dict | list | requests.Response:
   """
@@ -484,12 +595,7 @@ def del_query(self, path: str) -> bool | dict | list | requests.Response:
       return response.json()
     except:
       return response
-  try:
-    error_msg = response.json()["Meddelande"]
-    raise LadokServerError(error_msg)
-  except:
-    error_msg = response.text
-  raise LadokAPIError(f"DELETE request to {path} failed: {error_msg}")
+  raise query_error(response, path, "DELETE")
 @
 
 \subsection{The XSRF token}\label{XSRFtoken}
@@ -514,9 +620,7 @@ def xsrf_token(self) -> str:
       str: A valid XSRF token for use in authenticated requests.
   """
   <<ensure the XSRF token is fresh>>
-
-  cookies = self.session.cookies.get_dict()
-  return cookies["XSRF-TOKEN"]
+  <<return the XSRF token of our own LADOK environment>>
 @
 
 Now, we must ensure there is a fresh XSRF token.
@@ -547,6 +651,92 @@ if (not self.__access_time
   self.user_info_JSON() # trigger login
 else:
   <<record time of request>>
+@
+
+\subsubsection{Which XSRF token is ours}
+
+A fresh token is not enough; it must also be the token of the right LADOK
+environment.
+Each environment sets its own [[XSRF-TOKEN]] cookie, scoped to its own host:
+[[start.ladok.se]] for production and [[start.test.ladok.se]] for the test
+environment.
+Both cookies can end up in the same cookie jar.
+That is no accident: [[ladok3.test_session]] shares the production session's
+underlying session, and with it the cookie jar, so that the test environment
+can log in on the production SSO cookies (\cref{CachedSession}).
+That shared jar is then pickled into the cache, so once a test run or a
+documentation build has touched the test environment, every later
+production session restored from the cache carries both tokens.
+
+Contrast two ways of reading the token from such a jar.
+An earlier version flattened the jar into a dictionary with
+[[get_dict()]].
+A dictionary has room for only one [[XSRF-TOKEN]], so the cookie that the jar
+lists last wins.
+The jar lists its cookies sorted by domain, and [[start.test.ladok.se]] sorts
+after [[start.ladok.se]], so the test environment's token always won.
+A production session then sent the test environment's token with every PUT,
+POST and DELETE request, and LADOK answered each of them with an
+\enquote{Application error} (status 500).
+GET requests carry no token, so they kept working, which made the problem
+look like a fault in a particular LADOK endpoint rather than in our session.
+
+Instead we ask the jar for the cookie that our own host set.
+This works because the jar records the domain of every cookie, and LADOK sets
+its token on the bare host name, without a leading dot, so the domain matches
+the host of [[self.base_url]] exactly.
+We derive the host inside the property rather than storing it in the
+constructor:
+sessions restored from the cache are unpickled, not constructed, so an
+attribute that only the constructor sets would be missing on them.
+We deliberately leave out the path.
+Should our host ever set a second token on another path, the jar raises
+[[CookieConflictError]] instead of silently choosing one of them, and a loud
+failure is what we want for an ambiguous token.
+If our host has set no token at all, we tell the user to log in again, rather
+than failing with a bare [[KeyError]].
+<<return the XSRF token of our own LADOK environment>>=
+host = urllib.parse.urlparse(self.base_url).hostname
+token = self.session.cookies.get("XSRF-TOKEN", domain=host)
+if token is None:
+  raise LadokAPIError(
+    f"no XSRF token from {host}; log in again with `ladok login`")
+return token
+@
+
+Let's verify that a production session and a test-environment session that
+share one cookie jar each get their own token.
+We set both tokens the way LADOK does and mark both sessions as recently used,
+so that the freshness check makes no request and the test runs offline.
+With [[get_dict()]], the production session would get the test token here.
+<<test functions>>=
+def make_sessions_sharing_one_jar():
+  prod = ladok3.LadokSession("KTH Royal Institute of Technology")
+  test = ladok3.LadokSession("KTH Royal Institute of Technology",
+                             test_environment=True,
+                             session=prod.session)
+  for session in (prod, test):
+    session._LadokSession__access_time = datetime.datetime.now()
+  return prod, test
+
+def test_xsrf_token_comes_from_own_environment() -> None:
+  prod, test = make_sessions_sharing_one_jar()
+  prod.session.cookies.set("XSRF-TOKEN", "prod-token",
+                           domain="start.ladok.se", path="/gui")
+  prod.session.cookies.set("XSRF-TOKEN", "test-token",
+                           domain="start.test.ladok.se", path="/gui")
+  assert prod.xsrf_token == "prod-token"
+  assert test.xsrf_token == "test-token"
+@
+
+The other environment's token must not stand in for a missing one of our own.
+<<test functions>>=
+def test_xsrf_token_missing_for_own_environment() -> None:
+  prod, test = make_sessions_sharing_one_jar()
+  prod.session.cookies.set("XSRF-TOKEN", "test-token",
+                           domain="start.test.ladok.se", path="/gui")
+  with pytest.raises(ladok3.LadokAPIError, match="ladok login"):
+    prod.xsrf_token
 @
 
 
@@ -903,12 +1093,12 @@ def get_student_contact_data_JSON(self, student_id: str) -> dict:
       f"/studentinformation/internal/student/{student_id}/kontaktuppgifter",
       "application/vnd.ladok-studentinformation+json"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get contact data for "
-                        f"student {student_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting contact data for "
                            f"student {student_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get contact data for "
+                        f"student {student_id}: {err}") from err
 @
 
 We test this function.
@@ -941,12 +1131,12 @@ def get_student_suspensions_JSON(self, student_id: str) -> dict:
       f"/studentinformation/internal/avstangning/student/{student_id}",
       "application/vnd.ladok-studentinformation+json"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get suspensions for "
-                        f"student {student_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting suspensions for "
                            f"student {student_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get suspensions for "
+                        f"student {student_id}: {err}") from err
 @
 
 We test this function.
@@ -1186,12 +1376,12 @@ def course_instance_JSON(self, instance_id: str) -> dict:
     return self.get_query(
       f"/resultat/internal/utbildningsinstans/kursinstans/{instance_id}"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get course instance data for "
-                        f"{instance_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting course instance data for "
                            f"{instance_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get course instance data for "
+                        f"{instance_id}: {err}") from err
 @
 
 We add the following test.
@@ -1596,13 +1786,13 @@ def student_results_JSON(
       "/resultat/internal/studentenskurser/kursinformation"
       f"/student/{student_id}/kursUID/{course_education_id}"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get results for student {student_id} "
-                        f"on course {course_education_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting results for "
                            f"student {student_id} on course {course_education_id}: "
                            f"{err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get results for student {student_id} "
+                        f"on course {course_education_id}: {err}") from err
 @
  
 We test this in the following way.
@@ -1660,13 +1850,13 @@ def create_result_JSON(self,
         "Projekttitel": project_title
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to create result for student {student_id} "
-                        f"on component {component_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when creating result for "
                            f"student {student_id} on component {component_id}: "
                            f"{err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to create result for student {student_id} "
+                        f"on component {component_id}: {err}") from err
 @
 
 We test this in the following way.
@@ -1749,11 +1939,11 @@ def update_result_JSON(self,
         'SenasteResultatandring': last_modified
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to update result {result_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when updating result "
                            f"{result_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to update result {result_id}: {err}") from err
 @
 
 We test this in the following way.
@@ -1891,11 +2081,11 @@ def user_info_JSON(self) -> dict:
       "/kataloginformation/internal/anvandare/anvandarinformation",
       "application/vnd.ladok-kataloginformation+json"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to get user info: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when getting user info: "
                            f"{err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to get user info: {err}") from err
 @
 
 We test this as follows.
@@ -1942,11 +2132,11 @@ def finalize_result_JSON(self,
         "ResultatetsSenastSparad": last_modified
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to finalize result {result_id}: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when finalizing result "
                            f"{result_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to finalize result {result_id}: {err}") from err
 @ This method returns a copy of the finalized result.
 
 We test this in the following way.
@@ -2055,12 +2245,12 @@ def update_finalized_result_JSON(self,
         'SenasteResultatandring': last_modified
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to update finalized result {result_id}: "
-                        f"{err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when updating finalized result "
                            f"{result_id}: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to update finalized result {result_id}: "
+                        f"{err}") from err
 @
 
 We test this in the following way.
@@ -2102,12 +2292,12 @@ def finalized_result_to_draft_JSON(
         'ResultatetsSenastSparad': last_modified
       }
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"Failed to change finalized result {result_id} to draft: "
-                        f"{err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when changing finalized result "
                            f"{result_id} to draft: {err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"Failed to change finalized result {result_id} to draft: "
+                        f"{err}") from err
 @
 
 We test this in the following way.
@@ -2142,13 +2332,13 @@ def remove_result_draft_JSON(self, result_id: str) -> None:
     data = self.del_query(
       f"/resultat/internal/resultat/tabort/{result_id}"
     )
-  except LadokAPIError as err:
-    raise LadokAPIError(f"LADOK request to remove draft result "
-                        f"{result_id} failed: {err}") from err
   except LadokServerError as err:
     raise LadokServerError(f"LADOK server error when removing "
                            f"draft result {result_id}: "
                            f"{err}") from err
+  except LadokAPIError as err:
+    raise LadokAPIError(f"LADOK request to remove draft result "
+                        f"{result_id} failed: {err}") from err
 @
 
 We test this in the following way.
