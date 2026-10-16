@@ -347,17 +347,72 @@ def recording(record_mode):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def live_ladok(recording):
+def live_ladok(recording, pytestconfig):
   """The logged-in session for LADOK's test environment, or the reason why
   there is none.  Logs in before any cassette opens."""
   if not recording:
     return "replaying"
+  return log_in_for_tests(lambda: ladok3.test_session,
+                          into_project=not pytestconfig.getoption("--live"))
+@
+
+Skipping is right for a live run, which records into a directory of its own.
+It is wrong when we record into the project's cassettes.
+With [[--record-mode=rewrite]], [[pytest-recording]] deletes a test's
+cassette when it opens it, and that happens before the [[ladok]] fixture
+learns that there is no login and skips.
+A run whose login failed then deletes the very cassettes that it was meant to
+renew, and still exits successfully, reporting only skips.
+So when we record into the project, a failed login stops the whole run, here,
+before any cassette opens.
+
+One [[RuntimeError]] is not a missing login: [[RecursionError]].
+It is how a login that loops ends, so it is a bug, and we let it fail.
+This is not hypothetical.
+A [[weblogin]] handler that another program had added to the cached session
+once replayed a one-time step of the login, over and over, for a quarter of an
+hour; the [[RecursionError]] at the end was taken for missing credentials, the
+tests were skipped, and the run recording them deleted their cassettes.
+<<fixtures>>=
+def log_in_for_tests(get_session, into_project):
+  """Return the logged-in session from `get_session()`, or the reason why
+  there is none.  Stops the run instead when we record into the project's
+  cassettes, which a skipped test could delete."""
   try:
-    session = ladok3.test_session
+    session = get_session()
     session.user_info_JSON()
+  except RecursionError:
+    raise
   except RuntimeError as err:
+    if into_project:
+      pytest.exit(f"cannot log in to LADOK, so nothing is recorded: {err}",
+                  returncode=1)
     return f"cannot log in to LADOK: {err}"
   return session
+@
+
+Let's verify the three outcomes with a login that fails the way a missing
+login does, and with one that fails the way a looping login does.
+We inject the failures: the real login would need credentials and LADOK.
+<<test functions>>=
+def no_stored_credentials():
+  raise RuntimeError("no stored credentials")
+
+def test_failed_login_stops_a_recording_into_the_project():
+  with pytest.raises(pytest.exit.Exception):
+    conftest.log_in_for_tests(no_stored_credentials, into_project=True)
+
+def test_failed_login_skips_the_ladok_tests_of_a_live_run():
+  reason = conftest.log_in_for_tests(no_stored_credentials,
+                                     into_project=False)
+  assert "no stored credentials" in reason
+
+def test_a_login_that_loops_is_a_bug_not_a_missing_login():
+  def looping_login():
+    raise RecursionError("maximum recursion depth exceeded")
+
+  with pytest.raises(RecursionError):
+    conftest.log_in_for_tests(looping_login, into_project=False)
 @
 
 In replay, the tests get a session that never logs in.
