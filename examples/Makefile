@@ -1,3 +1,8 @@
+# Make an undefined chunk fail the build, see src/ladok3/Makefile.
+SHELL=		/bin/bash
+.SHELLFLAGS=	-o pipefail -c
+.DELETE_ON_ERROR:
+
 .PHONY: all
 all: canvas2ladok.py
 all: datintro.py

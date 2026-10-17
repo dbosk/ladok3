@@ -34,6 +34,7 @@ We also provide tests for all functionality in [[test_ladok3.py]].
 These illustrate how to the [[ladok3]] module and provide testing using
 [[pytest]].
 <<test [[ladok3.py]]>>=
+import datetime
 import json
 import ladok3
 import os
@@ -651,6 +652,7 @@ We will use the JSON format for this.
 We provide this as a read only property [[json]].
 If the output of [[json]] is given as the [[kwargs]] parameter to the 
 [[make_properties]] method, it will restore all the attributes.
+We use this to restore objects from JSON in \cref{LadokDataJSON}.
 
 We provide the [[LadokData]] class with a constructor that takes keyword 
 arguments ([[**kwargs]]).
@@ -687,53 +689,251 @@ class LadokData:
     return json_format
 @
 
-\subsection{To and from JSON format}
+\subsection{To and from JSON format}\label{LadokDataJSON}
 
-We want to be able to restore an object from that JSON formatted dictionary.
-We provide a function~[[restore]], which restores an object from a JSON-like 
-dictionary.
-The [[restore]] function uses the constructor and, in turn, the 
-[[__setup_properties]] method.
+The [[json]] property turns an object into a dictionary: the object's
+attributes, with any attribute that is itself a [[LadokData]] object turned
+into its own dictionary, and a [[type]] key naming the class.
+Here we provide the way back, the function [[restore]], and the encoder
+[[LadokDataEncoder]] that turns such a dictionary into JSON text.
+The aim is that [[restore(obj.json)]] gives an object equal to [[obj]], of
+the same class, and that this still holds after a round trip through JSON
+text.
+
+\paragraph{Which objects can be restored}
+
+Not every [[LadokData]] object can be rebuilt from its JSON alone, and the
+reason splits the classes into two kinds.
+\begin{description}
+\item[Values] A grade scale, a grade and a suspension
+  ([[GradeScale]], [[Grade]] and [[Suspension]]) hold nothing but what LADOK
+  sent in one response.
+  They never contact LADOK again and cannot be changed, so their JSON is the
+  whole object.
+\item[Handles] The remote data ([[LadokRemoteData]], \cref{LadokRemoteData})
+  are handles onto state that lives in LADOK: a student, a course round, a
+  course registration, a result.
+  They keep the [[LadokSession]] itself, which is not JSON, fill their
+  attributes lazily from LADOK and push changes back to it.
+  A copy restored from JSON would have no session to do that with, and its
+  data would be a snapshot that nothing refreshes.
+  [[CourseComponent]] belongs here too, although it is not remote data
+  itself: it keeps the course that it is part of, which is remote data, so
+  its JSON contains a handle.
+\end{description}
+So [[restore]] handles the values only and raises [[TypeError]] for every
+other type.
+The handles are kept across runs in another way:
+the command-line interface pickles the whole session, cache included (see
+[[store_ladok_session]]), and a program that wants a student again asks the
+session for it, \eg with [[get_student]].
+
+We list the restorable classes in a dictionary from class name, the value of
+the [[type]] key, to the class and the names of the attributes that its JSON
+must contain (we will see why below).
+Each class adds itself to the list in [[<<restorable types>>]] in its own
+section, so that the list is next to the constructor that must accept the
+JSON and the attributes that it sets.
+The dictionary lives among the functions, not among the constants, because it
+names the classes and [[<<constants>>]] are tangled before [[<<classes>>]].
 <<functions>>=
-def restore(json_dict):
-  if "type" not in json_dict:
-    return LadokData(**json_dict)
-
-  <<check type and return such object>>
-
-  raise TypeError(f"cannot restore type {json_dict.type}, not a known type")
+RESTORABLE_TYPES = {
+  cls.__name__: (cls, attribute_names)
+  for cls, attribute_names in [
+    <<restorable types>>
+  ]
+}
 @
 
-For completeness, we also provide [[LadokDataEncoder]], a subclass of 
-[[JSONEncoder]].
+\paragraph{Restoring an object}
+
+The [[restore]] function first finds the class from the [[type]] key, then
+restores any nested objects and finally calls the class's constructor with the
+remaining keys.
+<<functions>>=
+def restore(json_dict):
+  """Restore a LadokData object from its `json` dictionary.
+
+  `json_dict` is what the object's `json` property returns, or that after a
+  round trip through JSON text with `LadokDataEncoder`.  Only values can be
+  restored: grade scales, grades and suspensions.  Objects that refer to
+  data in LADOK (students, courses, results) must be fetched through a
+  `LadokSession` instead.
+
+  Raises TypeError if `json_dict` has no "type" key, if its type cannot be
+  restored, or if its keys are not exactly the attributes of that type.
+  """
+  <<find the class to restore from [[json_dict]]>>
+  <<restore the nested objects and construct the object>>
+@
+
+A dictionary without a [[type]] key did not come from [[json]], so we cannot
+know what it is.
+An earlier version returned an empty [[LadokData]] object for it, which threw
+the data away without a word; we raise an error instead.
+The message for a type that we cannot restore names the restorable types, so
+that whoever passes a student's JSON learns what [[restore]] is for.
+<<find the class to restore from [[json_dict]]>>=
+if "type" not in json_dict:
+  raise TypeError("cannot restore a dictionary without a 'type' key")
+
+type_name = json_dict["type"]
+if type_name not in RESTORABLE_TYPES:
+  raise TypeError(f"cannot restore type {type_name!r}, "
+                  f"only {', '.join(sorted(RESTORABLE_TYPES))}")
+cls, attribute_names = RESTORABLE_TYPES[type_name]
+<<check that [[json_dict]] has exactly the attributes of [[cls]]>>
+@
+
+The constructors hand the JSON to [[make_properties]] (see below), and that
+method trusts its keys.
+For a key that the class has no property for, it adds a property to the
+class itself, for every object of the class and for the rest of the process.
+That is harmless for the JSON that [[json]] produced, but [[restore]] is where
+data from outside, such as a file, comes in.
+An extra key [[foo]] would give every [[Grade]] a property [[foo]] that fails
+on all grades but one, and a key [[__getattr__]] even crashed the
+interpreter.
+A missing key is no better: the constructor succeeds and the object fails
+later, when someone reads the missing attribute.
+So we require the keys to be exactly the private attributes that the class
+lists, and name the missing and unexpected ones, but never the values.
+Then [[make_properties]] only sets attributes that the class already has
+properties for.
+<<check that [[json_dict]] has exactly the attributes of [[cls]]>>=
+expected = {f"_{type_name}__{name}" for name in attribute_names}
+given = set(json_dict) - {"type"}
+if given != expected:
+  raise TypeError(f"cannot restore {type_name}: "
+                  f"missing {sorted(expected - given)}, "
+                  f"unexpected {sorted(given - expected)}")
+@
+
+Nested objects come in two forms.
+The [[json]] property turns an attribute that is a [[LadokData]] object into a
+dictionary, but it leaves lists alone: a grade scale's JSON holds its list of
+[[Grade]] objects as they are.
+It must not descend into lists, since a course keeps a list of its
+components and each component keeps the course: following both would never
+end.
+[[LadokDataEncoder]] serialises the objects in the lists when it writes the
+text, so after a round trip through JSON text every nested object is a
+dictionary with a [[type]] key.
+We therefore restore each dictionary that has a [[type]] key, look inside
+lists, and leave everything else, including [[LadokData]] objects that are
+still objects, as it is.
+(No restorable class has an attribute that is itself a [[LadokData]] object
+today, only lists of them, so the tests exercise only the lists; the
+dictionary case is there for a class that would.)
+(A restored grade scale then shares its [[Grade]] objects with the original,
+which is harmless since grades cannot be changed.)
+The [[type]] key itself is not passed on: it is not an attribute.
+<<restore the nested objects and construct the object>>=
+attributes = {key: _restore_nested(value)
+              for key, value in json_dict.items() if key != "type"}
+return cls(**attributes)
+<<functions>>=
+def _restore_nested(value):
+  if isinstance(value, dict) and "type" in value:
+    return restore(value)
+  if isinstance(value, list):
+    return [_restore_nested(item) for item in value]
+  return value
+@
+
+Let's verify the error cases.
+The dictionary without a type must be left as it was, since [[restore]] must
+not change its argument.
+For the checked attributes, we must also verify that [[Grade]] did not get a
+new property.
+A student shows that [[restore]] refuses a handle even though [[json]] gives
+a dictionary for it.
+Creating the [[Student]] object makes no request, so the session can be any
+object; we use the fictive Tolvan's personnummer.
+<<test functions>>=
+def test_restore_rejects_unknown_type():
+  with pytest.raises(TypeError, match="'NoSuchType'"):
+    ladok3.restore({"type": "NoSuchType"})
+
+def test_restore_rejects_dict_without_type():
+  json_dict = {"code": "A"}
+  with pytest.raises(TypeError, match="without a 'type' key"):
+    ladok3.restore(json_dict)
+  assert json_dict == {"code": "A"}
+
+def test_restore_rejects_unexpected_attributes():
+  grade = {"type": "Grade", "_Grade__id": 11, "_Grade__code": "P",
+           "_Grade__accepted": True}
+  with pytest.raises(TypeError, match="'foo'"):
+    ladok3.restore({**grade, "foo": 1})
+  assert not hasattr(ladok3.Grade, "foo")
+
+def test_restore_rejects_missing_attributes():
+  with pytest.raises(TypeError, match="'_Grade__code'"):
+    ladok3.restore({"type": "Grade", "_Grade__id": 11,
+                    "_Grade__accepted": True})
+
+def test_restore_rejects_remote_data():
+  student = ladok3.Student(ladok=object(), id="19121212-1212")
+  with pytest.raises(TypeError, match="'Student'"):
+    ladok3.restore(student.json)
+@ The tests that restore the values follow their classes, in
+\cref{GradeScaleClasses,SuspensionClass}.
+
+\paragraph{Writing JSON text}
+
+To write an object as JSON text, we give [[LadokDataEncoder]] to
+[[json.dumps]] as [[cls]].
+The encoder turns every [[LadokData]] object that it meets into its [[json]]
+dictionary, also those in lists.
+JSON has no type for dates, so the encoder writes them in ISO format,
+\eg \enquote{2024-09-25}, the same format as LADOK uses.
+They come back from the text as strings, and a class with date attributes
+converts them back in its constructor (see [[Suspension]]).
 <<classes>>=
 class LadokDataEncoder(json.JSONEncoder):
   """JSON encoder for LadokData objects.
-  
-  Extends JSONEncoder to properly serialize LadokData objects using their
-  json property for consistent JSON output.
+
+  Serialises LadokData objects as their `json` dictionaries and dates in ISO
+  format, so that `restore` can rebuild the objects from the decoded text.
   """
   def default(self, object):
-    """Convert LadokData objects to JSON-serializable format.
-    
+    """Convert LadokData objects and dates to JSON-serializable format.
+
     Args:
         object: The object to encode.
-    
+
     Returns:
-        dict: JSON representation for LadokData objects, or default handling.
+        The `json` dictionary of a LadokData object, the ISO format of a
+        date, or the default handling.
     """
     if isinstance(object, LadokData):
       return object.json
+    if isinstance(object, datetime.date):
+      return object.isoformat()
     return super().default(object)
 @
 
-For the [[__setup_properties]] method, we want it to set up private attributes 
-and read-only properties for them.
-For each keyword in [[kwargs]], we add the private attribute using 
-[[setattr(self, ...)]] and the corresponding property to the class itself using 
+The tests of the values use this helper for the round trip through JSON
+text.
+<<test functions>>=
+def through_json_text(ladok_data):
+  return json.loads(json.dumps(ladok_data, cls=ladok3.LadokDataEncoder))
+@
+
+\paragraph{Constructors that accept JSON}
+
+[[restore]] calls the constructor with the keys of the JSON, and these are
+the names of the private attributes, such as [[_GradeScale__id]], not the
+keys of LADOK's data, such as [[ID]].
+A restorable class's constructor recognises its own JSON by such a key and
+then hands the keys to the [[make_properties]] method.
+That method sets up private attributes and read-only properties for them.
+For each keyword in [[kwargs]], we add the private attribute using
+[[setattr(self, ...)]] and the corresponding property to the class itself using
 [[setattr(type(self), ...)]].
 (Note that we only add the property if it doesn't already exist.)
-We check the names, if the attributes already match the pattern for a private 
+We check the names, if the attributes already match the pattern for a private
 attribute name, we don't \enquote{privatize} it again.
 <<set up read-only properties>>=
 for attribute in kwargs:
@@ -759,15 +959,17 @@ The objects that can be modified can also be updated.
 They can be updated locally, which must be pushed to LADOK; they can be changed 
 remotely, which must be pulled from LADOK.
 These objects must also keep a LADOK session internally ([[self.ladok]]).
+Since they cannot be restored from JSON (\cref{LadokDataJSON}), the
+constructor always requires the session.
+(It used to accept its own JSON too, but that branch never worked: it gave
+[[make_properties]] keyword arguments instead of a dictionary, and the
+subclasses' constructors still required their LADOK data.)
 <<classes>>=
 class LadokRemoteData(LadokData):
   """Base class for remote LADOK data"""
   def __init__(self, /, **kwargs):
     super().__init__(**kwargs)
-    if "_LadokRemoteData__ladok" in kwargs:
-      self.make_properties(**kwargs)
-    else:
-      self.__ladok = kwargs.pop("ladok")
+    self.__ladok = kwargs.pop("ladok")
 
   @property
   def ladok(self):
@@ -1072,7 +1274,7 @@ The [[grade_scales_JSON]] method is part of the LADOK API and is documented in
 \cref{GradeScalesJSON}.
 
 
-\section{The [[GradeScale]] and [[Grade]] classes}
+\section{The [[GradeScale]] and [[Grade]] classes}\label{GradeScaleClasses}
 
 We need a class for grade scales.
 This object should be read only and we never need to update it, so we can base 
@@ -1097,7 +1299,7 @@ class GradeScale(LadokData):
     super().__init__(**kwargs)
 
     if "_GradeScale__id" in kwargs:
-      self.make_properties(**kwargs)
+      self.make_properties(kwargs)
     else:
       self.__id = int(kwargs.pop("ID"))
       self.__code = kwargs.pop("Kod")
@@ -1138,7 +1340,7 @@ class Grade(LadokData):
   def __init__(self, /, **json_data):
     """Constructor taking a dictionary (JSON-like) structure"""
     if "_Grade__id" in json_data:
-      self.make_properties(**json_data)
+      self.make_properties(json_data)
     else:
       self.__id = int(json_data.pop("ID"))
       self.__code = json_data.pop("Kod")
@@ -1180,6 +1382,52 @@ implemented in the [[Grade]] class.
 Similarly, we can iterate over the grades in the grading scale.
 <<iterate over grades in grading scale>>=
 return iter(self.__grades)
+@
+
+
+\paragraph{Restoring from JSON}
+
+Grade scales and grades are values (\cref{LadokDataJSON}): they hold only
+what LADOK sent and never change, so we can restore them from JSON.
+Both constructors already recognise their own JSON by the private attribute
+for the ID, and then hand it to [[make_properties]] instead of reading
+LADOK's keys.
+A grade scale's grades arrive at its constructor as [[Grade]] objects,
+since [[restore]] has already restored the nested grades.
+<<restorable types>>=
+(GradeScale, ["id", "code", "name", "grades"]),
+(Grade, ["id", "code", "accepted"]),
+@
+
+Let's verify the round trip, both directly from [[json]] and through JSON
+text.
+The grade scale is made up but has the shape of LADOK's data above.
+After the trip through text the grades must be [[Grade]] objects again, not
+dictionaries, and membership tests must still work on them.
+<<test functions>>=
+def make_grade_scale():
+  return ladok3.GradeScale(
+    ID="1", Kod="PF", Benamning={"sv": "Underkänd, godkänd"},
+    Betygsgrader=[
+      {"ID": "11", "Kod": "P", "GiltigSomSlutbetyg": True},
+      {"ID": "12", "Kod": "F", "GiltigSomSlutbetyg": False},
+    ])
+
+def test_grade_round_trips_through_json():
+  grade = next(iter(make_grade_scale()))
+  for json_data in [grade.json, through_json_text(grade)]:
+    restored = ladok3.restore(json_data)
+    assert type(restored) is ladok3.Grade
+    assert restored == grade
+
+def test_grade_scale_round_trips_through_json():
+  scale = make_grade_scale()
+  for json_data in [scale.json, through_json_text(scale)]:
+    restored = ladok3.restore(json_data)
+    assert type(restored) is ladok3.GradeScale
+    assert all(type(grade) is ladok3.Grade for grade in restored)
+    assert restored == scale
+    assert "P" in restored and "F" in restored
 @
 
 
@@ -1608,7 +1856,7 @@ def test_failed_course_list_is_retried():
 @
 
 
-\section{Is the student suspended?}
+\section{Is the student suspended?}\label{SuspensionClass}
 
 We also want to know if a student is suspended or not.
 We can get a list of suspensions for a student.
@@ -1632,16 +1880,21 @@ This list looks like this:
 ]
 \end{minted}
 Let's make a class for this.
+A suspension is a value (\cref{LadokDataJSON}), so the constructor also
+accepts the suspension's own JSON, which we treat below.
 <<classes>>=
 class Suspension(LadokData):
   """A suspension"""
   def __init__(self, /, **kwargs):
     super().__init__(**kwargs)
-    self.__note = kwargs.pop("Anteckning")
-    self.__validity = (
-      datetime.date.fromisoformat(kwargs["Giltighetsperiod"]["Startdatum"]),
-      datetime.date.fromisoformat(kwargs["Giltighetsperiod"]["Slutdatum"])
-    )
+    if "_Suspension__note" in kwargs:
+      <<restore [[Suspension]] from its JSON>>
+    else:
+      self.__note = kwargs.pop("Anteckning")
+      self.__validity = (
+        datetime.date.fromisoformat(kwargs["Giltighetsperiod"]["Startdatum"]),
+        datetime.date.fromisoformat(kwargs["Giltighetsperiod"]["Slutdatum"])
+      )
 
   @property
   def note(self):
@@ -1678,6 +1931,45 @@ def suspensions(self):
   suspensions = self.ladok.get_student_suspensions_JSON(
                                             self.ladok_id)["Avstangning"]
   return [Suspension(**suspension) for suspension in suspensions]
+@
+
+
+\paragraph{Restoring from JSON}
+
+Unlike a grade scale, a suspension keeps dates, and JSON text has no dates:
+[[LadokDataEncoder]] writes them as ISO-format strings and the tuple of
+the validity period becomes a list.
+So when we restore a suspension, we turn the validity period back into a
+tuple of dates.
+We accept both dates and strings, since [[restore(suspension.json)]] passes
+the dates as they are.
+The note needs nothing special, so [[make_properties]] takes care of it.
+<<restore [[Suspension]] from its JSON>>=
+validity = kwargs.pop("_Suspension__validity")
+self.__validity = tuple(
+  datetime.date.fromisoformat(day) if isinstance(day, str) else day
+  for day in validity)
+self.make_properties(kwargs)
+<<restorable types>>=
+(Suspension, ["note", "validity"]),
+@
+
+Let's verify that a suspension survives both round trips with its dates.
+The suspension is made up; only the two keys that the constructor reads
+matter.
+<<test functions>>=
+def test_suspension_round_trips_through_json():
+  suspension = ladok3.Suspension(
+    Anteckning="Dnr 0000-1",
+    Giltighetsperiod={"Startdatum": "2024-09-25",
+                      "Slutdatum": "2024-12-31"})
+
+  for json_data in [suspension.json, through_json_text(suspension)]:
+    restored = ladok3.restore(json_data)
+    assert type(restored) is ladok3.Suspension
+    assert restored == suspension
+    assert restored.validity == (datetime.date(2024, 9, 25),
+                                 datetime.date(2024, 12, 31))
 @
 
 
