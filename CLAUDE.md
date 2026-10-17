@@ -80,7 +80,9 @@ Use variation theory: contrast different approaches, start with the whole, exami
 - Escape special sequences: `@<<` for literal `<<`, `@@` in column 1 for literal `@`
 - A chunk that is used but never defined fails `make compile` (notangle exits
   2; `src/ladok3/Makefile` sets `pipefail` and `.DELETE_ON_ERROR` so the
-  shared `noweb.mk`'s `notangle | cpif` pipe cannot hide it)
+  shared `noweb.mk`'s `notangle | cpif` pipe cannot hide it, and
+  `tests/Makefile` sets `.DELETE_ON_ERROR` so a failed test tangle is not
+  reused on the next run)
 - Chunks are ordered pedagogically (for human readers), not by compiler requirements
 
 ### Writing Quality Literate Programs

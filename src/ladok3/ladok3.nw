@@ -650,9 +650,11 @@ that can be changed, such as results.
 We also want to serialize the data.
 We will use the JSON format for this.
 We provide this as a read only property [[json]].
-If the output of [[json]] is given as the [[kwargs]] parameter to the 
-[[make_properties]] method, it will restore all the attributes.
-We use this to restore objects from JSON in \cref{LadokDataJSON}.
+The attributes in the output of [[json]], without its [[type]] key, are what
+[[make_properties]] takes to set the attributes again.
+\Cref{LadokDataJSON} uses this to restore objects from JSON, after checking
+that the keys are exactly the attributes of the named class: any other key
+would become a property of the class itself.
 
 We provide the [[LadokData]] class with a constructor that takes keyword 
 arguments ([[**kwargs]]).
@@ -822,9 +824,10 @@ dictionary with a [[type]] key.
 We therefore restore each dictionary that has a [[type]] key, look inside
 lists, and leave everything else, including [[LadokData]] objects that are
 still objects, as it is.
+The dictionary case is what restores the grades in a grade scale's list:
+each item of the list is such a dictionary.
 (No restorable class has an attribute that is itself a [[LadokData]] object
-today, only lists of them, so the tests exercise only the lists; the
-dictionary case is there for a class that would.)
+today, so only a dictionary directly on an object goes untested.)
 (A restored grade scale then shares its [[Grade]] objects with the original,
 which is harmless since grades cannot be changed.)
 The [[type]] key itself is not passed on: it is not an attribute.
