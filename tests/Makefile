@@ -13,6 +13,11 @@ $(shell echo $1 | cut -d: -f1): $(shell echo $1 | cut -d: -f2)
 	notangle ${NOTANGLEFLAGS.py} "-Rtest [[$$(shell echo $$@ | sed 's/^test_//')]]" $$^ > $$@
 endef
 
+# notangle exits 2 on an undefined chunk, but its redirected output stays
+# behind and is newer than the source, so the next run would take the
+# incomplete test file as up to date.  .DELETE_ON_ERROR removes it.
+.DELETE_ON_ERROR:
+
 #PYTESTFLAGS+=--pdb
 PYTESTFLAGS+=
 
