@@ -130,7 +130,8 @@ LadokError
 ├── LadokValidationError  # Data validation errors
 ├── LadokAPIError         # HTTP/API errors
 │   └── LadokServerError  # LADOK refused, with a Meddelande
-└── LadokNotFoundError    # Resource not found
+├── LadokNotFoundError    # Resource not found
+└── LadokDetachedError    # Object restored from JSON without a session
 ```
 Catch `LadokServerError` before `LadokAPIError` when handling them differently.
 
