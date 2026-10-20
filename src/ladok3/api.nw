@@ -926,6 +926,11 @@ When we report a result, we send [[Beslutsfattare]] as a list of UIDs (see
 [[finalize_result_JSON]]), but LADOK returns it as the examiner's name.
 We therefore replace only the string form and keep a list of UIDs, which
 carries no name.
+[[Attestant]], the examiner who attested a result, comes in two shapes too:
+result histories give a record, whose name fields the rules above already
+replace, but attestation views give a plain string, the examiner's name or
+LADOK's text that the examiner is missing.
+So we replace its string form in the same way.
 
 The function only knows the keys it lists.
 If LADOK adds a field that names a person, that field goes through
@@ -974,6 +979,7 @@ PSEUDONYMS = {
 
 PSEUDONYMS_IF_STRING = {
   "Beslutsfattare": "Examinator",
+  "Attestant": "Examinator",
 }
 @
 
@@ -1039,7 +1045,7 @@ PSEUDONYMIZED_KEYS = [
   "Anvandarnamn", "Utdelningsadress", "Postnummer", "Postort",
   "Telefonnummer", "SenastAndradAv", "Anteckning", "OvrigaMedverkande",
   "Beslutsfattare", "Fodelsedata", "KonID", "Avliden", "SkapadAv",
-  "OvrigInformation",
+  "OvrigInformation", "Attestant",
 ]
 
 @pytest.mark.parametrize("key", PSEUDONYMIZED_KEYS)
