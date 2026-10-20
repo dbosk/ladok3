@@ -26,10 +26,13 @@ validation and pagination, take [[offline_ladok]] instead, a session that
 never logs in.
 <<test [[api.py]]>>=
 import datetime
+import email.utils
 import json
 import ladok3
 import ladok3.report
+import pickle
 import pytest
+import types
 
 pytestmark = pytest.mark.vcr
 
@@ -40,6 +43,10 @@ dasak_round_id = "79a8cb1b-73da-11e8-b4e0-063f9afb40e3"
 LAB1_uid = "39ca27fe-73d8-11e8-afa7-8e408e694e54"
 LAB1_instance_id = "39ca2861-73d8-11e8-b4e0-063f9afb40e3"
 KTH_org_id = "2474f616-dc41-11e8-8cc1-eaeeb71b497f"
+DD1301_student_uid = "3e76e4f7-f049-11eb-8cb6-0bb93b844502"
+DD1317_running_round_id = "9731dce7-c60c-11f0-9aa4-4a24d5f444fb"
+DD1317_running_round_dates = (datetime.date(2026, 8, 24),
+                              datetime.date(2027, 1, 11))
 
 <<test functions>>
 @ We will then add [[test_X()]] functions in the [[<<test functions>>]] code 
@@ -2679,19 +2686,32 @@ ladok.remove_result_draft_JSON(result["Uid"])
 \end{pycode}
 
 
-\section{[[participants_JSON]]}
+\section{[[participants_JSON]]}\label{ParticipantsJSON}
 
 The method returns JSON data containing a list of students (the participants in 
 the course round).
 (This is an extension of Maguire's original [[participants_JSON]] method.
 The essential difference is keyword arguments to filter which students to 
 include.)
+
+LADOK filters the list by the participants' [[deltagaretillstand]], a list of
+codes.
+The flags below each add one code; [[participant_states]] takes the codes
+themselves, which is what the course rounds use to select the participants
+in some states (\cref{CourseRoundParticipantsByState}).
+Without any keyword we send LADOK's own default.
+A list of codes counts as a keyword even when it is empty, so an empty list
+is sent as it is rather than replaced by the default; the course rounds never
+send one.
 <<LadokSession data methods>>=
 def participants_JSON(self, course_round_id: str, /, **kwargs) -> list:
   """Returns JSON record containing participants in a course identified by
   round ID.
-  Filters in kwargs: not_started, ongoing, registered, finished, cancelled"""
-  participants_types = []
+  Filters in kwargs: not_started, ongoing, registered, finished, cancelled,
+  and participant_states, a list of deltagaretillstand codes (e.g.
+  ["REGISTRERAD", "AVKLARAD"]).  Returns at most PARTICIPANTS_LIMIT
+  participants."""
+  participants_types = list(kwargs.get("participant_states", []))
   if "not_started" in kwargs and kwargs["not_started"]:
     participants_types.append("EJ_PABORJAD")
   if "ongoing" in kwargs and kwargs["ongoing"]:
@@ -2712,7 +2732,7 @@ def participants_JSON(self, course_round_id: str, /, **kwargs) -> list:
 
   put_data = {
     'page': 1,
-    'limit': 400,
+    'limit': PARTICIPANTS_LIMIT,
     'orderby': ['EFTERNAMN_ASC',
                 'FORNAMN_ASC',
                 'PERSONNUMMER_ASC',
@@ -2731,6 +2751,43 @@ def participants_JSON(self, course_round_id: str, /, **kwargs) -> list:
     err.add_note(f"Response data: {response}")
     raise LadokAPIError(f"Unexpected response format when fetching participants for "
                        f"round {course_round_id}: missing 'Resultat' key") from err
+@
+
+We ask for one page of at most 400 participants.
+A round with more is cut off; we name the limit so that the tests can tell
+when a list may be.
+<<constants>>=
+PARTICIPANTS_LIMIT = 400
+@
+
+Let's verify what we send, without LADOK: we call the method on a stand-in
+for the session that records the request.
+The codes in [[participant_states]] are sent as they are, before those of
+any flags; no keyword at all sends the default, but an empty list of codes is
+sent as it is.
+<<test functions>>=
+class SessionRecordingPuts:
+  def __init__(self):
+    self.sent = []
+
+  def put_query(self, path, data, content_type):
+    self.sent.append(data["deltagaretillstand"])
+    return {"Resultat": []}
+
+@pytest.mark.parametrize("kwargs,codes", [
+  ({}, ["PAGAENDE", "REGISTRERAD", "AVKLARAD"]),
+  ({"participant_states": ["EJ_PABORJAD", "AVBROTT"]},
+   ["EJ_PABORJAD", "AVBROTT"]),
+  ({"cancelled": True, "participant_states": ["AVKLARAD"]},
+   ["AVKLARAD", "AVBROTT"]),
+  ({"finished": True}, ["AVKLARAD"]),
+  ({"participant_states": []}, []),
+])
+def test_participants_JSON_sends_the_codes(kwargs, codes) -> None:
+  session = SessionRecordingPuts()
+  assert ladok3.LadokSession.participants_JSON(session, "round", **kwargs) \
+    == []
+  assert session.sent == [codes]
 @
 
 We test this as follows.
@@ -2755,6 +2812,47 @@ results = list(filter(
 print(json.dumps(results, indent=2, ensure_ascii=False))
 print(r"\end{minted}")
 \end{pycode}
+
+Against LADOK, we check the participant list's codes on a round of DD1317
+that runs from 24 August 2026 to 11 January 2027, so that the code for the
+ongoing participants is among those we ask for.
+We ask for the participants of each state, with the codes that the round's
+dates give for it on the day of the answers (\cref{ParticipationState}), and
+for those with the one code that no state uses, [[PAGAENDE]].
+What must hold on any day from the start of the round:
+each participant is in at most one of these lists, and LADOK's default list
+is the union of the lists of [[PAGAENDE]], [[REGISTRERAD]] and
+[[AVKLARAD]], since those are the codes it defaults to, and
+[[REGISTRERAD]] is ongoing or unfinished, whichever the day makes it.
+No list may be full, since a full list may have been cut off
+([[PARTICIPANTS_LIMIT]]).
+We compare the students' LADOK IDs and assert on counts, so that a failure
+shows no one.
+<<test functions>>=
+def test_participant_states_partition_a_round(ladok, recording,
+                                              vcr) -> None:
+  today = date_of_answers(recording, vcr)
+  start, end = DD1317_running_round_dates
+
+  def students(**kwargs):
+    participants = ladok.participants_JSON(DD1317_running_round_id,
+                                           **kwargs)
+    assert len(participants) < ladok3.PARTICIPANTS_LIMIT
+    return {participant["Student"]["Uid"] for participant in participants}
+
+  by_state = {}
+  for state in ladok3.COURSE_STATES:
+    codes = ladok3.participant_codes(state, start, end, today)
+    by_state[state] = students(participant_states=codes) if codes else set()
+  pagaende = students(participant_states=["PAGAENDE"])
+  default = students()
+
+  lists = [pagaende, *by_state.values()]
+  assert sum(map(len, lists)) == len(set().union(*lists))
+  assert len(default ^ (pagaende | by_state["ongoing"]
+                        | by_state["unfinished"]
+                        | by_state["completed"])) == 0
+@
 
 
 \chapter{Other API calls}
@@ -4266,49 +4364,74 @@ def test_student_program_participations_JSON(ladok) -> None:
   assert isinstance(participations, list)
 @
 
-\section{[[student_course_participations_JSON]]}
+\section{A student's course participations}\label{ParticipationsByState}
 
-Returns all course-round participations for a student.  Used to discover which
-course rounds a student has attended independently of the programme study plan
---- important for elective courses or courses taken outside the nominal
-curriculum.
+Which course rounds does a student take part in?
+The question comes in two forms.
+Sometimes we want every course round the student has ever taken, for
+instance to export the results of a programme's students.
+More often we want the ones in some state: the courses the student takes
+now, the ones they will start, the ones they finished.
+This section treats the first form, and the next one
+(\cref{ParticipationState}) the second.
 
-The obvious design would mirror [[student_program_participations_JSON]] with a
-course-specific endpoint.  In practice the test environment returns
-[[404 Not Found]] for the dedicated
-[[/studiedeltagande/internal/deltagare/kurstillfalle/student/{uid}]] path.
-Rather than keep a broken endpoint just because its URL sounds right, we reuse
-[[registrations_JSON]], which already returns the full participation objects,
-and keep only entries whose
-[[Utbildningsinformation.Utbildningstillfallestyp.Grundtyp]] is [[KURS]].
-That still fails loudly on schema drift: if the discriminator disappears, the
-caller sees a [[LadokAPIError]] with the offending registration attached.
+LADOK used to answer the first form with an endpoint of its own,
+[[/studiedeltagande/internal/deltagare/kurstillfalle/student/{uid}]], and the
+first version of [[student_course_participations_JSON]], contributed in pull
+request \#129, used it.
+LADOK has since removed that endpoint.
+It answers [[404 Not Found]] for every account, and the answer comes from the
+web server itself, as an HTML page.
+LADOK refuses a resource that exists but is forbidden in its own voice, with
+a JSON body that carries a [[Meddelande]], so this 404 means that the path is
+gone, not that the account lacks some role.
+Christian Ohm (\enquote{cohm}) established this on 2026-08-22 with an account
+that holds programme-level roles: the endpoint answered exactly as a path he
+had made up.
 
+Every participation is in [[registrations_JSON]] instead, which reads the
+student's course-round participations ([[kurstillfallesdeltagande]]).
+Every entry that we have recorded from it is a course, but we keep the
+filter on [[Utbildningsinformation.Utbildningstillfallestyp.Grundtyp]] being
+[[KURS]] as a guard, since the method promises courses.
+If an entry lacks that discriminator, we raise [[LadokAPIError]] with the
+entry attached rather than skip it: skipping would make a change in LADOK's
+format look like a student without courses.
+The method takes a [[state]] too, which we come to below; without one it
+returns every course participation the student ever had.
 <<LadokSession data methods>>=
-def student_course_participations_JSON(self, student_uid: str) -> list:
-  """Return all course-round participations for a student.
+def student_course_participations_JSON(self, student_uid: str,
+                                       state: str | None = None) -> list:
+  """Return a student's course-round participations.
 
-  Uses [[registrations_JSON()]] as the source and keeps only course entries.
+  Without `state`, every course participation the student ever had:
+  ongoing, upcoming, completed and abandoned ones.  With `state`, one of
+  PARTICIPATION_STATES, only those that LADOK puts in that state, e.g.
+  "pagaende" for the ongoing ones.  Raises ValueError for any other
+  state.
 
   Each item typically contains:
+    - Uid: the participation's UUID
     - Utbildningsinformation.UtbildningstillfalleUID: the course round UUID
     - Utbildningsinformation.Utbildningskod: the course code
-    - TillstandKurs: participation state summary
+    - Utbildningsinformation.Studieperiod: the round's start and end
+    - TillstandKurs.Sammanfattattillstand: the participation's state summary
   """
   participations = []
-  for registration in self.registrations_JSON(student_uid):
+  for participation in self.student_participations_JSON(student_uid,
+                                                        state=state):
     try:
-      grundtyp = registration["Utbildningsinformation"][
+      grundtyp = participation["Utbildningsinformation"][
         "Utbildningstillfallestyp"]["Grundtyp"]
     except KeyError as err:
-      err.add_note(f"Registration data: {registration}")
+      err.add_note(f"Participation data: {participation}")
       raise LadokAPIError(
-        f"Unexpected registration format when fetching course "
+        f"Unexpected participation format when fetching course "
         f"participations for student {student_uid}: missing "
         f"'Utbildningsinformation.Utbildningstillfallestyp.Grundtyp'"
       ) from err
     if grundtyp == "KURS":
-      participations.append(registration)
+      participations.append(participation)
   return participations
 @
 
@@ -4324,6 +4447,595 @@ def test_student_course_participations_JSON(ladok) -> None:
     p["Utbildningsinformation"]["Utbildningstillfallestyp"]["Grundtyp"]
     == "KURS"
     for p in participations)
+@
+
+The output looks like this (showing only the first entry for brevity;
+note the [[TillstandKurs]] summary and the [[Studieperiod]], which the next
+section uses):
+\begin{pycode}[apitest]
+participations = ladok.student_course_participations_JSON(student_uid)
+ladok3.clean_data(participations)
+print(r"\begin{minted}{JSON}")
+print(json.dumps(participations[:1], ensure_ascii=False, indent=2))
+print(r"\end{minted}")
+\end{pycode}
+
+\subsection{Participations in a state}
+
+LADOK does answer the second form.
+The student resource links to five views of the student's participations,
+one per state, at
+[[/studiedeltagande/internal/tillfallesdeltagande/]]\emph{state}[[/student/{uid}]]:
+\begin{description}
+\item[{[[pagaende]]}] the ongoing ones;
+\item[{[[kommande]]}] the upcoming ones;
+\item[{[[oavslutade]]}] the unfinished ones, whose round has ended without
+  the student completing the course;
+\item[{[[avslutade]]}] the completed ones;
+\item[{[[avbrott]]}] the ones the student broke off.
+\end{description}
+They need no special roles, cohm found, and they answer like
+[[registrations_JSON]]: a [[Tillfallesdeltaganden]] list of entries of the
+same shape.
+(A completed participation also carries its [[Godkannandedatum]].)
+The views never overlap, but together they need not hold every
+participation: a student who withdrew before the round started
+([[aterbud]]) or broke off early ([[tidigtavbrott]]) is in none of them, nor
+is one who never started a round that has ended.
+
+We use LADOK's Swedish names for the states, since they are what LADOK calls
+them and what the paths contain; the classes give them English names
+(\cref{CourseRegistrationState}).
+<<constants>>=
+PARTICIPATION_STATES = ("pagaende", "kommande", "oavslutade", "avslutade",
+                        "avbrott")
+@
+
+[[student_participations_JSON]] returns these views as LADOK gives them,
+and every participation through [[registrations_JSON]] when no state is
+given; [[student_course_participations_JSON]] above keeps the courses of
+either.
+The student classes use this method directly, since they keep every
+registration that [[registrations_JSON]] returns
+(\cref{StudentCourses}).
+A state that LADOK does not have would be sent to it as a path that does not
+exist, and its 404 would tell the caller less than we can, so we refuse it
+first, with a [[ValueError]] that lists the states there are.
+<<LadokSession data methods>>=
+def student_participations_JSON(self, student_uid: str,
+                                state: str | None = None) -> list:
+  """Return a student's participations, all of them or those in a state.
+
+  Without `state`, the same as registrations_JSON(student_uid).  With
+  `state`, one of PARTICIPATION_STATES ("pagaende", "kommande",
+  "oavslutade", "avslutade", "avbrott"), LADOK's view of the
+  participations in that state.  Raises ValueError for any other state.
+  """
+  if state is None:
+    return self.registrations_JSON(student_uid)
+  check_participation_state(state)
+  data = self.get_query(
+    f"/studiedeltagande/internal/tillfallesdeltagande/{state}"
+    f"/student/{student_uid}",
+    "application/vnd.ladok-studiedeltagande+json")
+  try:
+    return data["Tillfallesdeltaganden"]
+  except KeyError as err:
+    err.add_note(f"Response data: {data}")
+    raise LadokAPIError(
+      f"Unexpected response format when fetching {state} participations "
+      f"for student {student_uid}: missing 'Tillfallesdeltaganden' key"
+    ) from err
+<<functions>>=
+def check_participation_state(state) -> None:
+  """Raise ValueError unless `state` is one of PARTICIPATION_STATES."""
+  if state not in PARTICIPATION_STATES:
+    raise ValueError(f"unknown participation state {state!r}, expected "
+                     f"one of {', '.join(PARTICIPATION_STATES)}")
+@
+
+An unknown state must be refused before any request is sent.
+The [[offline_ladok]] session cannot reach LADOK, so a request would fail the
+test with a network error instead.
+<<test functions>>=
+@pytest.mark.parametrize("state", ["ongoing", "Pagaende", ""])
+def test_unknown_participation_state_is_refused(offline_ladok, state) -> None:
+  with pytest.raises(ValueError, match="pagaende"):
+    offline_ladok.student_course_participations_JSON(
+      SH1014_retake_student_uid, state=state)
+@
+
+
+\section{The state of a participation}\label{ParticipationState}
+
+LADOK's views tell us the state of a participation, but only by asking.
+A program that already holds a student's participations, as a [[Student]]
+does once it has listed its courses, can tell the states without asking,
+from two things that every participation carries:
+its summary, [[TillstandKurs.Sammanfattattillstand]], a string such as
+[[studiedeltagande.domain.tillstandsdefinition.registrerad]] whose last
+component says how far the student has come, and the round's study period,
+[[Utbildningsinformation.Studieperiod]], which together with today's date
+says whether the round has started or ended.
+
+We cannot read LADOK's rule anywhere, so we learnt it by comparison.
+On 2026-10-20 we compared the five views with the summary and study period of
+every participation of nine students in LADOK's test environment, 135
+participations, and of the 13 participants of DD1301's 2026 rounds who had
+broken off, and every one of them agreed with the following rule.
+Those rounds had all started or ended, so on the same day we also sampled the
+participants of a running round, DD1317's: the registered students are
+[[pagaende]], those who completed are [[avslutade]], and those who have not
+started are [[kommande]], as long as the round runs.
+\begin{description}
+\item[A withdrawal] comes first: a participation that the student withdrew
+  from before the start ([[Aterbud]] is true, or
+  [[TillstandKurs.Tillfallesdeltagande]] ends in [[aterbud]]) is in no state,
+  whatever its summary says.
+  We saw one whose summary was [[avbrott]]: the student had withdrawn, and
+  LADOK listed it in no view.
+\item[{[[avklarad]]}] (completed) is [[avslutade]], whatever the dates.
+\item[{[[avbrott]]}] (broken off) is [[avbrott]].
+\item[{[[aterbud]]}] (withdrawn before the start) and
+  {[[tidigtavbrott]]} (broken off early) are in no state.
+\item[{[[registrerad]]}, {[[omregistrerad]]}] (registered, or registered
+  again) are [[pagaende]] while the round runs and [[oavslutade]] once it has
+  ended.
+\item[{[[ej_paborjad]]}] (not started) is [[kommande]] until the round has
+  ended, also while it runs, and in no state once it has ended.
+\end{description}
+Every other case we call unknown: a registration on a round that has not
+started, a summary we have not seen, a summary or study period that is
+missing.
+LADOK must put these somewhere, but we have not seen where, and a guess would
+be wrong without anyone noticing.
+The unknown state is therefore a value of its own, [[UNKNOWN_STATE]], distinct
+from [[None]], which means that LADOK puts the participation in no state.
+The callers can then ask LADOK when the rule does not know, and that is what
+the student classes do (\cref{StudentCourses}).
+
+The days on which a round starts or ends were not among the dates we
+compared.
+We take the round to run on both, which is what the words suggest, but we
+have not verified it.
+
+Whether we filter here or LADOK does, the result should be the same; we do
+both for different reasons.
+Filtering what we already hold costs no request, which matters when a
+program lists the states of every student in a course round.
+LADOK's views are the authority, though, and the only way to learn the state
+of a participation that the rule cannot place.
+The recorded test below keeps the two together: it compares the views with
+our rule, so a change in LADOK's rule fails it in the next live run.
+
+After the withdrawal, the rule is two tables:
+one for the summaries whose state does not depend on the dates, and one for
+those whose state does, keyed by the summary and where today falls relative
+to the round.
+A pair that is in neither table is unknown.
+<<constants>>=
+STATE_BY_SUMMARY = {
+  "avklarad": "avslutade",
+  "avbrott": "avbrott",
+  "aterbud": None,
+  "tidigtavbrott": None,
+}
+
+STATE_BY_SUMMARY_AND_TIMING = {
+  ("registrerad", "running"): "pagaende",
+  ("omregistrerad", "running"): "pagaende",
+  ("registrerad", "ended"): "oavslutade",
+  ("omregistrerad", "ended"): "oavslutade",
+  ("ej_paborjad", "upcoming"): "kommande",
+  ("ej_paborjad", "running"): "kommande",
+  ("ej_paborjad", "ended"): None,
+}
+@
+
+The unknown state must be one object that cannot be mistaken for a state or
+for [[None]].
+A string such as [[unknown]] could be taken for a state name and passed on to
+LADOK; an object of a class of its own can only be compared with itself.
+It survives [[pickle]] as itself, since its [[__reduce__]] names the module
+attribute, so a program that pickles the states it found can still compare
+them with [[is]].
+The constants come before the classes in the module, so the class is defined
+here, with its one instance.
+<<constants>>=
+class _UnknownState:
+  """The state of a participation that our rule cannot place"""
+  def __repr__(self):
+    return "ladok3.UNKNOWN_STATE"
+
+  def __reduce__(self):
+    return "UNKNOWN_STATE"
+
+UNKNOWN_STATE = _UnknownState()
+@
+
+[[state_of_participation]] applies the rule to a summary, a study period and
+whether the student withdrew.
+It takes [[today]] as an argument so that the tests can fix the date;
+without it, the rule uses today's date in Sweden ([[swedish_today]] below).
+The dates matter only for some summaries, so a missing date makes the state
+unknown only when the rule needs it.
+<<functions>>=
+def state_of_participation(summary, start, end, today=None, /,
+                           withdrawn=False):
+  """Return the state LADOK puts a participation in.
+
+  `summary` is TillstandKurs.Sammanfattattillstand (only its last dotted
+  component matters), `start` and `end` the round's study period as
+  datetime.date objects, `today` the date to judge by (default: today
+  in Sweden) and `withdrawn` whether the student withdrew before the
+  start (Aterbud).  Returns one of PARTICIPATION_STATES, None if LADOK
+  puts the participation in no state, or UNKNOWN_STATE if the rule
+  cannot tell.
+  """
+  if withdrawn:
+    return None
+  if not isinstance(summary, str):
+    return UNKNOWN_STATE
+  summary = summary.rsplit(".", 1)[-1]
+  if summary in STATE_BY_SUMMARY:
+    return STATE_BY_SUMMARY[summary]
+  if start is None or end is None:
+    return UNKNOWN_STATE
+  timing = round_timing(start, end, today)
+  return STATE_BY_SUMMARY_AND_TIMING.get((summary, timing), UNKNOWN_STATE)
+@
+
+Where today falls relative to a round is a question of its own, which is not
+only about participations, so it is a function of its own.
+The round runs from its first day to its last, both included (see above).
+<<functions>>=
+def round_timing(start, end, today=None):
+  """Return "upcoming", "running" or "ended": where `today` (default:
+  today in Sweden) falls relative to a round from `start` to `end`, both
+  days included in the round."""
+  if today is None:
+    today = swedish_today()
+  if today < start:
+    return "upcoming"
+  if today <= end:
+    return "running"
+  return "ended"
+@
+
+[[participation_state]] applies the rule to a participation as LADOK returns
+it.
+A date that is missing or not a date leaves the date [[None]], which the rule
+treats as missing.
+The withdrawal shows in two places, the flag [[Aterbud]] and the last
+component of [[TillstandKurs.Tillfallesdeltagande]]; either one is enough.
+<<functions>>=
+def participation_state(participation: dict, today=None):
+  """Return the state LADOK puts `participation` in, see
+  state_of_participation."""
+  tillstand = participation.get("TillstandKurs") or {}
+  period = (participation.get("Utbildningsinformation") or {}) \
+             .get("Studieperiod") or {}
+  return state_of_participation(tillstand.get("Sammanfattattillstand"),
+                                iso_date_or_none(period.get("Startdatum")),
+                                iso_date_or_none(period.get("Slutdatum")),
+                                today,
+                                withdrawn=is_withdrawn(participation))
+
+def is_withdrawn(participation: dict) -> bool:
+  """Return True if the student withdrew from `participation` before
+  the start (Aterbud)."""
+  if participation.get("Aterbud") is True:
+    return True
+  tillstand = (participation.get("TillstandKurs") or {}) \
+                .get("Tillfallesdeltagande")
+  return isinstance(tillstand, str) \
+    and tillstand.rsplit(".", 1)[-1] == "aterbud"
+
+def iso_date_or_none(text):
+  """Return the date in the ISO string `text`, or None if there is none."""
+  try:
+    return datetime.date.fromisoformat(text)
+  except (TypeError, ValueError):
+    return None
+@
+
+Which day is today?
+LADOK's dates are Swedish: a round that ends on 11 January ends at midnight
+in Sweden.
+The machine that runs the program need not be in Sweden, and a server often
+keeps UTC, which is an hour or two behind; judged by its date, a round would
+still run for the first hours of the day after it ended.
+So when the caller gives no date, we take today's date in Sweden.
+The function takes the instant as an argument, so that the tests can fix it.
+Python's [[zoneinfo]] reads the time zones from the operating system, and
+Windows has none to read, so on Windows we depend on the [[tzdata]] package,
+which carries them (see [[pyproject.toml]]).
+<<functions>>=
+def swedish_today(now=None) -> datetime.date:
+  """Return the date in Sweden at the instant `now`, an aware datetime
+  (default: the current instant)."""
+  if now is None:
+    now = datetime.datetime.now(datetime.timezone.utc)
+  return now.astimezone(zoneinfo.ZoneInfo("Europe/Stockholm")).date()
+@
+
+Let's verify the date near midnight in UTC, in summer time, when Sweden is two
+hours ahead, and in winter time, when it is one hour ahead.
+<<test functions>>=
+@pytest.mark.parametrize("now,today", [
+  (datetime.datetime(2026, 10, 19, 21, 59, tzinfo=datetime.timezone.utc),
+   datetime.date(2026, 10, 19)),
+  (datetime.datetime(2026, 10, 19, 22, 0, tzinfo=datetime.timezone.utc),
+   datetime.date(2026, 10, 20)),
+  (datetime.datetime(2026, 12, 31, 22, 59, tzinfo=datetime.timezone.utc),
+   datetime.date(2026, 12, 31)),
+  (datetime.datetime(2026, 12, 31, 23, 0, tzinfo=datetime.timezone.utc),
+   datetime.date(2027, 1, 1)),
+])
+def test_swedish_today(now, today) -> None:
+  assert ladok3.swedish_today(now) == today
+@
+
+The functions that default to today must take the Swedish date.
+We fix it by replacing [[swedish_today]] for the test, since the clock is the
+one thing we cannot record or make real: on 1 February 2027 a round that ended
+on 15 January has ended, and its registered students are unfinished.
+<<test functions>>=
+def test_defaults_judge_by_the_swedish_date(monkeypatch) -> None:
+  monkeypatch.setattr(ladok3, "swedish_today",
+                      lambda now=None: datetime.date(2027, 2, 1))
+  registered = make_participation("registrerad", RUNNING)
+  assert ladok3.round_timing(*map(datetime.date.fromisoformat, RUNNING)) \
+    == "ended"
+  assert ladok3.participations_in_state([registered], "oavslutade") \
+    == [registered]
+@
+
+To filter a list of participations, we classify each of them on the same
+day, so that a list never straddles midnight.
+<<functions>>=
+def participations_in_state(participations: list, state: str,
+                            today=None) -> list:
+  """Return the participations that our rule puts in `state`, one of
+  PARTICIPATION_STATES, judged on `today` (default: today in Sweden).
+
+  Participations that the rule cannot place are left out; ask LADOK
+  (LadokSession.student_participations_JSON) for those.
+  """
+  check_participation_state(state)
+  if today is None:
+    today = swedish_today()
+  return [participation for participation in participations
+          if participation_state(participation, today) == state]
+@
+
+Let's verify the rule, row by row, on a fixed date.
+Each case is a participation as LADOK returns it, with the full summary
+token, so that we also check that only the last component counts.
+The cases mark the dates relative to the fixed date: a round that has ended,
+one that runs, one that has not started, and the two boundary days.
+<<test functions>>=
+TODAY = datetime.date(2026, 10, 20)
+ENDED = ("2026-01-19", "2026-06-05")
+RUNNING = ("2026-08-31", "2027-01-15")
+UPCOMING = ("2027-01-19", "2027-06-04")
+STARTS_TODAY = ("2026-10-20", "2027-01-15")
+ENDS_TODAY = ("2026-08-31", "2026-10-20")
+
+def make_participation(summary, dates):
+  start, end = dates
+  return {
+    "TillstandKurs": {"Sammanfattattillstand":
+                        f"studiedeltagande.domain.tillstandsdefinition."
+                        f"{summary}"},
+    "Utbildningsinformation": {"Studieperiod": {"Startdatum": start,
+                                                "Slutdatum": end}},
+  }
+
+@pytest.mark.parametrize("summary,dates,state", [
+  ("avklarad", ENDED, "avslutade"),
+  ("avklarad", RUNNING, "avslutade"),
+  ("avbrott", RUNNING, "avbrott"),
+  ("avbrott", ENDED, "avbrott"),
+  ("registrerad", RUNNING, "pagaende"),
+  ("omregistrerad", RUNNING, "pagaende"),
+  ("registrerad", ENDED, "oavslutade"),
+  ("omregistrerad", ENDED, "oavslutade"),
+  ("ej_paborjad", UPCOMING, "kommande"),
+  ("ej_paborjad", RUNNING, "kommande"),
+  ("ej_paborjad", ENDED, None),
+  ("aterbud", UPCOMING, None),
+  ("aterbud", RUNNING, None),
+  ("aterbud", ENDED, None),
+  ("tidigtavbrott", RUNNING, None),
+  ("tidigtavbrott", ENDED, None),
+  ("registrerad", STARTS_TODAY, "pagaende"),
+  ("registrerad", ENDS_TODAY, "pagaende"),
+  ("registrerad", UPCOMING, ladok3.UNKNOWN_STATE),
+  ("omregistrerad", UPCOMING, ladok3.UNKNOWN_STATE),
+  ("nagot_nytt", RUNNING, ladok3.UNKNOWN_STATE),
+])
+def test_participation_state(summary, dates, state) -> None:
+  participation = make_participation(summary, dates)
+  assert ladok3.participation_state(participation, TODAY) == state
+@
+
+A withdrawal puts a participation in no state whatever its summary, and
+whichever of its two marks it carries.
+<<test functions>>=
+@pytest.mark.parametrize("summary", ["avbrott", "registrerad", "avklarad"])
+def test_withdrawn_participation_is_in_no_state(summary) -> None:
+  flagged = make_participation(summary, RUNNING)
+  flagged["Aterbud"] = True
+  marked = make_participation(summary, RUNNING)
+  marked["TillstandKurs"]["Tillfallesdeltagande"] = \
+    "studiedeltagande.domain.tillstandsdefinition.aterbud"
+  not_withdrawn = make_participation(summary, RUNNING)
+  not_withdrawn["Aterbud"] = False
+
+  assert ladok3.participation_state(flagged, TODAY) is None
+  assert ladok3.participation_state(marked, TODAY) is None
+  assert ladok3.participation_state(not_withdrawn, TODAY) is not None
+@
+
+A participation that lacks what the rule needs is unknown, and so is one
+whose date is not a date; but a completed participation needs no dates.
+<<test functions>>=
+def test_participation_state_without_the_data_is_unknown() -> None:
+  registered = make_participation("registrerad", RUNNING)
+  del registered["Utbildningsinformation"]["Studieperiod"]["Slutdatum"]
+  malformed = make_participation("registrerad", ("2026-08-31", "snart"))
+  completed = make_participation("avklarad", RUNNING)
+  del completed["Utbildningsinformation"]
+
+  assert ladok3.participation_state(registered, TODAY) \
+    is ladok3.UNKNOWN_STATE
+  assert ladok3.participation_state(malformed, TODAY) \
+    is ladok3.UNKNOWN_STATE
+  assert ladok3.participation_state({"Uid": "x"}, TODAY) \
+    is ladok3.UNKNOWN_STATE
+  assert ladok3.participation_state(completed, TODAY) == "avslutade"
+@
+
+The filter keeps exactly the participations in the state, in their order,
+leaves out the unknown ones, and refuses a state that LADOK does not have.
+The unknown state must also come back as itself from [[pickle]].
+<<test functions>>=
+def test_participations_in_state() -> None:
+  participations = [make_participation("registrerad", RUNNING),
+                    make_participation("avklarad", ENDED),
+                    make_participation("registrerad", UPCOMING),
+                    make_participation("omregistrerad", RUNNING)]
+  assert ladok3.participations_in_state(
+    participations, "pagaende", TODAY) == [participations[0],
+                                           participations[3]]
+  assert ladok3.participations_in_state(
+    participations, "kommande", TODAY) == []
+  with pytest.raises(ValueError):
+    ladok3.participations_in_state(participations, "ongoing", TODAY)
+
+def test_unknown_state_survives_pickle() -> None:
+  assert pickle.loads(pickle.dumps(ladok3.UNKNOWN_STATE)) \
+    is ladok3.UNKNOWN_STATE
+@
+
+Finally, against LADOK: the views must not overlap, and where our rule
+places a participation, it must place it where LADOK does.
+We take two students:
+one who took DD1301 and has participations in all five states, and the test
+student of most other tests.
+
+The rule declines some cases, and which ones a student has depends on the
+day: before a term starts, many students are registered on rounds that have
+not started.
+Those are not wrong, only undecided, so we check less about them:
+each must be in at most one of LADOK's views, and if not, the failure names
+its summary and where the day falls relative to its round, the case that
+the rule would need to learn.
+For the participations that the rule places, we compare by state, by their
+UIDs: those in LADOK's view, less the undecided ones, must be exactly those
+that our rule puts in the state.
+We assert on counts and state names, so that a failure shows how many differ,
+not who.
+
+The rule must judge by the date on which LADOK answered.
+In a live run or a recording, that is today; in a replay, it is the date of
+the recording, which we read from the [[Date]] header of its first response.
+(Judging a replay by the date of the replay would fail the test as soon as
+one of the rounds started or ended after the recording.)
+The header is in UTC, and LADOK's dates are Swedish, so we convert, with
+[[swedish_today]].
+<<test functions>>=
+def date_of_answers(recording, cassette) -> datetime.date:
+  """The Swedish date on which LADOK gave the test's answers"""
+  if recording:
+    return ladok3.swedish_today()
+  return ladok3.swedish_today(email.utils.parsedate_to_datetime(
+    cassette.responses[0]["headers"]["Date"][0]))
+
+@pytest.mark.parametrize("student", [DD1301_student_uid, student_uid],
+                         ids=["DD1301_student", "student"])
+def test_participation_states_agree_with_ladok(ladok, recording, vcr,
+                                               student) -> None:
+  everything = ladok.student_participations_JSON(student)
+  today = date_of_answers(recording, vcr)
+  views = {state: {participation["Uid"] for participation
+                   in ladok.student_participations_JSON(student, state=state)}
+           for state in ladok3.PARTICIPATION_STATES}
+  assert_views_agree_with_rule(everything, views, today)
+
+def assert_views_agree_with_rule(everything, views, today):
+  """Assert that LADOK's `views` (state: set of participation UIDs) do not
+  overlap, hold each participation that our rule cannot place at most
+  once, and otherwise hold exactly what our rule puts in each state."""
+  undecided = [participation for participation in everything
+               if ladok3.participation_state(participation, today)
+                  is ladok3.UNKNOWN_STATE]
+  for participation in undecided:
+    in_views = sum(participation["Uid"] in uids for uids in views.values())
+    assert in_views <= 1, \
+      f"{case_of(participation, today)} is in {in_views} views"
+  undecided_uids = {participation["Uid"] for participation in undecided}
+
+  seen = set()
+  for state, uids in views.items():
+    by_ladok = uids - undecided_uids
+    by_rule = {participation["Uid"] for participation
+               in ladok3.participations_in_state(everything, state, today)}
+    assert (state, len(by_ladok - by_rule), len(by_rule - by_ladok)) \
+      == (state, 0, 0)
+    assert len(uids & seen) == 0
+    seen |= uids
+
+def case_of(participation, today):
+  """The summary of `participation` and where `today` falls relative to
+  its round: LADOK's state names only, nothing about the student."""
+  summary = (participation.get("TillstandKurs") or {}) \
+              .get("Sammanfattattillstand") or "no summary"
+  period = (participation.get("Utbildningsinformation") or {}) \
+             .get("Studieperiod") or {}
+  start = ladok3.iso_date_or_none(period.get("Startdatum"))
+  end = ladok3.iso_date_or_none(period.get("Slutdatum"))
+  timing = ladok3.round_timing(start, end, today) \
+    if start and end else "no dates"
+  return (summary.rsplit(".", 1)[-1], timing)
+@
+
+The recordings of these two students hold no participation that the rule
+cannot place, so the replay does not exercise that part of the comparison.
+We check it on participations of our own:
+a registration on a round that has not started, which the rule cannot place,
+may be in one of LADOK's views, but not in two, and the failure names the
+case; a placed participation must be in the view of its state.
+<<test functions>>=
+def test_views_may_hold_what_the_rule_cannot_place() -> None:
+  placed = make_participation("registrerad", RUNNING)
+  undecided = make_participation("registrerad", UPCOMING)
+  placed["Uid"], undecided["Uid"] = "placed", "undecided"
+  empty = {state: set() for state in ladok3.PARTICIPATION_STATES}
+
+  assert_views_agree_with_rule(
+    [placed, undecided],
+    {**empty, "pagaende": {"placed"}, "kommande": {"undecided"}}, TODAY)
+  with pytest.raises(AssertionError, match="registrerad.*upcoming"):
+    assert_views_agree_with_rule(
+      [placed, undecided],
+      {**empty, "pagaende": {"placed", "undecided"},
+       "kommande": {"undecided"}}, TODAY)
+  with pytest.raises(AssertionError):
+    assert_views_agree_with_rule([placed, undecided], empty, TODAY)
+@
+
+A replay that judged by the wrong date would fail only when a round starts or
+ends between the recording and the replay, long after the mistake.
+So we check the date on its own, with a cassette that holds one answer, given
+late in the evening of 19 October 2026 in UTC: in Sweden it was already the
+20th.
+<<test functions>>=
+def test_date_of_answers_is_the_swedish_date_of_the_recording() -> None:
+  cassette = types.SimpleNamespace(responses=[
+    {"headers": {"Date": ["Mon, 19 Oct 2026 22:30:00 GMT"]}}])
+  assert date_of_answers(False, cassette) == datetime.date(2026, 10, 20)
 @
 
 \section{[[fetch_linked_uri_JSON]]}

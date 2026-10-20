@@ -17,6 +17,7 @@ import operator
 import re
 import requests
 import threading
+import zoneinfo
 from collections.abc import Callable
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -2246,11 +2247,22 @@ def __get_study_attributes(self):
   """Helper method to fetch study related attributes"""
   <<create a list of the student's course objects>>
 
-def courses(self, /, **kwargs):
+def courses(self, /, state=None, **kwargs):
   """
   Returns a list of courses that the student is registered on.
   Filtered based on keywords, see ladok3.filter_on_keys for details.
+
+  With `state`, only the courses in that state: one of the keys of
+  ladok3.COURSE_STATES ("ongoing", "upcoming", "unfinished",
+  "completed", "interrupted") or an iterable of them.  Raises
+  ValueError for any other name and TypeError if `state` is neither a
+  string nor an iterable.  Like the list without `state`, these are
+  the student's current registrations that have a course code; LADOK's
+  view of a state can hold more participations than that.
   """
+  if state is not None:
+    return filter_on_keys(self.__courses_in_states(course_states(state)),
+                          **kwargs)
   try:
     courses = self.__courses
   except:
@@ -2286,19 +2298,34 @@ asks LADOK again.
 When [[pull]] refreshes a student that already has a list, a failure leaves
 the old list in place instead.
 <<create a list of the student's course objects>>=
-courses = []
+self.__courses = self.__course_registrations(
+  self.ladok.registrations_JSON(self.ladok_id))
+@
 
-for course in self.ladok.registrations_JSON(self.ladok_id):
-  if not course['Nuvarande'] or \
-    'Utbildningskod' not in course['Utbildningsinformation']:
-    continue
+The same registrations come from LADOK's views of the participations in a
+state too (\cref{StudentCoursesByState}), so we turn them into
+[[CourseRegistration]] objects in a method of their own.
+We keep only the current registrations that have a course code.
+Besides the course data in [[Utbildningsinformation]], a registration gets
+what it needs to know its state: the summary in [[TillstandKurs]] and the
+withdrawal flag [[Aterbud]] (\cref{CourseRegistrationState}).
+<<student attribute methods>>=
+def __course_registrations(self, participations):
+  """Returns CourseRegistration objects for the current participations
+  that have a course code"""
+  courses = []
+  for course in participations:
+    if not course['Nuvarande'] or \
+      'Utbildningskod' not in course['Utbildningsinformation']:
+      continue
 
-  courses.append(CourseRegistration(
-    ladok=self.ladok,
-    student=self,
-    **course["Utbildningsinformation"]))
-
-self.__courses = courses
+    courses.append(CourseRegistration(
+      ladok=self.ladok,
+      student=self,
+      TillstandKurs=course.get("TillstandKurs"),
+      Aterbud=course.get("Aterbud"),
+      **course["Utbildningsinformation"]))
+  return courses
 @
 
 Let's verify that a failed request is retried rather than remembered.
@@ -2332,6 +2359,324 @@ def test_failed_course_list_is_retried():
 
   course, = student.courses(code="DD2520")
   assert course.code == "DD2520"
+@
+
+\subsection{Courses by state}\label{StudentCoursesByState}
+
+Often we want only the courses in some state, for instance those that the
+student takes now:
+[[student.courses(state="ongoing")]].
+The states have English names here, the keys of [[COURSE_STATES]]
+(\cref{CourseRegistrationState}), and [[state]] takes one of them or an
+iterable of them, such as [[{"ongoing", "upcoming"}]].
+The result is the state filter applied to what [[courses]] lists: the
+student's current registrations ([[Nuvarande]]) that have a course code.
+Both ways of finding them below apply that filter, so they agree; LADOK's
+view of a state can hold more participations than that: those that are not
+current or have no course code.
+
+There are two ways to find them, and we use both.
+Each registration knows its state by the rule of \cref{ParticipationState},
+so a student that already holds its courses can filter them without asking
+LADOK.
+That is free, which matters when a program asks for the ongoing courses of
+every student in a course round, many of whom it has met before through the
+command-line interface's cache.
+But the rule is ours, learnt by comparison, and it calls some cases unknown.
+LADOK's view of the participations in a state is the authority
+(\cref{ParticipationsByState}).
+So we filter locally only when the student holds its courses and the rule
+can place every one of them, and ask LADOK otherwise.
+(A student that holds its courses from an earlier run judges them by
+today's date but by the summaries it was given then; like every other
+attribute of a cached object, they are as fresh as the last [[pull]].)
+<<student attribute methods>>=
+def __courses_in_states(self, states):
+  """Returns the student's courses in the states `states` (English
+  names), filtered locally when we can and fetched from LADOK
+  otherwise"""
+  <<return the courses we hold in [[states]], if the rule can place all>>
+  return [course for state in states
+          for course in self.__courses_in_state(COURSE_STATES[state])]
+@
+
+We judge all the courses by the same day, so that a call never straddles
+midnight.
+<<return the courses we hold in [[states]], if the rule can place all>>=
+try:
+  courses = self.__courses
+except AttributeError:
+  courses = None
+if courses is not None:
+  today = swedish_today()
+  placed = [(course, course.state_on(today)) for course in courses]
+  if all(state is not UNKNOWN_STATE for _, state in placed):
+    return [course for course, state in placed if state in states]
+@
+
+When we ask LADOK, we build the registrations as [[courses]] does, from the
+view of each state, and remember them per state, under LADOK's name, so that
+the next call for the same state asks nothing.
+We do not set the student's full list from them, since a view holds only the
+courses in one state.
+As for the full list, we remember the list only once it is complete
+(\cref{FailuresMustNotStick}).
+<<student attribute methods>>=
+def __courses_in_state(self, participation_state):
+  """Returns the student's courses that LADOK puts in
+  `participation_state`, asking LADOK the first time"""
+  try:
+    return self.__courses_by_state[participation_state]
+  except (AttributeError, KeyError):
+    pass
+  courses = self.__course_registrations(
+    self.ladok.student_participations_JSON(self.ladok_id,
+                                           state=participation_state))
+  try:
+    courses_by_state = self.__courses_by_state
+  except AttributeError:
+    courses_by_state = self.__courses_by_state = {}
+  courses_by_state[participation_state] = courses
+  return courses
+@
+
+A [[pull]] fetches the student's courses afresh, so it must also forget the
+courses that it remembered per state; the next call for a state then asks
+again or filters the fresh list.
+<<pull all attributes from LADOK>>=
+self.__courses_by_state = {}
+@
+
+[[course_states]] checks the states.
+A plain string names one state: we take it as a single name, not as an
+iterable of letters.
+A name that is not a state, misspelt or Swedish, is a [[ValueError]] that
+lists the names there are, and the order of the result is that of
+[[COURSE_STATES]], whatever the order of the argument.
+<<functions>>=
+def course_states(state):
+  """Returns the English state names in `state`, a name or an iterable of
+  names, in the order of COURSE_STATES.  Raises ValueError for a name
+  that is not a key of COURSE_STATES and TypeError if `state` is neither
+  a string nor an iterable."""
+  if isinstance(state, str):
+    names = {state}
+  else:
+    try:
+      names = set(state)
+    except TypeError as err:
+      raise TypeError(f"state must be a state name or an iterable of "
+                      f"them, not {type(state).__name__}") from err
+  unknown = names - COURSE_STATES.keys()
+  if unknown:
+    raise ValueError(f"unknown course state "
+                     f"{', '.join(sorted(map(repr, unknown)))}, expected "
+                     f"one of {', '.join(COURSE_STATES)}")
+  return [name for name in COURSE_STATES if name in names]
+@
+
+To test the two ways, we need a LADOK that counts what it is asked.
+The fake below gives a student three current registrations, an ongoing
+course, a completed one and an upcoming one, and, if we ask for it, a fourth
+that the rule cannot place: a registration on a round that has not started.
+Its views per state hold what LADOK would put there.
+The study periods are relative to today, with weeks of margin, since the
+registrations judge by the current date.
+<<test functions>>=
+class FakeLadokForCourseStates:
+  def __init__(self, with_unknown=False):
+    self.requests = []
+    today = datetime.date.today()
+    week = datetime.timedelta(weeks=1)
+    running = (today - 8 * week, today + 8 * week)
+    ended = (today - 30 * week, today - 10 * week)
+    upcoming = (today + 10 * week, today + 30 * week)
+    self.by_state = {
+      "pagaende": [state_test_registration("round-1", "DD1301",
+                                           "registrerad", running)],
+      "avslutade": [state_test_registration("round-2", "DD1310",
+                                            "avklarad", ended)],
+      "kommande": [state_test_registration("round-3", "DD1320",
+                                           "ej_paborjad", upcoming)],
+      "oavslutade": [], "avbrott": [],
+    }
+    self.registrations = [participation
+                          for participations in self.by_state.values()
+                          for participation in participations]
+    if with_unknown:
+      unknown = state_test_registration("round-4", "DD1321",
+                                        "registrerad", upcoming)
+      self.registrations.append(unknown)
+      self.by_state["kommande"].append(unknown)
+
+  def registrations_JSON(self, student_id):
+    self.requests.append("all")
+    return self.registrations
+
+  def student_participations_JSON(self, student_id, state=None):
+    self.requests.append(state)
+    return self.by_state[state]
+
+  def get_student_data_by_uid_JSON(self, student_id):
+    return {"Uid": student_id, "Personnummer": "191212121212",
+            "Fornamn": "Tolvan", "Efternamn": "Tolvansson",
+            "Avliden": False}
+
+def state_test_registration(round_id, code, summary, dates):
+  participation = lazy_test_registration(round_id, code)
+  start, end = dates
+  participation["Utbildningsinformation"]["Studieperiod"] = {
+    "Startdatum": start.isoformat(), "Slutdatum": end.isoformat()}
+  participation["TillstandKurs"] = {
+    "Sammanfattattillstand":
+      f"studiedeltagande.domain.tillstandsdefinition.{summary}"}
+  return participation
+
+def codes(courses):
+  return [course.code for course in courses]
+@
+
+A student that holds its courses filters them without asking LADOK, also for
+several states.
+<<test functions>>=
+def test_courses_by_state_filters_what_the_student_holds():
+  ladok = FakeLadokForCourseStates()
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+  student.courses()
+
+  assert codes(student.courses(state="ongoing")) == ["DD1301"]
+  assert codes(student.courses(state=["upcoming", "completed"])) \
+    == ["DD1310", "DD1320"]
+  assert codes(student.courses(state="interrupted")) == []
+  assert ladok.requests == ["all"]
+@
+
+A student that does not hold its courses asks LADOK's view, once per state,
+and does not take the view for its full list.
+<<test functions>>=
+def test_courses_by_state_asks_ladok_once_per_state():
+  ladok = FakeLadokForCourseStates()
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+
+  assert codes(student.courses(state="ongoing")) == ["DD1301"]
+  assert codes(student.courses(state="ongoing", code="DD13")) == ["DD1301"]
+  assert ladok.requests == ["pagaende"]
+  assert codes(student.courses()) == ["DD1301", "DD1310", "DD1320"]
+  assert ladok.requests == ["pagaende", "all"]
+@
+
+A student judges the courses it holds by today's date in Sweden.
+We fix that date far in the future, by replacing [[swedish_today]] for the
+test: the ongoing course has then ended unfinished, and the upcoming one,
+never started, is in no state.
+<<test functions>>=
+def test_courses_by_state_judge_by_the_swedish_date(monkeypatch):
+  ladok = FakeLadokForCourseStates()
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+  student.courses()
+  monkeypatch.setattr(
+    ladok3, "swedish_today",
+    lambda now=None: datetime.date.today() + datetime.timedelta(weeks=100))
+
+  assert codes(student.courses(state="unfinished")) == ["DD1301"]
+  assert codes(student.courses(state=["ongoing", "upcoming"])) == []
+  assert ladok.requests == ["all"]
+@
+
+A failed request for a view must not stick (\cref{FailuresMustNotStick}):
+the next call asks again and gets the courses.
+<<test functions>>=
+def test_failed_courses_by_state_request_is_retried():
+  ladok = FakeLadokForCourseStates()
+  ladok.student_participations_JSON = fail_first_call(
+    ladok.student_participations_JSON)
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+
+  with pytest.raises(ladok3.LadokAPIError):
+    student.courses(state="ongoing")
+
+  assert codes(student.courses(state="ongoing")) == ["DD1301"]
+@
+
+A student that holds a course the rule cannot place asks LADOK, which then
+places it.
+After a [[pull]], the student asks again, since the remembered views are
+forgotten.
+<<test functions>>=
+def test_courses_by_state_asks_ladok_when_the_rule_cannot_tell():
+  ladok = FakeLadokForCourseStates(with_unknown=True)
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+  student.courses()
+
+  assert codes(student.courses(state="upcoming")) == ["DD1320", "DD1321"]
+  assert ladok.requests == ["all", "kommande"]
+  student.courses(state="upcoming")
+  assert ladok.requests == ["all", "kommande"]
+
+  student.pull()
+  student.courses(state="upcoming")
+  assert ladok.requests == ["all", "kommande", "all", "kommande"]
+@
+
+A registration that the student withdrew from is in no state, even when its
+summary says that the student broke off, so the student must pass the
+withdrawal on to the registration.
+<<test functions>>=
+def test_courses_by_state_honours_a_withdrawal():
+  ladok = FakeLadokForCourseStates()
+  today = datetime.date.today()
+  withdrawn = state_test_registration(
+    "round-5", "DD1331", "avbrott",
+    (today - datetime.timedelta(weeks=30),
+     today - datetime.timedelta(weeks=10)))
+  withdrawn["Aterbud"] = True
+  ladok.registrations.append(withdrawn)
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+  student.courses()
+
+  assert codes(student.courses(state="interrupted")) == []
+  assert ladok.requests == ["all"]
+@
+
+Names that are not states are refused before anything is asked:
+a misspelt or Swedish name, a comma-separated string, which is one name
+that does not exist, and a number.
+<<test functions>>=
+@pytest.mark.parametrize("state,error", [
+  ("Ongoing", ValueError),
+  ("pagaende", ValueError),
+  ("ongoing,completed", ValueError),
+  (["ongoing", "done"], ValueError),
+  (5, TypeError),
+])
+def test_courses_by_state_refuses_unknown_states(state, error):
+  ladok = FakeLadokForCourseStates()
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+  with pytest.raises(error):
+    student.courses(state=state)
+  assert ladok.requests == []
+@
+
+The remembered views are attributes like the others, so they must survive
+the round trips, through JSON (\cref{LadokDataJSON}) and through [[pickle]],
+as the command-line interface uses: the restored student must give the same
+courses without asking LADOK.
+<<test functions>>=
+def test_courses_by_state_survive_round_trips():
+  ladok = FakeLadokForCourseStates()
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+  student.courses(state="completed")
+  assert ladok.requests == ["avslutade"]
+
+  for json_data in [student.json, through_json_text(student)]:
+    restored = ladok3.restore(json_data, ladok=ladok)
+    assert restored == student
+    assert codes(restored.courses(state="completed")) == ["DD1310"]
+  assert ladok.requests == ["avslutade"]
+
+  unpickled = pickle.loads(pickle.dumps(student))
+  assert codes(unpickled.courses(state="completed")) == ["DD1310"]
+  assert unpickled.ladok.requests == ["avslutade"]
 @
 
 
@@ -3124,8 +3469,22 @@ def __fetch_results(self):
 We want to get a list of participants for a course round, \ie a list of
 [[Student]] objects.
 <<CourseRound data methods>>=
-def participants(self, /, **kwargs):
-  """Returns a Student object for each participant in the course."""
+def participants(self, /, state=None, today=None, **kwargs):
+  """Returns a Student object for each participant in the course.
+
+  Without `state`, the participants that LADOK's participant list gives
+  by default.  With `state`, an English state name or an iterable of
+  them (see ladok3.COURSE_STATES), the participants in those states on
+  this round as LADOK's participant list defines them, judged on `today`
+  (default: the current date in Sweden).  Raises ValueError for any
+  other name and TypeError if `state` is neither a string nor an
+  iterable.
+
+  Filtered on the other keywords, see ladok3.filter_on_keys.
+  """
+  if state is not None:
+    return filter_on_keys(self.__participants_in_states(state, today),
+                          **kwargs)
   try:
     self.__participants
   except:
@@ -3143,9 +3502,13 @@ failed [[participants_JSON]] left the course round without participants, in
 the cache too.
 <<CourseRound data methods>>=
 def __fetch_participants(self):
-  self.__participants = [
-    self.ladok.get_student(student["Student"]["Uid"])
-    for student in self.ladok.participants_JSON(self.round_id)]
+  self.__participants = self.__students(
+    self.ladok.participants_JSON(self.round_id))
+
+def __students(self, participants):
+  """Returns the Student objects for LADOK's participant records"""
+  return [self.ladok.get_student(student["Student"]["Uid"])
+          for student in participants]
 @
 
 Let's verify that a failed request for the participants is retried.
@@ -3181,6 +3544,307 @@ def test_failed_participants_request_is_retried():
   assert student.ladok_id == "student-uid"
 @
 
+\subsection{Participants by state}\label{CourseRoundParticipantsByState}
+
+Often we want only some of a round's participants, for instance those who
+take it now or those who broke off: [[course_round.participants(state=...)]],
+with the English state names of a student's courses
+(\cref{StudentCoursesByState}).
+
+A student can tell the state of each of its own courses
+(\cref{CourseRegistrationState}), but asking each participant would cost a
+request per student.
+LADOK's participant list can filter on the server instead, in the one
+request that lists the participants, by the participant's
+[[deltagaretillstand]] on the round (\cref{ParticipantsJSON}).
+So we ask once per round.
+
+The participant list has a vocabulary of its own, though, and it does not
+name a student's states.
+We compared the two on 2026-10-20: the participant list's filter on
+DD1301's rounds of 2026, which had all started or ended, and on a running
+round of DD1317, against the state of each sampled participant's own
+registration on the round (\cref{ParticipationState}).
+\begin{description}
+\item[{[[REGISTRERAD]]}] (registered) holds the students who take the course:
+  they are ongoing while the round runs (4 of 4 on DD1317, which had 177
+  registered students) and unfinished once it has ended (15 of 15).
+\item[{[[EJ_PABORJAD]]}] (not started) holds the students who have not
+  started: they are upcoming until the round has ended (3 of 3 on rounds
+  that had not started, and on the running round too).
+  On a round that has ended the code still holds them, while their own
+  registrations are in no state (7 of 7).
+  We follow the students' side: on a round that has ended, upcoming has no
+  code, so these students are in no state here either, and asking for the
+  upcoming participants of such a round gives no one.
+\item[{[[AVKLARAD]]}] (completed) is completed (15 of 15, and 2 of 2 on the
+  running round).
+\item[{[[AVBROTT]]}] (broken off) holds the interrupted students (3), but
+  also those who broke off early ([[tidigtavbrott]]) and those who withdrew
+  after breaking off, whose own registrations are in no state (10).
+\item[{[[PAGAENDE]]}] (ongoing, literally) held no one on the running round,
+  so it does not mean what its name says, and we do not know what it means.
+  We never send it for a state, but it stays in the participant list's
+  default.
+\end{description}
+So the round's dates translate a state to a code, just as they translate a
+registration's summary to a state on the student's side.
+Two states do not depend on the dates; the other three do, by where today
+falls relative to the round, with the same convention as on the student's
+side (both the first and the last day count as running).
+A state that has no code on a round, such as ongoing on a round that has
+ended, holds no one there.
+<<constants>>=
+PARTICIPANT_CODE_BY_STATE = {
+  "completed": "AVKLARAD",
+  "interrupted": "AVBROTT",
+}
+
+PARTICIPANT_CODE_BY_STATE_AND_TIMING = {
+  ("ongoing", "running"): "REGISTRERAD",
+  ("unfinished", "ended"): "REGISTRERAD",
+  ("upcoming", "upcoming"): "EJ_PABORJAD",
+  ("upcoming", "running"): "EJ_PABORJAD",
+}
+@
+
+[[participant_codes]] translates the states to the codes for a round.
+It checks the states as [[Student.courses]] does, and gives the codes in the
+order of [[COURSE_STATES]], so that the same states give the same request,
+whatever order they were asked for in.
+It also gives each code once.
+With the tables as they are, no two states share a code on the same day,
+since ongoing and unfinished are told apart by the dates; but the tables are
+what we have learnt so far, and if two states came to share a code, it must
+still be sent once.
+<<functions>>=
+def participant_codes(state, start, end, today=None):
+  """Returns the deltagaretillstand codes of LADOK's participant list
+  that select the participants in `state` (an English state name or an
+  iterable of them, see COURSE_STATES) on a round from `start` to `end`,
+  judged on `today` (default: today in Sweden).  Each code once; an
+  empty list if no participant can be in those states on that day."""
+  timing = round_timing(start, end, today)
+  codes = []
+  for name in course_states(state):
+    code = PARTICIPANT_CODE_BY_STATE.get(name) \
+      or PARTICIPANT_CODE_BY_STATE_AND_TIMING.get((name, timing))
+    if code and code not in codes:
+      codes.append(code)
+  return codes
+@
+
+Let's verify the translation on a round from 31 August 2026 to 15 January
+2027, judged before it starts, while it runs, on its first and last days, and
+after it has ended.
+<<test functions>>=
+ROUND_START = datetime.date(2026, 8, 31)
+ROUND_END = datetime.date(2027, 1, 15)
+ALL_STATES = ["ongoing", "upcoming", "unfinished", "completed",
+              "interrupted"]
+
+@pytest.mark.parametrize("today,codes", [
+  (datetime.date(2026, 8, 1), ["EJ_PABORJAD", "AVKLARAD", "AVBROTT"]),
+  (ROUND_START, ["REGISTRERAD", "EJ_PABORJAD", "AVKLARAD", "AVBROTT"]),
+  (datetime.date(2026, 10, 20),
+   ["REGISTRERAD", "EJ_PABORJAD", "AVKLARAD", "AVBROTT"]),
+  (ROUND_END, ["REGISTRERAD", "EJ_PABORJAD", "AVKLARAD", "AVBROTT"]),
+  (datetime.date(2027, 2, 1), ["REGISTRERAD", "AVKLARAD", "AVBROTT"]),
+])
+def test_participant_codes_of_all_states(today, codes):
+  assert ladok3.participant_codes(ALL_STATES, ROUND_START, ROUND_END,
+                                  today) == codes
+
+@pytest.mark.parametrize("state,today,codes", [
+  ("ongoing", datetime.date(2026, 10, 20), ["REGISTRERAD"]),
+  ("ongoing", datetime.date(2026, 8, 1), []),
+  ("ongoing", datetime.date(2027, 2, 1), []),
+  ("unfinished", datetime.date(2027, 2, 1), ["REGISTRERAD"]),
+  ("unfinished", datetime.date(2026, 10, 20), []),
+  ("upcoming", datetime.date(2026, 8, 1), ["EJ_PABORJAD"]),
+  ("upcoming", datetime.date(2026, 10, 20), ["EJ_PABORJAD"]),
+  ("upcoming", datetime.date(2027, 2, 1), []),
+  ("completed", datetime.date(2026, 8, 1), ["AVKLARAD"]),
+  ("interrupted", datetime.date(2027, 2, 1), ["AVBROTT"]),
+])
+def test_participant_codes_of_one_state(state, today, codes):
+  assert ladok3.participant_codes(state, ROUND_START, ROUND_END,
+                                  today) == codes
+@
+
+Two states that share a code send it once.
+No two states do with the tables as they are, so we change a table for the
+test.
+<<test functions>>=
+def test_participant_codes_send_a_shared_code_once(monkeypatch):
+  monkeypatch.setitem(ladok3.PARTICIPANT_CODE_BY_STATE,
+                      "interrupted", "AVKLARAD")
+  assert ladok3.participant_codes(["completed", "interrupted"],
+                                  ROUND_START, ROUND_END,
+                                  datetime.date(2026, 10, 20)) \
+    == ["AVKLARAD"]
+@
+
+Every English state must have a code on some day, and nothing else may.
+<<test functions>>=
+def test_participant_codes_cover_the_course_states():
+  states = set(ladok3.PARTICIPANT_CODE_BY_STATE) \
+    | {state for state, _ in ladok3.PARTICIPANT_CODE_BY_STATE_AND_TIMING}
+  assert states == set(ladok3.COURSE_STATES)
+@
+
+The list of participants in some states is a list of its own.
+It must not replace the default list, which holds other states, so we keep
+the lists per request, under the tuple of codes: asking for
+[[{"completed", "ongoing"}]] and then for [[["ongoing", "completed"]]] costs
+one request.
+Like the default list, a remembered list is kept for as long as the round
+object lives, also in the command-line interface's cache:
+the round's [[pull]] refreshes the course data, not the participants.
+That is a trade-off, not only a saving.
+After the round has ended, unfinished means the code that ongoing meant
+while it ran, so it returns the list fetched then, not who is registered
+now.
+A program that needs the current list must use a new round object;
+[[search_course_rounds]] caches its rounds in the session, so that means
+clearing the session's cache too.
+The key is a tuple rather than a set, since the round must survive the round
+trip through JSON (\cref{LadokDataJSON}), which can write a tuple but not a
+set.
+States without a code on the round select no one and need no request; sent
+to LADOK, an empty filter would mean something else.
+As for the default list, we remember a list only once it is complete
+(\cref{FailuresMustNotStick}).
+<<CourseRound data methods>>=
+def __participants_in_states(self, state, today):
+  """Returns the participants in `state` on `today`, asking LADOK once
+  per set of codes"""
+  codes = tuple(participant_codes(state, self.start, self.end, today))
+  if not codes:
+    return []
+  try:
+    return self.__participants_by_codes[codes]
+  except (AttributeError, KeyError):
+    pass
+  participants = self.__students(self.ladok.participants_JSON(
+    self.round_id, participant_states=list(codes)))
+  try:
+    participants_by_codes = self.__participants_by_codes
+  except AttributeError:
+    participants_by_codes = self.__participants_by_codes = {}
+  participants_by_codes[codes] = participants
+  return participants
+@
+
+To test this, we need a LADOK whose participant list records the codes that
+it is asked for.
+It gives one participant per code, so that the result shows which codes it
+was given.
+The test round runs from 31 August to 23 October 2026, so we judge it on 20
+October 2026.
+<<test functions>>=
+class FakeLadokForParticipantStates(FakeLadokForParticipants):
+  def __init__(self):
+    self.requests = []
+
+  def participants_JSON(self, round_id, **kwargs):
+    self.requests.append(kwargs.get("participant_states"))
+    codes = kwargs.get("participant_states") or ["DEFAULT"]
+    return [{"Student": {"Uid": f"student-{code}"}} for code in codes]
+
+def ids(students):
+  return [student.ladok_id for student in students]
+
+RUNNING_DAY = datetime.date(2026, 10, 20)
+@
+
+A request asks for exactly the codes of the states, once per set of codes,
+and does not touch the default list.
+A state without a code on the round asks nothing.
+<<test functions>>=
+def test_participants_by_state_ask_once_per_set_of_codes():
+  ladok = FakeLadokForParticipantStates()
+  course_round = make_test_course_round(ladok)
+
+  assert ids(course_round.participants(state="interrupted",
+                                       today=RUNNING_DAY)) \
+    == ["student-AVBROTT"]
+  assert ids(course_round.participants(state={"completed", "ongoing"},
+                                       today=RUNNING_DAY)) \
+    == ["student-REGISTRERAD", "student-AVKLARAD"]
+  course_round.participants(state=["ongoing", "completed"],
+                            today=RUNNING_DAY)
+  course_round.participants(state="interrupted", today=RUNNING_DAY)
+  assert course_round.participants(state="unfinished",
+                                   today=RUNNING_DAY) == []
+  assert ladok.requests == [["AVBROTT"], ["REGISTRERAD", "AVKLARAD"]]
+
+  assert ids(course_round.participants()) == ["student-DEFAULT"]
+  assert ladok.requests == [["AVBROTT"], ["REGISTRERAD", "AVKLARAD"], None]
+@
+
+After the round, unfinished asks for the code that ongoing asked for while
+the round ran, and gets the remembered list.
+<<test functions>>=
+def test_participants_by_state_share_a_request_for_the_same_codes():
+  ladok = FakeLadokForParticipantStates()
+  course_round = make_test_course_round(ladok)
+
+  ongoing = course_round.participants(state="ongoing", today=RUNNING_DAY)
+  unfinished = course_round.participants(state="unfinished",
+                                         today=datetime.date(2026, 11, 1))
+  assert ids(unfinished) == ids(ongoing) == ["student-REGISTRERAD"]
+  assert ladok.requests == [["REGISTRERAD"]]
+@
+
+A failed request must not stick here either: the next call asks again and
+gets the participants.
+<<test functions>>=
+def test_failed_participants_by_state_request_is_retried():
+  ladok = FakeLadokForParticipantStates()
+  ladok.participants_JSON = fail_first_call(ladok.participants_JSON)
+  course_round = make_test_course_round(ladok)
+
+  with pytest.raises(ladok3.LadokAPIError):
+    course_round.participants(state="completed", today=RUNNING_DAY)
+
+  assert ids(course_round.participants(state="completed",
+                                       today=RUNNING_DAY)) \
+    == ["student-AVKLARAD"]
+@
+
+The round refuses what a student refuses, before it asks.
+<<test functions>>=
+@pytest.mark.parametrize("state,error", [
+  ("Ongoing", ValueError), ("AVBROTT", ValueError), (5, TypeError)])
+def test_participants_by_state_refuse_unknown_states(state, error):
+  ladok = FakeLadokForParticipantStates()
+  course_round = make_test_course_round(ladok)
+  with pytest.raises(error):
+    course_round.participants(state=state, today=RUNNING_DAY)
+  assert ladok.requests == []
+@
+
+The lists per set of codes are attributes like the others, so they must
+survive the round trips through JSON and [[pickle]] without asking again.
+<<test functions>>=
+def test_participants_by_state_survive_round_trips():
+  ladok = FakeLadokForParticipantStates()
+  course_round = make_test_course_round(ladok)
+  states = ["completed", "interrupted"]
+  course_round.participants(state=states, today=RUNNING_DAY)
+
+  for json_data in [course_round.json, through_json_text(course_round)]:
+    restored = ladok3.restore(json_data, ladok=ladok)
+    assert restored == course_round
+    assert ids(restored.participants(state=states, today=RUNNING_DAY)) \
+      == ["student-AVKLARAD", "student-AVBROTT"]
+  unpickled = pickle.loads(pickle.dumps(course_round))
+  unpickled.participants(state=states, today=RUNNING_DAY)
+  assert unpickled.ladok.requests == [["AVKLARAD", "AVBROTT"]]
+  assert ladok.requests == [["AVKLARAD", "AVBROTT"]]
+@
+
 
 \chapter{Course objects related to students}
 
@@ -3209,6 +3873,8 @@ class CourseRegistration(CourseInstance):
     self.__start = datetime.date.fromisoformat(dates["Startdatum"])
     self.__end = datetime.date.fromisoformat(dates["Slutdatum"])
 
+    <<keep what the state rule needs from [[kwargs]]>>
+
     super().__init__(**kwargs)
 
   @property
@@ -3234,6 +3900,8 @@ class CourseRegistration(CourseInstance):
 
   def __repr__(self):
     return f"{self.code}:{self.round_code or ''}:{self.start}--{self.end}"
+
+  <<CourseRegistration state methods>>
 
   def results(self, /, **kwargs):
     """Returns the student's results on the course, filtered on keywords"""
@@ -3416,6 +4084,109 @@ def test_failed_results_fill_is_retried():
   assert result.grade is None
 @
 
+
+\subsection{The state of a registration}\label{CourseRegistrationState}
+
+A registration knows in which state the student's participation is:
+ongoing, upcoming, unfinished, completed or interrupted.
+LADOK names these states in Swedish, and its views of a student's
+participations in each state use those names
+(\cref{ParticipationsByState}).
+The classes give them English names, from one table, which the command-line
+interface uses too.
+<<constants>>=
+COURSE_STATES = {
+  "ongoing": "pagaende",
+  "upcoming": "kommande",
+  "unfinished": "oavslutade",
+  "completed": "avslutade",
+  "interrupted": "avbrott",
+}
+COURSE_STATE_OF_PARTICIPATION_STATE = {
+  ladok_name: name for name, ladok_name in COURSE_STATES.items()}
+@
+
+The registration computes its state with the rule of
+\cref{ParticipationState}, from what LADOK's participation says: the summary,
+whether the student withdrew, and the round's dates, which the registration
+keeps already.
+We keep the summary and the withdrawal from the participation, outside the
+[[Utbildningsinformation]] that the rest of the constructor reads, so the
+student classes pass them as keywords of their own.
+<<keep what the state rule needs from [[kwargs]]>>=
+state_data = kwargs.pop("TillstandKurs", None) or {}
+self.__state_summary = state_data.get("Sammanfattattillstand")
+self.__withdrawn = is_withdrawn({"Aterbud": kwargs.pop("Aterbud", None),
+                                 "TillstandKurs": state_data})
+@
+
+The state is computed, not kept, since it changes with the date:
+a registration that is ongoing today is unfinished once the round has ended.
+It is either one of the English names, [[None]] when LADOK puts the
+participation in no state, or [[UNKNOWN_STATE]] when the rule cannot tell.
+[[state_on]] takes the date to judge by, so that a caller who classifies many
+registrations can judge them all by the same day.
+
+A registration made by an earlier version, pickled in the command-line
+interface's cache or written as JSON, has no summary.
+Its state must then be unknown, not guessed, so class attributes supply the
+defaults, as for [[__pulled]] (\cref{CourseInstanceLazyPull}).
+<<CourseRegistration state methods>>=
+__state_summary = None
+__withdrawn = False
+
+@property
+def state(self):
+  """The state of the student's participation, judged today in Sweden:
+  one of "ongoing", "upcoming", "unfinished", "completed", "interrupted"
+  (the keys of COURSE_STATES), None if LADOK puts it in no state, or
+  ladok3.UNKNOWN_STATE if that cannot be told without asking LADOK."""
+  return self.state_on()
+
+def state_on(self, today=None):
+  """The state of the student's participation on the date `today`
+  (default: today in Sweden), see `state`."""
+  state = state_of_participation(self.__state_summary,
+                                 self.__start, self.__end, today,
+                                 withdrawn=self.__withdrawn)
+  return COURSE_STATE_OF_PARTICIPATION_STATE.get(state, state)
+@
+
+Let's verify that a registration translates the rule's states to English,
+passes [[None]] and the unknown state on, and that a registration without a
+summary, like one from an earlier version, is unknown.
+<<test functions>>=
+def make_registration_in_state(summary, start="2026-08-31",
+                               end="2027-01-15", **participation):
+  data = lazy_test_registration("round-state", "DD1301")
+  data["Utbildningsinformation"]["Studieperiod"] = {"Startdatum": start,
+                                                    "Slutdatum": end}
+  if summary:
+    participation["TillstandKurs"] = {
+      "Sammanfattattillstand":
+        f"studiedeltagande.domain.tillstandsdefinition.{summary}"}
+  return ladok3.CourseRegistration(ladok=FakeLadokForLazyCourses(),
+                                   student=None, **participation,
+                                   **data["Utbildningsinformation"])
+
+def test_course_registration_state() -> None:
+  today = datetime.date(2026, 10, 20)
+  ongoing = make_registration_in_state("registrerad")
+  completed = make_registration_in_state("avklarad")
+  withdrawn = make_registration_in_state("avbrott", Aterbud=True)
+  not_started = make_registration_in_state("ej_paborjad")
+  registered_early = make_registration_in_state(
+    "registrerad", start="2027-01-19", end="2027-06-04")
+  old = make_registration_in_state(None)
+
+  assert ongoing.state_on(today) == "ongoing"
+  assert ongoing.state_on(datetime.date(2027, 1, 16)) == "unfinished"
+  assert withdrawn.state_on(today) is None
+  assert not_started.state_on(today) == "upcoming"
+  assert registered_early.state_on(today) is ladok3.UNKNOWN_STATE
+  assert old.state_on(today) is ladok3.UNKNOWN_STATE
+  assert completed.state_on(today) == "completed"
+@
 
 \section{Course results}
 

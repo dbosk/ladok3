@@ -362,8 +362,9 @@ We set it up to use the function [[course_command]].
 data_parser = parser.add_parser("course",
   help="Returns course results data in CSV form",
   description="""
-Returns the results in CSV form for all students on a course round.
-By default, all students are included.
+Returns the results in CSV form for the students on a course round.
+By default, the students who take the course, are registered on it or have
+completed it are included; use --state to select students by state instead.
 Use --exclude-reregistered to exclude students who reregistered.
 Use --exclude-credit-transfers to exclude students with credit transfers.
 """.strip())
@@ -604,7 +605,7 @@ def extract_data_for_round(ladok, course_round, args):
   <<compute start and length of the course>>
   <<get the results for the course round>>
 
-  students = filter_students(course_round.participants(),
+  students = filter_students(course_round.participants(state=args.state),
                              args.students)
 
   for student in students:
@@ -948,6 +949,86 @@ data_parser.add_argument("-X", "--exclude-credit-transfers", action="store_true"
     "(note: credit transfer may be for only part of the course).")
 @
 
+
+\subsection{Selecting participants by state}
+
+By default the export covers the participants that LADOK's participant list
+gives by default: those who take the course, are registered on it or have
+completed it, but not those who broke off or have not started.
+The [[--state]] option selects the participants in some states instead, by
+the English names of [[ladok3.COURSE_STATES]], and can be repeated.
+The round asks LADOK once, with the codes that the states translate to on
+the round's dates (\cref{CourseRoundParticipantsByState}).
+These are the participants' states on the round as LADOK's participant list
+defines them, which differ from a student's own states in one way that the
+help text names: interrupted also covers those who broke off early or
+withdrew after breaking off.
+Those who never started a round that has ended are in no state here either,
+so upcoming on such a round selects no one.
+We give the states as [[choices]], so that [[argparse]] refuses a misspelt
+state and [[argcomplete]] completes them.
+<<add data command arguments to data parser>>=
+data_parser.add_argument("--state", action="append",
+  choices=list(ladok3.COURSE_STATES),
+  help="Include only the participants in this state on the round, "
+    "can be repeated; default: ongoing, registered and completed "
+    "participants.  The states are those of LADOK's participant list: "
+    "interrupted also includes those who broke off early or withdrew "
+    "after breaking off.  Students who never started a round that has "
+    "ended are in no state, so upcoming selects no one on such a round.")
+@
+
+Let's verify that the option reaches the round's participants, also when
+repeated, and that the default asks for the default list.
+We run the real command, with the real parser, against a stand-in LADOK
+with one round whose participants record how they are asked for; the round
+has no participants, so nothing else is asked.
+<<test functions>>=
+class CourseRoundRecordingParticipants:
+  round_id, round_code = "round-uid", "50001"
+  start, end = datetime.date(2026, 8, 31), datetime.date(2026, 10, 23)
+
+  def __init__(self):
+    self.calls = []
+
+  def components(self):
+    return [SimpleNamespace(instance_id="component-uid", code="TEN1")]
+
+  def participants(self, /, **kwargs):
+    self.calls.append(kwargs)
+    return []
+
+class LadokWithOneRound:
+  def __init__(self):
+    self.round = CourseRoundRecordingParticipants()
+
+  def search_course_rounds(self, /, **kwargs):
+    return [self.round]
+
+  def search_reported_results_JSON(self, round_id, instance_id):
+    return []
+
+def parse_course(*arguments):
+  import argparse
+  parser = argparse.ArgumentParser()
+  ladok3.data.add_command_options(parser.add_subparsers())
+  return parser.parse_args(["course", "DD1301", *arguments])
+
+@pytest.mark.parametrize("arguments,state", [
+  ([], None),
+  (["--state", "interrupted"], ["interrupted"]),
+  (["--state", "ongoing", "--state", "upcoming"], ["ongoing", "upcoming"]),
+])
+def test_course_state_option_reaches_participants(arguments, state, capsys):
+  ladok = LadokWithOneRound()
+  ladok3.data.course_command(ladok, parse_course(*arguments))
+  assert ladok.round.calls == [{"state": state}]
+
+def test_course_refuses_unknown_state(capsys):
+  with pytest.raises(SystemExit):
+    parse_course("--state", "AVBROTT")
+  assert "interrupted" in capsys.readouterr().err
+@
 
 \section{Which students to include}\label{WhoToInclude}
 
