@@ -1092,7 +1092,7 @@ come through as it is, for both fields.
 def test_pseudonymize_keeps_the_attestant_record() -> None:
   uid = "00000000-0000-0000-0000-000000000002"
   data = {"Attestant": {"Fornamn": "Anna", "Efternamn": "Andersson",
-                        "Anvandarnamn": "anna@kth.se", "Uid": uid}}
+                        "Anvandarnamn": "anna@example.org", "Uid": uid}}
   ladok3.pseudonymize(data)
   assert data["Attestant"] == {"Fornamn": "Student",
                                "Efternamn": "Studentzadeh",
