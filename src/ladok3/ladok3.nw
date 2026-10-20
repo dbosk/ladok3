@@ -676,7 +676,7 @@ class LadokData:
     <<compare [[self]] and [[other]] attribute by attribute, safe for cycles>>
 
   def __repr__(self):
-    <<represent the object by its JSON, or else by its attribute names>>
+    <<represent the object by its own attributes>>
 
   @property
   def json(self):
@@ -685,17 +685,68 @@ class LadokData:
     return _JSONWriter().object(self)
 @
 
-An object is represented by its JSON (\cref{LadokDataJSON}).
-But [[repr]] must not fail:
-a debugger or pytest calls it to show an object when something has already
-gone wrong.
-If an attribute is not JSON, which is a bug in its class, [[json]] raises an
-error, and then we show the class and the names of the attributes instead.
-<<represent the object by its JSON, or else by its attribute names>>=
-try:
-  return str(self.json)
-except TypeError:
-  return f"<{type(self).__name__} with attributes {sorted(vars(self))}>"
+An object is represented by its own data, for instance
+\begin{center}
+[[<GradeScale id=1 code='PF' name='Underkänd, godkänd' grades=[2 x <Grade>]>]].
+\end{center}
+Each attribute is shown by the name of its property, and each object that it
+refers to by its class only.
+We could show the objects that it refers to as well, as its JSON does
+(\cref{LadokDataJSON}), but a [[repr]] is for a person who looks at one
+object, in a debugger or a notebook, and the objects behind it can be many:
+a course round refers to its participants, they to their courses, and those
+to their components and results.
+A list of objects, such as a course round's participants, we show by their
+number and class.
+The session is left out, since it is the same for all objects.
+
+[[repr]] must not fail, nor ask LADOK for anything:
+a debugger or pytest calls it when something has already gone wrong, and an
+object restored without a session cannot ask LADOK (\cref{DetachedSession}).
+So we read the attributes that the object holds, not its properties, which
+could fetch what is missing.
+<<represent the object by its own attributes>>=
+attributes = [f"{public_name(type(self), key)}={short_repr(value)}"
+              for key, value in vars(self).items()
+              if key != SESSION_ATTRIBUTE]
+return f"<{' '.join([type(self).__name__, *attributes])}>"
+<<functions>>=
+def public_name(cls, key):
+  """Returns key without the class name that Python mangles into it"""
+  for base in cls.__mro__:
+    prefix = f"_{base.__name__}__"
+    if key.startswith(prefix):
+      return key[len(prefix):]
+  return key
+
+def short_repr(value):
+  """Represents value without the objects that it refers to"""
+  if isinstance(value, LadokData):
+    return f"<{type(value).__name__}>"
+  if isinstance(value, list):
+    if value and isinstance(value[0], LadokData) \
+        and all(type(item) is type(value[0]) for item in value):
+      return f"[{len(value)} x {short_repr(value[0])}]"
+    return f"[{', '.join(map(short_repr, value))}]"
+  if isinstance(value, dict):
+    return "{" + ", ".join(f"{short_repr(key)}: {short_repr(item)}"
+                           for key, item in value.items()) + "}"
+  return repr(value)
+@
+
+A grade scale must show its own data but not its grades' data, and an object
+restored without a session must be shown without fetching anything.
+A student that holds only its LADOK ID would otherwise fetch its name.
+<<test functions>>=
+def test_repr_shows_an_object_but_not_the_objects_it_refers_to():
+  text = repr(make_grade_scale())
+  assert text == ("<GradeScale id=1 code='PF' name='Underkänd, godkänd' "
+                  "grades=[2 x <Grade>]>")
+
+def test_repr_asks_nothing_of_ladok():
+  student = ladok3.restore({"type": "Student",
+                            "_Student__ladok_id": "student-uid"})
+  assert repr(student) == "<Student ladok_id='student-uid'>"
 @
 
 The [[make_properties]] method sets up private attributes and read-only
@@ -1354,7 +1405,7 @@ def test_restore_rejects_duplicate_object_numbers():
 @
 
 [[json]] must refuse an attribute that is not JSON, naming it but not its
-value, and [[repr]] must still work.
+value.
 And the dictionaries that look like ours, and the values that JSON lacks,
 must survive the trip through JSON text.
 We give a grade such attributes by hand, which no grade has, but any object
@@ -1366,8 +1417,6 @@ def test_json_rejects_values_that_are_not_json():
   with pytest.raises(TypeError, match="_Grade__secret") as error:
     grade.json
   assert "19121212-1212" not in str(error.value)
-  assert "_Grade__secret" in repr(grade)
-  assert "19121212-1212" not in repr(grade)
 
 def test_values_that_json_lacks_round_trip():
   grade = next(iter(make_grade_scale()))
@@ -4770,4 +4819,41 @@ def test_equality_of_graphs_with_cycles():
   vars(result)["_CourseResult__last_modified"] = "changed"
   assert student != changed
   assert changed != student
+@
+
+\section{A student from LADOK}
+
+The fakes give the objects only the values that we wrote into them.
+LADOK's own data may hold values that the fakes lack, of a type that
+[[json]] refuses or that [[restore]] gives back as another type.
+So we also round-trip a real student from LADOK's test environment, with
+everything that a student fetches: personal and contact data, courses,
+their components and results, and the grade scales.
+In replay, the test runs on the recorded responses, which are pseudonymized
+(\cref{Pseudonymization}); in a live run, on the data of the day.
+
+The student is real, so the test must not show its data, and pytest shows
+the values of a failed comparison.
+We therefore compare first and assert only the outcome.
+<<test functions>>=
+round_trip_student_uid = "de709f81-a867-11e7-8dbf-78e86dc2470c"
+
+@pytest.mark.vcr
+def test_a_student_from_ladok_round_trips(ladok):
+  student = ladok.get_student(round_trip_student_uid)
+  student.pull()
+  student.email
+  courses = student.courses()
+  assert courses, "the test student has no courses to round-trip"
+  for course in courses:
+    course.results()
+  json_text = json.dumps(student.json)
+
+  restored = ladok3.restore(json.loads(json_text), ladok=ladok)
+  restored_equals_student = restored == student
+  assert restored_equals_student, "the restored student differs"
+
+  detached = ladok3.restore(json.loads(json_text))
+  detached_has_same_json = json.dumps(detached.json) == json_text
+  assert detached_has_same_json, "the detached student's JSON differs"
 @
