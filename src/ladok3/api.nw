@@ -3711,33 +3711,55 @@ all pages with [[_all_pages]] (\cref{Pagination}) matters here because
 courses that have run for a long time accumulate many occasions and a
 fixed page size will hide older ones.
 
+We use the search that LADOK's own web client uses,
+[[aktivitetstillfalle/filtrera/lattvikt]] (\enquote{lightweight}).
+Until LADOK's update of 20 October 2026 we used
+[[aktivitetstillfalle/filtrera]], with the same parameters.
+Since that update, it refuses the course code with a validation error
+(\enquote{Incorrect format} for a \enquote{Unique identifier}), so it
+evidently wants a UID that the web client does not send.
+The lightweight search takes the course code and gives the same list, with
+somewhat fewer fields.
+
 Key fields returned for each occasion:
 \begin{description}
 \item[ [[Uid]] ] Occasion UID, required for result retrieval.
-\item[ [[Datumperiod]] ] The examination date(s) as [[Startdatum]] /
-  [[Slutdatum]].
+\item[ [[Aktivitetstillfallesalternativ]] ] The alternatives of the
+  occasion, each with its examination date(s) in [[Datumperiod]], as
+  [[Startdatum]] / [[Slutdatum]], and its times in [[Starttid]] /
+  [[Sluttid]].
 \item[ [[AntalAnmalda]] ] Number of registered students.
 \item[ [[KurstillfalleUIDer]] ] Course-round UIDs associated with this
   occasion; pass these to [[occasion_results_JSON]].
-\item[ [[AktivitetstillfallestypBenamning]] ] Human-readable type,
-  e.g.\ \enquote{Salsexamination -- tentamen}.
+\item[ [[AktivitetstillfallestypID]] ] The type of the occasion, such as a
+  written examination, as an ID among the activity-occasion types
+  ([[aktivitetstillfallestyp_JSON]]).
+  The old search also gave the type's name, in
+  [[AktivitetstillfallestypBenamning]].
 \end{description}
 <<LadokSession data methods>>=
 def examination_occasions_JSON(self, course_code: str) -> list:
   """Return all examination occasions for a course."""
   return self._all_pages(lambda page, limit: self.get_query(
-    f"/resultat/internal/aktivitetstillfalle/filtrera"
+    f"/resultat/internal/aktivitetstillfalle/filtrera/lattvikt"
     f"?kurskod={course_code}&page={page}&limit={limit}",
     "application/vnd.ladok-resultat+json"
   ))
 @
 
+The test checks the fields that the description above promises, for every
+occasion, and that the course's known occasion is among them.
 <<test functions>>=
 def test_examination_occasions_JSON(ladok) -> None:
   occasions = ladok.examination_occasions_JSON("SH1014")
   assert len(occasions) > 0
   occasion_uids = [o["Uid"] for o in occasions]
   assert SH1014_occasion_id in occasion_uids
+  for occasion in occasions:
+    assert isinstance(occasion["KurstillfalleUIDer"], list)
+    assert isinstance(occasion["AktivitetstillfallestypID"], int)
+    for alternative in occasion["Aktivitetstillfallesalternativ"]:
+      assert "Startdatum" in alternative["Datumperiod"]
 @
 
 
