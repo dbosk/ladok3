@@ -92,6 +92,8 @@ that LADOK refused with an explanation (uses
 [[response.json()["Meddelande"]]]).
 \item[{[[LadokNotFoundError]]}] For resource not found errors (missing courses, 
 components, etc.).
+\item[{[[LadokDetachedError]]}] For objects restored from JSON without a
+session that need LADOK (\cref{DetachedSession}).
 \end{description}
 
 Usage example:
@@ -176,6 +178,16 @@ class LadokNotFoundError(LadokError):
   - Students not found in the system
   - Course components that are not part of a course
   - Non-existent course rounds
+  """
+  pass
+
+class LadokDetachedError(LadokError):
+  """
+  Exception for objects restored from JSON without a LADOK session.
+
+  Such an object has the data that was in the JSON.  This exception is
+  raised when it needs more from LADOK; restore it with a session
+  (`restore(json_dict, ladok=...)`) to fetch more.
   """
   pass
 @
