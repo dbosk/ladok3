@@ -33,7 +33,6 @@ import ladok3.report
 import pickle
 import pytest
 import types
-import zoneinfo
 
 pytestmark = pytest.mark.vcr
 
@@ -2764,7 +2763,8 @@ PARTICIPANTS_LIMIT = 400
 Let's verify what we send, without LADOK: we call the method on a stand-in
 for the session that records the request.
 The codes in [[participant_states]] are sent as they are, before those of
-any flags; no keyword at all sends the default.
+any flags; no keyword at all sends the default, but an empty list of codes is
+sent as it is.
 <<test functions>>=
 class SessionRecordingPuts:
   def __init__(self):
@@ -2781,6 +2781,7 @@ class SessionRecordingPuts:
   ({"cancelled": True, "participant_states": ["AVKLARAD"]},
    ["AVKLARAD", "AVBROTT"]),
   ({"finished": True}, ["AVKLARAD"]),
+  ({"participant_states": []}, []),
 ])
 def test_participants_JSON_sends_the_codes(kwargs, codes) -> None:
   session = SessionRecordingPuts()
@@ -4388,10 +4389,11 @@ Christian Ohm (\enquote{cohm}) established this on 2026-08-22 with an account
 that holds programme-level roles: the endpoint answered exactly as a path he
 had made up.
 
-Every participation is in [[registrations_JSON]] instead.
-Those are registrations on programmes as well as on courses, so we keep the
-entries whose [[Utbildningsinformation.Utbildningstillfallestyp.Grundtyp]] is
-[[KURS]].
+Every participation is in [[registrations_JSON]] instead, which reads the
+student's course-round participations ([[kurstillfallesdeltagande]]).
+Every entry that we have recorded from it is a course, but we keep the
+filter on [[Utbildningsinformation.Utbildningstillfallestyp.Grundtyp]] being
+[[KURS]] as a guard, since the method promises courses.
 If an entry lacks that discriminator, we raise [[LadokAPIError]] with the
 entry attached rather than skip it: skipping would make a change in LADOK's
 format look like a student without courses.
@@ -4654,7 +4656,7 @@ UNKNOWN_STATE = _UnknownState()
 [[state_of_participation]] applies the rule to a summary, a study period and
 whether the student withdrew.
 It takes [[today]] as an argument so that the tests can fix the date;
-without it, the rule uses the date of the machine that runs it.
+without it, the rule uses today's date in Sweden ([[swedish_today]] below).
 The dates matter only for some summaries, so a missing date makes the state
 unknown only when the rule needs it.
 <<functions>>=
@@ -4664,8 +4666,8 @@ def state_of_participation(summary, start, end, today=None, /,
 
   `summary` is TillstandKurs.Sammanfattattillstand (only its last dotted
   component matters), `start` and `end` the round's study period as
-  datetime.date objects, `today` the date to judge by (default: the
-  current date) and `withdrawn` whether the student withdrew before the
+  datetime.date objects, `today` the date to judge by (default: today
+  in Sweden) and `withdrawn` whether the student withdrew before the
   start (Aterbud).  Returns one of PARTICIPATION_STATES, None if LADOK
   puts the participation in no state, or UNKNOWN_STATE if the rule
   cannot tell.
@@ -4689,10 +4691,10 @@ The round runs from its first day to its last, both included (see above).
 <<functions>>=
 def round_timing(start, end, today=None):
   """Return "upcoming", "running" or "ended": where `today` (default:
-  the current date) falls relative to a round from `start` to `end`,
-  both days included in the round."""
+  today in Sweden) falls relative to a round from `start` to `end`, both
+  days included in the round."""
   if today is None:
-    today = datetime.date.today()
+    today = swedish_today()
   if today < start:
     return "upcoming"
   if today <= end:
@@ -4737,20 +4739,69 @@ def iso_date_or_none(text):
     return None
 @
 
+Which day is today?
+LADOK's dates are Swedish: a round that ends on 11 January ends at midnight
+in Sweden.
+The machine that runs the program need not be in Sweden, and a server often
+keeps UTC, which is an hour or two behind; judged by its date, a round would
+still run for the first hours of the day after it ended.
+So when the caller gives no date, we take today's date in Sweden.
+The function takes the instant as an argument, so that the tests can fix it.
+<<functions>>=
+def swedish_today(now=None) -> datetime.date:
+  """Return the date in Sweden at the instant `now`, an aware datetime
+  (default: the current instant)."""
+  if now is None:
+    now = datetime.datetime.now(datetime.timezone.utc)
+  return now.astimezone(zoneinfo.ZoneInfo("Europe/Stockholm")).date()
+@
+
+Let's verify the date near midnight in UTC, in summer time, when Sweden is two
+hours ahead, and in winter time, when it is one hour ahead.
+<<test functions>>=
+@pytest.mark.parametrize("now,today", [
+  (datetime.datetime(2026, 10, 19, 21, 59, tzinfo=datetime.timezone.utc),
+   datetime.date(2026, 10, 19)),
+  (datetime.datetime(2026, 10, 19, 22, 0, tzinfo=datetime.timezone.utc),
+   datetime.date(2026, 10, 20)),
+  (datetime.datetime(2026, 12, 31, 22, 59, tzinfo=datetime.timezone.utc),
+   datetime.date(2026, 12, 31)),
+  (datetime.datetime(2026, 12, 31, 23, 0, tzinfo=datetime.timezone.utc),
+   datetime.date(2027, 1, 1)),
+])
+def test_swedish_today(now, today) -> None:
+  assert ladok3.swedish_today(now) == today
+@
+
+The functions that default to today must take the Swedish date.
+We fix it by replacing [[swedish_today]] for the test, since the clock is the
+one thing we cannot record or make real: on 1 February 2027 a round that ended
+on 15 January has ended, and its registered students are unfinished.
+<<test functions>>=
+def test_defaults_judge_by_the_swedish_date(monkeypatch) -> None:
+  monkeypatch.setattr(ladok3, "swedish_today",
+                      lambda now=None: datetime.date(2027, 2, 1))
+  registered = make_participation("registrerad", RUNNING)
+  assert ladok3.round_timing(*map(datetime.date.fromisoformat, RUNNING)) \
+    == "ended"
+  assert ladok3.participations_in_state([registered], "oavslutade") \
+    == [registered]
+@
+
 To filter a list of participations, we classify each of them on the same
 day, so that a list never straddles midnight.
 <<functions>>=
 def participations_in_state(participations: list, state: str,
                             today=None) -> list:
   """Return the participations that our rule puts in `state`, one of
-  PARTICIPATION_STATES, judged on `today` (default: the current date).
+  PARTICIPATION_STATES, judged on `today` (default: today in Sweden).
 
   Participations that the rule cannot place are left out; ask LADOK
   (LadokSession.student_participations_JSON) for those.
   """
   check_participation_state(state)
   if today is None:
-    today = datetime.date.today()
+    today = swedish_today()
   return [participation for participation in participations
           if participation_state(participation, today) == state]
 @
@@ -4865,31 +4916,39 @@ def test_unknown_state_survives_pickle() -> None:
     is ladok3.UNKNOWN_STATE
 @
 
-Finally, against LADOK, our rule must put each participation in the state
-whose view holds it, and the views must not overlap.
+Finally, against LADOK: the views must not overlap, and where our rule
+places a participation, it must place it where LADOK does.
 We take two students:
 one who took DD1301 and has participations in all five states, and the test
 student of most other tests.
-For each state we compare the participations in LADOK's view with those that
-our rule puts in the state, among all the student's participations, by their
-UIDs.
-We assert on counts, so that a failure shows how many differ, not who.
+
+The rule declines some cases, and which ones a student has depends on the
+day: before a term starts, many students are registered on rounds that have
+not started.
+Those are not wrong, only undecided, so we check less about them:
+each must be in at most one of LADOK's views, and if not, the failure names
+its summary and where the day falls relative to its round, the case that
+the rule would need to learn.
+For the participations that the rule places, we compare by state, by their
+UIDs: those in LADOK's view, less the undecided ones, must be exactly those
+that our rule puts in the state.
+We assert on counts and state names, so that a failure shows how many differ,
+not who.
 
 The rule must judge by the date on which LADOK answered.
 In a live run or a recording, that is today; in a replay, it is the date of
 the recording, which we read from the [[Date]] header of its first response.
 (Judging a replay by the date of the replay would fail the test as soon as
 one of the rounds started or ended after the recording.)
-The header is in UTC, and LADOK's dates are Swedish, so we convert.
+The header is in UTC, and LADOK's dates are Swedish, so we convert, with
+[[swedish_today]].
 <<test functions>>=
 def date_of_answers(recording, cassette) -> datetime.date:
   """The Swedish date on which LADOK gave the test's answers"""
   if recording:
-    answered = datetime.datetime.now(datetime.timezone.utc)
-  else:
-    answered = email.utils.parsedate_to_datetime(
-      cassette.responses[0]["headers"]["Date"][0])
-  return answered.astimezone(zoneinfo.ZoneInfo("Europe/Stockholm")).date()
+    return ladok3.swedish_today()
+  return ladok3.swedish_today(email.utils.parsedate_to_datetime(
+    cassette.responses[0]["headers"]["Date"][0]))
 
 @pytest.mark.parametrize("student", [DD1301_student_uid, student_uid],
                          ids=["DD1301_student", "student"])
@@ -4897,16 +4956,71 @@ def test_participation_states_agree_with_ladok(ladok, recording, vcr,
                                                student) -> None:
   everything = ladok.student_participations_JSON(student)
   today = date_of_answers(recording, vcr)
+  views = {state: {participation["Uid"] for participation
+                   in ladok.student_participations_JSON(student, state=state)}
+           for state in ladok3.PARTICIPATION_STATES}
+  assert_views_agree_with_rule(everything, views, today)
+
+def assert_views_agree_with_rule(everything, views, today):
+  """Assert that LADOK's `views` (state: set of participation UIDs) do not
+  overlap, hold each participation that our rule cannot place at most
+  once, and otherwise hold exactly what our rule puts in each state."""
+  undecided = [participation for participation in everything
+               if ladok3.participation_state(participation, today)
+                  is ladok3.UNKNOWN_STATE]
+  for participation in undecided:
+    in_views = sum(participation["Uid"] in uids for uids in views.values())
+    assert in_views <= 1, \
+      f"{case_of(participation, today)} is in {in_views} views"
+  undecided_uids = {participation["Uid"] for participation in undecided}
+
   seen = set()
-  for state in ladok3.PARTICIPATION_STATES:
-    by_ladok = {participation["Uid"] for participation
-                in ladok.student_participations_JSON(student, state=state)}
+  for state, uids in views.items():
+    by_ladok = uids - undecided_uids
     by_rule = {participation["Uid"] for participation
                in ladok3.participations_in_state(everything, state, today)}
     assert (state, len(by_ladok - by_rule), len(by_rule - by_ladok)) \
       == (state, 0, 0)
-    assert len(by_ladok & seen) == 0
-    seen |= by_ladok
+    assert len(uids & seen) == 0
+    seen |= uids
+
+def case_of(participation, today):
+  """The summary of `participation` and where `today` falls relative to
+  its round: LADOK's state names only, nothing about the student."""
+  summary = (participation.get("TillstandKurs") or {}) \
+              .get("Sammanfattattillstand") or "no summary"
+  period = (participation.get("Utbildningsinformation") or {}) \
+             .get("Studieperiod") or {}
+  start = ladok3.iso_date_or_none(period.get("Startdatum"))
+  end = ladok3.iso_date_or_none(period.get("Slutdatum"))
+  timing = ladok3.round_timing(start, end, today) \
+    if start and end else "no dates"
+  return (summary.rsplit(".", 1)[-1], timing)
+@
+
+The recordings of these two students hold no participation that the rule
+cannot place, so the replay does not exercise that part of the comparison.
+We check it on participations of our own:
+a registration on a round that has not started, which the rule cannot place,
+may be in one of LADOK's views, but not in two, and the failure names the
+case; a placed participation must be in the view of its state.
+<<test functions>>=
+def test_views_may_hold_what_the_rule_cannot_place() -> None:
+  placed = make_participation("registrerad", RUNNING)
+  undecided = make_participation("registrerad", UPCOMING)
+  placed["Uid"], undecided["Uid"] = "placed", "undecided"
+  empty = {state: set() for state in ladok3.PARTICIPATION_STATES}
+
+  assert_views_agree_with_rule(
+    [placed, undecided],
+    {**empty, "pagaende": {"placed"}, "kommande": {"undecided"}}, TODAY)
+  with pytest.raises(AssertionError, match="registrerad.*upcoming"):
+    assert_views_agree_with_rule(
+      [placed, undecided],
+      {**empty, "pagaende": {"placed", "undecided"},
+       "kommande": {"undecided"}}, TODAY)
+  with pytest.raises(AssertionError):
+    assert_views_agree_with_rule([placed, undecided], empty, TODAY)
 @
 
 A replay that judged by the wrong date would fail only when a round starts or

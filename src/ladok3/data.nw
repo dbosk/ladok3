@@ -960,10 +960,11 @@ the English names of [[ladok3.COURSE_STATES]], and can be repeated.
 The round asks LADOK once, with the codes that the states translate to on
 the round's dates (\cref{CourseRoundParticipantsByState}).
 These are the participants' states on the round as LADOK's participant list
-defines them, which differ from a student's own states in two ways that the
+defines them, which differ from a student's own states in one way that the
 help text names: interrupted also covers those who broke off early or
-withdrew after breaking off, and upcoming covers those who never started,
-also on a round that has ended.
+withdrew after breaking off.
+Those who never started a round that has ended are in no state here either,
+so upcoming on such a round selects no one.
 We give the states as [[choices]], so that [[argparse]] refuses a misspelt
 state and [[argcomplete]] completes them.
 <<add data command arguments to data parser>>=
@@ -973,8 +974,8 @@ data_parser.add_argument("--state", action="append",
     "can be repeated; default: ongoing, registered and completed "
     "participants.  The states are those of LADOK's participant list: "
     "interrupted also includes those who broke off early or withdrew "
-    "after breaking off, and upcoming includes those who never started, "
-    "also on a round that has ended.")
+    "after breaking off.  Students who never started a round that has "
+    "ended are in no state, so upcoming selects no one on such a round.")
 @
 
 Let's verify that the option reaches the round's participants, also when

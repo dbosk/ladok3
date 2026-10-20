@@ -95,7 +95,9 @@ courses without [[-c]], and with [[-c]] the two filters combine.
 student_parser.add_argument("--state",
   action="append", choices=list(ladok3.COURSE_STATES),
   help="List only the courses in this state, can be repeated. "
-    "Lists courses also without -c."
+    "Lists courses also without -c.  The state is that of the "
+    "student's current registrations with a course code, the same "
+    "registrations that -c lists."
 )
 @
 

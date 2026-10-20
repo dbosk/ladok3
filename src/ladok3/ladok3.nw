@@ -17,6 +17,7 @@ import operator
 import re
 import requests
 import threading
+import zoneinfo
 from collections.abc import Callable
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -2254,7 +2255,10 @@ def courses(self, /, state=None, **kwargs):
   With `state`, only the courses in that state: one of the keys of
   ladok3.COURSE_STATES ("ongoing", "upcoming", "unfinished",
   "completed", "interrupted") or an iterable of them.  Raises
-  ValueError for any other name.
+  ValueError for any other name and TypeError if `state` is neither a
+  string nor an iterable.  Like the list without `state`, these are
+  the student's current registrations that have a course code; LADOK's
+  view of a state can hold more participations than that.
   """
   if state is not None:
     return filter_on_keys(self.__courses_in_states(course_states(state)),
@@ -2365,6 +2369,11 @@ student takes now:
 The states have English names here, the keys of [[COURSE_STATES]]
 (\cref{CourseRegistrationState}), and [[state]] takes one of them or an
 iterable of them, such as [[{"ongoing", "upcoming"}]].
+The result is the state filter applied to what [[courses]] lists: the
+student's current registrations ([[Nuvarande]]) that have a course code.
+Both ways of finding them below apply that filter, so they agree; LADOK's
+view of a state can hold more participations than that: those that are not
+current or have no course code.
 
 There are two ways to find them, and we use both.
 Each registration knows its state by the rule of \cref{ParticipationState},
@@ -2399,7 +2408,7 @@ try:
 except AttributeError:
   courses = None
 if courses is not None:
-  today = datetime.date.today()
+  today = swedish_today()
   placed = [(course, course.state_on(today)) for course in courses]
   if all(state is not UNKNOWN_STATE for _, state in placed):
     return [course for course, state in placed if state in states]
@@ -2554,6 +2563,39 @@ def test_courses_by_state_asks_ladok_once_per_state():
   assert ladok.requests == ["pagaende"]
   assert codes(student.courses()) == ["DD1301", "DD1310", "DD1320"]
   assert ladok.requests == ["pagaende", "all"]
+@
+
+A student judges the courses it holds by today's date in Sweden.
+We fix that date far in the future, by replacing [[swedish_today]] for the
+test: the ongoing course has then ended unfinished, and the upcoming one,
+never started, is in no state.
+<<test functions>>=
+def test_courses_by_state_judge_by_the_swedish_date(monkeypatch):
+  ladok = FakeLadokForCourseStates()
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+  student.courses()
+  monkeypatch.setattr(
+    ladok3, "swedish_today",
+    lambda now=None: datetime.date.today() + datetime.timedelta(weeks=100))
+
+  assert codes(student.courses(state="unfinished")) == ["DD1301"]
+  assert codes(student.courses(state=["ongoing", "upcoming"])) == []
+  assert ladok.requests == ["all"]
+@
+
+A failed request for a view must not stick (\cref{FailuresMustNotStick}):
+the next call asks again and gets the courses.
+<<test functions>>=
+def test_failed_courses_by_state_request_is_retried():
+  ladok = FakeLadokForCourseStates()
+  ladok.student_participations_JSON = fail_first_call(
+    ladok.student_participations_JSON)
+  student = ladok3.Student(ladok=ladok, id="student-uid")
+
+  with pytest.raises(ladok3.LadokAPIError):
+    student.courses(state="ongoing")
+
+  assert codes(student.courses(state="ongoing")) == ["DD1301"]
 @
 
 A student that holds a course the rule cannot place asks LADOK, which then
@@ -3434,7 +3476,9 @@ def participants(self, /, state=None, today=None, **kwargs):
   by default.  With `state`, an English state name or an iterable of
   them (see ladok3.COURSE_STATES), the participants in those states on
   this round as LADOK's participant list defines them, judged on `today`
-  (default: the current date).  Raises ValueError for any other name.
+  (default: the current date in Sweden).  Raises ValueError for any
+  other name and TypeError if `state` is neither a string nor an
+  iterable.
 
   Filtered on the other keywords, see ladok3.filter_on_keys.
   """
@@ -3530,6 +3574,9 @@ registration on the round (\cref{ParticipationState}).
   that had not started, and on the running round too).
   On a round that has ended the code still holds them, while their own
   registrations are in no state (7 of 7).
+  We follow the students' side: on a round that has ended, upcoming has no
+  code, so these students are in no state here either, and asking for the
+  upcoming participants of such a round gives no one.
 \item[{[[AVKLARAD]]}] (completed) is completed (15 of 15, and 2 of 2 on the
   running round).
 \item[{[[AVBROTT]]}] (broken off) holds the interrupted students (3), but
@@ -3575,7 +3622,7 @@ def participant_codes(state, start, end, today=None):
   """Returns the deltagaretillstand codes of LADOK's participant list
   that select the participants in `state` (an English state name or an
   iterable of them, see COURSE_STATES) on a round from `start` to `end`,
-  judged on `today` (default: the current date).  Each code once; an
+  judged on `today` (default: today in Sweden).  Each code once; an
   empty list if no participant can be in those states on that day."""
   timing = round_timing(start, end, today)
   codes = []
@@ -3650,8 +3697,17 @@ The list of participants in some states is a list of its own.
 It must not replace the default list, which holds other states, so we keep
 the lists per request, under the tuple of codes: asking for
 [[{"completed", "ongoing"}]] and then for [[["ongoing", "completed"]]] costs
-one request, and so does asking for unfinished after the round has ended,
-when it means the same code as ongoing did while it ran.
+one request.
+Like the default list, a remembered list is kept for as long as the round
+object lives, also in the command-line interface's cache:
+the round's [[pull]] refreshes the course data, not the participants.
+That is a trade-off, not only a saving.
+After the round has ended, unfinished means the code that ongoing meant
+while it ran, so it returns the list fetched then, not who is registered
+now.
+A program that needs the current list must use a new round object;
+[[search_course_rounds]] caches its rounds in the session, so that means
+clearing the session's cache too.
 The key is a tuple rather than a set, since the round must survive the round
 trip through JSON (\cref{LadokDataJSON}), which can write a tuple but not a
 set.
@@ -3739,6 +3795,22 @@ def test_participants_by_state_share_a_request_for_the_same_codes():
                                          today=datetime.date(2026, 11, 1))
   assert ids(unfinished) == ids(ongoing) == ["student-REGISTRERAD"]
   assert ladok.requests == [["REGISTRERAD"]]
+@
+
+A failed request must not stick here either: the next call asks again and
+gets the participants.
+<<test functions>>=
+def test_failed_participants_by_state_request_is_retried():
+  ladok = FakeLadokForParticipantStates()
+  ladok.participants_JSON = fail_first_call(ladok.participants_JSON)
+  course_round = make_test_course_round(ladok)
+
+  with pytest.raises(ladok3.LadokAPIError):
+    course_round.participants(state="completed", today=RUNNING_DAY)
+
+  assert ids(course_round.participants(state="completed",
+                                       today=RUNNING_DAY)) \
+    == ["student-AVKLARAD"]
 @
 
 The round refuses what a student refuses, before it asks.
@@ -4065,15 +4137,15 @@ __withdrawn = False
 
 @property
 def state(self):
-  """The state of the student's participation, judged today: one of
-  "ongoing", "upcoming", "unfinished", "completed", "interrupted" (the
-  keys of COURSE_STATES), None if LADOK puts it in no state, or
+  """The state of the student's participation, judged today in Sweden:
+  one of "ongoing", "upcoming", "unfinished", "completed", "interrupted"
+  (the keys of COURSE_STATES), None if LADOK puts it in no state, or
   ladok3.UNKNOWN_STATE if that cannot be told without asking LADOK."""
   return self.state_on()
 
 def state_on(self, today=None):
   """The state of the student's participation on the date `today`
-  (default: the current date), see `state`."""
+  (default: today in Sweden), see `state`."""
   state = state_of_participation(self.__state_summary,
                                  self.__start, self.__end, today,
                                  withdrawn=self.__withdrawn)
