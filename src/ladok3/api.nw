@@ -895,10 +895,10 @@ def remove_links(json_obj: dict | list) -> None:
       remove_links(item)
 @
 
-The [[pseudonymize]] function replaces names and personnummer with dummy
-entries.
-Most of the fields it covers describe the student: name, personnummer and
-contact details.
+The [[pseudonymize]] function replaces the data that identify or describe a
+person with dummy entries.
+Most of the fields it covers describe the student: name, personnummer, date
+of birth, sex, whether the student is alive, and contact details.
 Two more fields are easy to miss precisely because they do \emph{not} describe
 the student.
 LADOK stamps most records with audit metadata, and [[SenastAndradAv]]
@@ -930,22 +930,30 @@ This is why the documentation's example outputs are scanned before we publish
 them (the [[check-doc-privacy]] target in the top-level [[Makefile]]):
 the scan counts the distinct values per key, so a new key that carries
 names stands out even though this function doesn't know about it.
-The count only helps when the examples show several people, though:
+The count has two blind spots, though.
+It only helps when the examples show several people:
 an example about one student gives each of that student's fields one value,
 just as a pseudonym has one value.
-So a field that describes one person, such as the date of birth
-([[Fodelsedata]]), must be listed here, whether or not the scan notices it.
+And it counts only text values, so a number or a truth value, such as the
+student's sex ([[KonID]]) or whether the student is deceased
+([[Avliden]]), never shows up in it at all.
+So every field that describes a person must be listed here, whether or not
+the scan would notice it.
 
 We keep the replacements in a table, so a new key is a one-line change.
 The names are deliberately unrealistic (\enquote{Studentzadeh}) and the
 personnummer and date of birth are the fictive Tolvan's, so that no one
 mistakes the documentation's examples for real records.
+The sex becomes the neutral 0 and every student is alive:
+neither belongs in an example.
 <<constants>>=
 PSEUDONYMS = {
   "Fornamn": "Student",
   "Efternamn": "Studentzadeh",
   "Personnummer": "19121212-1212",
   "Fodelsedata": "1912-12-12",
+  "KonID": 0,
+  "Avliden": False,
   "Epostadress": "user@domain.se",
   "Epost": "user@domain.se",
   "Anvandarnamn": "user@domain.se",
@@ -961,16 +969,29 @@ PSEUDONYMS = {
 PSEUDONYMS_IF_STRING = {
   "Beslutsfattare": "Examinator",
 }
+@
+
+Two keys say something about a person by being there at all:
+[[Skyddsstatus]] marks a protected identity (\enquote{sekretessmarkering})
+and [[FolkbokforingsbevakningTillOchMed]] says that LADOK watches the
+population register for changes to the student.
+A dummy value would still show that the record has the key, so we remove
+these keys instead, as [[remove_links]] does with the links.
+<<constants>>=
+REMOVED_KEYS = ["Skyddsstatus", "FolkbokforingsbevakningTillOchMed"]
 <<functions>>=
 def pseudonymize(json_obj: dict | list) -> None:
   """
   Recursively pseudonymizes a JSON data record in place.
 
   Replaces the values of the keys in `PSEUDONYMS` (names, personnummer,
-  contact details, free text) and the string values of the keys in
-  `PSEUDONYMS_IF_STRING`.  UIDs are kept.
+  date of birth, sex, contact details, free text) and the string values of
+  the keys in `PSEUDONYMS_IF_STRING`, and removes the keys in
+  `REMOVED_KEYS`.  UIDs are kept.
   """
   if isinstance(json_obj, dict):
+    for key in REMOVED_KEYS:
+      json_obj.pop(key, None)
     for key, pseudonym in PSEUDONYMS.items():
       if key in json_obj:
         json_obj[key] = pseudonym
@@ -1000,7 +1021,7 @@ PSEUDONYMIZED_KEYS = [
   "Fornamn", "Efternamn", "Personnummer", "Epostadress", "Epost",
   "Anvandarnamn", "Utdelningsadress", "Postnummer", "Postort",
   "Telefonnummer", "SenastAndradAv", "Anteckning", "OvrigaMedverkande",
-  "Beslutsfattare", "Fodelsedata",
+  "Beslutsfattare", "Fodelsedata", "KonID", "Avliden",
 ]
 
 @pytest.mark.parametrize("key", PSEUDONYMIZED_KEYS)
@@ -1017,6 +1038,13 @@ The UIDs must survive: they are what lets a reader follow the same student
 or course round from one example output to the next.
 The list form of [[Beslutsfattare]] is such a list of UIDs.
 <<test functions>>=
+@pytest.mark.parametrize("key", ["Skyddsstatus",
+                                 "FolkbokforingsbevakningTillOchMed"])
+def test_pseudonymize_removes(key) -> None:
+  data = {key: "2027-01-01", "Rattigheter": [{key: "SEKRETESS"}]}
+  ladok3.pseudonymize(data)
+  assert data == {"Rattigheter": [{}]}
+
 def test_pseudonymize_keeps_uids() -> None:
   uid = "00000000-0000-0000-0000-000000000001"
   data = {"Uid": uid, "StudentUID": uid, "Beslutsfattare": [uid]}
