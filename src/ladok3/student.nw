@@ -8,6 +8,11 @@ We also want to optionally print courses.
 \begin{minted}{bash}
 ladok student 700101-1234 -c "DD131[0-9]"
 \end{minted}
+And we want to print only the courses in some states, for instance those that
+the student takes now or will take.
+\begin{minted}{bash}
+ladok student 700101-1234 --state ongoing --state upcoming
+\end{minted}
 
 
 \section{The [[student]] subcommand}\label{StudentCommand}
@@ -77,6 +82,23 @@ student_parser.add_argument("-c", "--course",
 )
 @
 
+\subsection{An optional course state}
+
+The [[--state]] option selects the courses in a state, by the English names of
+[[ladok3.COURSE_STATES]] (\cref{StudentCoursesByState}).
+We give them as [[choices]], so that [[argparse]] refuses a misspelt state
+with a list of the right ones and [[argcomplete]] completes them.
+The option can be repeated for several states.
+A state is enough to list courses: [[--state ongoing]] lists the ongoing
+courses without [[-c]], and with [[-c]] the two filters combine.
+<<add student command arguments to student parser>>=
+student_parser.add_argument("--state",
+  action="append", choices=list(ladok3.COURSE_STATES),
+  help="List only the courses in this state, can be repeated. "
+    "Lists courses also without -c."
+)
+@
+
 \subsection{A results flag}
 
 We also want a flag for specifying whether or not to include the results of 
@@ -114,7 +136,7 @@ except Exception as err:
 
 print_student_data(student, args)
 
-if args.course:
+if args.course or args.state:
   print()
   print_course_data(student, args)
 @
@@ -176,17 +198,75 @@ if args.contact:
 
 \subsection{Printing student's course data}
 
-To print the student's course data, we simply filter the courses on the option 
+To print the student's course data, we simply filter the courses on the options
 that the user supplies.
+Without [[-c]] there is no code to filter on, which happens when only
+[[--state]] is given.
 We then print all courses and, if the flag is set, we also print the results 
 for each course.
 <<functions>>=
 def print_course_data(student, args):
   """Prints the courses"""
   print("Courses:")
-  for course in student.courses(code=args.course):
+  filters = {"code": args.course} if args.course else {}
+  for course in student.courses(state=args.state, **filters):
     print(f"{course}")
     if args.results:
       for result in course.results():
         print(f"  {result}")
+@
+
+\subsection{Testing the course options}
+
+Let's verify that [[--state]] reaches [[Student.courses]], also when repeated
+and without [[-c]], and that a state that does not exist is refused.
+We parse the options with the real parser and run the real command, against
+a stand-in LADOK whose one student records how its courses are asked for;
+the real filtering is tested with the [[Student]] class
+(\cref{StudentCoursesByState}).
+<<test [[student.py]]>>=
+import argparse
+import ladok3.student
+import pytest
+
+def parse(*arguments):
+  parser = argparse.ArgumentParser()
+  ladok3.student.add_command_options(parser.add_subparsers())
+  return parser.parse_args(["student", "student-uid", *arguments])
+
+class StudentRecordingCoursesCalls:
+  first_name, last_name = "Tolvan", "Tolvansson"
+  personnummer, ladok_id = "191212121212", "student-uid"
+  alive, suspensions = True, []
+
+  def __init__(self):
+    self.calls = []
+
+  def courses(self, /, **kwargs):
+    self.calls.append(kwargs)
+    return []
+
+class LadokWithOneStudent:
+  def __init__(self):
+    self.student = StudentRecordingCoursesCalls()
+
+  def get_student(self, id):
+    return self.student
+
+@pytest.mark.parametrize("arguments,calls", [
+  ([], []),
+  (["-c"], [{"state": None, "code": ".*"}]),
+  (["--state", "ongoing"], [{"state": ["ongoing"]}]),
+  (["--state", "ongoing", "--state", "upcoming", "-c", "DD13"],
+   [{"state": ["ongoing", "upcoming"], "code": "DD13"}]),
+])
+def test_state_option_reaches_courses(arguments, calls, capsys):
+  ladok = LadokWithOneStudent()
+  ladok3.student.command(ladok, parse(*arguments))
+  assert ladok.student.calls == calls
+
+def test_unknown_state_is_refused(capsys):
+  with pytest.raises(SystemExit):
+    parse("--state", "pagaende")
+  assert "ongoing" in capsys.readouterr().err
 @
