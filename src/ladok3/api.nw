@@ -1011,6 +1011,17 @@ def pseudonymize(json_obj: dict | list) -> None:
       pseudonymize(item)
 @
 
+Let's verify that both keys are removed, also from nested records, and that
+nothing else in the record is touched.
+<<test functions>>=
+@pytest.mark.parametrize("key", ["Skyddsstatus",
+                                 "FolkbokforingsbevakningTillOchMed"])
+def test_pseudonymize_removes(key) -> None:
+  data = {key: "2027-01-01", "Rattigheter": [{key: "SEKRETESS"}]}
+  ladok3.pseudonymize(data)
+  assert data == {"Rattigheter": [{}]}
+@
+
 Let's verify that every field we promise to replace is replaced, also when
 the record is nested.
 The observed leaks were in nested records: [[SenastAndradAv]] inside a
@@ -1045,13 +1056,6 @@ The UIDs must survive: they are what lets a reader follow the same student
 or course round from one example output to the next.
 The list form of [[Beslutsfattare]] is such a list of UIDs.
 <<test functions>>=
-@pytest.mark.parametrize("key", ["Skyddsstatus",
-                                 "FolkbokforingsbevakningTillOchMed"])
-def test_pseudonymize_removes(key) -> None:
-  data = {key: "2027-01-01", "Rattigheter": [{key: "SEKRETESS"}]}
-  ladok3.pseudonymize(data)
-  assert data == {"Rattigheter": [{}]}
-
 def test_pseudonymize_keeps_uids() -> None:
   uid = "00000000-0000-0000-0000-000000000001"
   data = {"Uid": uid, "StudentUID": uid, "Beslutsfattare": [uid]}
