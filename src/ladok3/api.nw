@@ -4747,6 +4747,9 @@ keeps UTC, which is an hour or two behind; judged by its date, a round would
 still run for the first hours of the day after it ended.
 So when the caller gives no date, we take today's date in Sweden.
 The function takes the instant as an argument, so that the tests can fix it.
+Python's [[zoneinfo]] reads the time zones from the operating system, and
+Windows has none to read, so on Windows we depend on the [[tzdata]] package,
+which carries them (see [[pyproject.toml]]).
 <<functions>>=
 def swedish_today(now=None) -> datetime.date:
   """Return the date in Sweden at the instant `now`, an aware datetime

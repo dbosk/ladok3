@@ -33,7 +33,8 @@ dependencies = [
   "requests>=2.31.0,<3.0.0",
   "urllib3 (>=2.0)",
   "weblogin (>=1.25,<2.0)",
-  "canvaslms (>=6.12,<7.0)"
+  "canvaslms (>=6.12,<7.0)",
+  "tzdata (>=2024.1) ; sys_platform == 'win32'"
 ]
 
 [project.scripts]
