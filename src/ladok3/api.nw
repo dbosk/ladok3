@@ -908,6 +908,8 @@ example outputs in this documentation found real staff addresses leaking
 through it.
 Pseudonymization has to protect staff as well as students, so we replace it
 like any other email address.
+Examination occasions carry a similar field, [[SkapadAv]] (\enquote{created
+by}), with the username of the staff member who created the occasion.
 Similarly, the delivery-preference records use the bare key [[Epost]] where
 student records use [[Epostadress]], so we must cover both spellings.
 
@@ -918,6 +920,8 @@ newline-separated list of the teachers who took part in the grading.
 [[Anteckning]] (\enquote{note}) is free text, found on suspensions and
 results, and free text can name anyone, so we replace it wholesale rather
 than trying to find names in it.
+The same goes for the free text of an examination occasion,
+[[OvrigInformation]] (\enquote{other information}).
 When we report a result, we send [[Beslutsfattare]] as a list of UIDs (see
 [[finalize_result_JSON]]), but LADOK returns it as the examiner's name.
 We therefore replace only the string form and keep a list of UIDs, which
@@ -962,7 +966,9 @@ PSEUDONYMS = {
   "Postort": "Byn",
   "Telefonnummer": "0701234567",
   "SenastAndradAv": "user@domain.se",
+  "SkapadAv": "user@domain.se",
   "Anteckning": "Anteckning",
+  "OvrigInformation": "Övrig information",
   "OvrigaMedverkande": "Medarbetare",
 }
 
@@ -1021,7 +1027,8 @@ PSEUDONYMIZED_KEYS = [
   "Fornamn", "Efternamn", "Personnummer", "Epostadress", "Epost",
   "Anvandarnamn", "Utdelningsadress", "Postnummer", "Postort",
   "Telefonnummer", "SenastAndradAv", "Anteckning", "OvrigaMedverkande",
-  "Beslutsfattare", "Fodelsedata", "KonID", "Avliden",
+  "Beslutsfattare", "Fodelsedata", "KonID", "Avliden", "SkapadAv",
+  "OvrigInformation",
 ]
 
 @pytest.mark.parametrize("key", PSEUDONYMIZED_KEYS)
