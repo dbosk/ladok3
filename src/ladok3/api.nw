@@ -895,10 +895,10 @@ def remove_links(json_obj: dict | list) -> None:
       remove_links(item)
 @
 
-The [[pseudonymize]] function replaces names and personnummer with dummy
-entries.
-Most of the fields it covers describe the student: name, personnummer and
-contact details.
+The [[pseudonymize]] function replaces the data that identify or describe a
+person with dummy entries.
+Most of the fields it covers describe the student: name, personnummer, date
+of birth, sex, whether the student is alive, and contact details.
 Two more fields are easy to miss precisely because they do \emph{not} describe
 the student.
 LADOK stamps most records with audit metadata, and [[SenastAndradAv]]
@@ -908,6 +908,8 @@ example outputs in this documentation found real staff addresses leaking
 through it.
 Pseudonymization has to protect staff as well as students, so we replace it
 like any other email address.
+Examination occasions carry a similar field, [[SkapadAv]] (\enquote{created
+by}), with the username of the staff member who created the occasion.
 Similarly, the delivery-preference records use the bare key [[Epost]] where
 student records use [[Epostadress]], so we must cover both spellings.
 
@@ -918,6 +920,8 @@ newline-separated list of the teachers who took part in the grading.
 [[Anteckning]] (\enquote{note}) is free text, found on suspensions and
 results, and free text can name anyone, so we replace it wholesale rather
 than trying to find names in it.
+The same goes for the free text of an examination occasion,
+[[OvrigInformation]] (\enquote{other information}).
 When we report a result, we send [[Beslutsfattare]] as a list of UIDs (see
 [[finalize_result_JSON]]), but LADOK returns it as the examiner's name.
 We therefore replace only the string form and keep a list of UIDs, which
@@ -930,16 +934,30 @@ This is why the documentation's example outputs are scanned before we publish
 them (the [[check-doc-privacy]] target in the top-level [[Makefile]]):
 the scan counts the distinct values per key, so a new key that carries
 names stands out even though this function doesn't know about it.
+The count has two blind spots, though.
+It only helps when the examples show several people:
+an example about one student gives each of that student's fields one value,
+just as a pseudonym has one value.
+And it counts only text values, so a number or a truth value, such as the
+student's sex ([[KonID]]) or whether the student is deceased
+([[Avliden]]), never shows up in it at all.
+So every field that describes a person must be listed here, whether or not
+the scan would notice it.
 
 We keep the replacements in a table, so a new key is a one-line change.
 The names are deliberately unrealistic (\enquote{Studentzadeh}) and the
-personnummer is the fictive Tolvan's, so that no one mistakes the
-documentation's examples for real records.
+personnummer and date of birth are the fictive Tolvan's, so that no one
+mistakes the documentation's examples for real records.
+The sex becomes the neutral 0 and every student is alive:
+neither belongs in an example.
 <<constants>>=
 PSEUDONYMS = {
   "Fornamn": "Student",
   "Efternamn": "Studentzadeh",
   "Personnummer": "19121212-1212",
+  "Fodelsedata": "1912-12-12",
+  "KonID": 0,
+  "Avliden": False,
   "Epostadress": "user@domain.se",
   "Epost": "user@domain.se",
   "Anvandarnamn": "user@domain.se",
@@ -948,23 +966,38 @@ PSEUDONYMS = {
   "Postort": "Byn",
   "Telefonnummer": "0701234567",
   "SenastAndradAv": "user@domain.se",
+  "SkapadAv": "user@domain.se",
   "Anteckning": "Anteckning",
+  "OvrigInformation": "Övrig information",
   "OvrigaMedverkande": "Medarbetare",
 }
 
 PSEUDONYMS_IF_STRING = {
   "Beslutsfattare": "Examinator",
 }
+@
+
+Two keys say something about a person by being there at all:
+[[Skyddsstatus]] marks a protected identity (\enquote{sekretessmarkering})
+and [[FolkbokforingsbevakningTillOchMed]] says that LADOK watches the
+population register for changes to the student.
+A dummy value would still show that the record has the key, so we remove
+these keys instead, as [[remove_links]] does with the links.
+<<constants>>=
+REMOVED_KEYS = ["Skyddsstatus", "FolkbokforingsbevakningTillOchMed"]
 <<functions>>=
 def pseudonymize(json_obj: dict | list) -> None:
   """
   Recursively pseudonymizes a JSON data record in place.
 
   Replaces the values of the keys in `PSEUDONYMS` (names, personnummer,
-  contact details, free text) and the string values of the keys in
-  `PSEUDONYMS_IF_STRING`.  UIDs are kept.
+  date of birth, sex, contact details, free text) and the string values of
+  the keys in `PSEUDONYMS_IF_STRING`, and removes the keys in
+  `REMOVED_KEYS`.  UIDs are kept.
   """
   if isinstance(json_obj, dict):
+    for key in REMOVED_KEYS:
+      json_obj.pop(key, None)
     for key, pseudonym in PSEUDONYMS.items():
       if key in json_obj:
         json_obj[key] = pseudonym
@@ -976,6 +1009,17 @@ def pseudonymize(json_obj: dict | list) -> None:
   elif isinstance(json_obj, list):
     for item in json_obj:
       pseudonymize(item)
+@
+
+Let's verify that both keys are removed, also from nested records, and that
+nothing else in the record is touched.
+<<test functions>>=
+@pytest.mark.parametrize("key", ["Skyddsstatus",
+                                 "FolkbokforingsbevakningTillOchMed"])
+def test_pseudonymize_removes(key) -> None:
+  data = {key: "2027-01-01", "Rattigheter": [{key: "SEKRETESS"}]}
+  ladok3.pseudonymize(data)
+  assert data == {"Rattigheter": [{}]}
 @
 
 Let's verify that every field we promise to replace is replaced, also when
@@ -994,7 +1038,8 @@ PSEUDONYMIZED_KEYS = [
   "Fornamn", "Efternamn", "Personnummer", "Epostadress", "Epost",
   "Anvandarnamn", "Utdelningsadress", "Postnummer", "Postort",
   "Telefonnummer", "SenastAndradAv", "Anteckning", "OvrigaMedverkande",
-  "Beslutsfattare",
+  "Beslutsfattare", "Fodelsedata", "KonID", "Avliden", "SkapadAv",
+  "OvrigInformation",
 ]
 
 @pytest.mark.parametrize("key", PSEUDONYMIZED_KEYS)

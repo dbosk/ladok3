@@ -568,7 +568,7 @@ a re-recording becomes impossible to review.
 
 [[vcr_support]] already knows LADOK's main field names, such as [[Fornamn]],
 [[Personnummer]] and [[SenastAndradAv]].
-We adjust its lists in three places.
+We adjust its lists in a few places.
 \begin{description}
 \item[[[Uid]] ] is a login name in many services, so [[vcr_support]] replaces
   it.
@@ -579,11 +579,46 @@ We adjust its lists in three places.
 \item[[[OvrigaMedverkande]] ] (\enquote{other contributors}) lists the
   teachers who took part in grading a result, as free text.
 \item[[[Fodelsedata]] ] is the student's date of birth.
+\item[[[FolkbokforingsbevakningTillOchMed]] ] is the date until which LADOK
+  watches the population register for changes to the student.
+\item[[[SkapadAv]] ] (\enquote{created by}) is the username of the staff
+  member who created an examination occasion, like [[SenastAndradAv]], which
+  [[vcr_support]] treats as an email address.
+\item[[[OvrigInformation]] ] (\enquote{other information}) is the free text
+  of an examination occasion.
 \end{description}
+The pseudonymizer replaces text only.
+A student's sex ([[KonID]]) and whether the student is deceased
+([[Avliden]]) are a number and a truth value, so they are recorded as they
+are.
+The cassettes stay on the machine that recorded them (\cref{RecordingOwn}),
+and the documentation's examples go through [[pseudonymize]], which
+replaces them.
 <<constants>>=
 LADOK_LOGIN_KEYS = vcr_support.LOGIN_KEYS - {"uid"}
-LADOK_FREE_TEXT_KEYS = vcr_support.FREE_TEXT_KEYS | {"ovrigamedverkande"}
-LADOK_CONTACT_KEYS = vcr_support.CONTACT_KEYS | {"fodelsedata"}
+LADOK_EMAIL_KEYS = vcr_support.EMAIL_KEYS | {"skapadav"}
+LADOK_FREE_TEXT_KEYS = vcr_support.FREE_TEXT_KEYS \
+  | {"ovrigamedverkande", "ovriginformation"}
+LADOK_CONTACT_KEYS = vcr_support.CONTACT_KEYS \
+  | {"fodelsedata", "folkbokforingsbevakningtillochmed"}
+@
+
+Every field that we add must be replaced when a response is recorded.
+We give the pseudonymizer one record with all of them, as LADOK would send
+them, and require that none of the values survives.
+<<test functions>>=
+LADOK_FIELDS = {
+  "OvrigaMedverkande": "Anna Andersson\nBo Berg",
+  "Fodelsedata": "1912-12-12",
+  "FolkbokforingsbevakningTillOchMed": "2027-01-01",
+  "SkapadAv": "examiner",
+  "OvrigInformation": "Ask Anna Andersson about the room.",
+}
+
+def test_recordings_replace_ladoks_own_fields(pseudonymizer):
+  scrubbed = pseudonymizer.scrub_json(dict(LADOK_FIELDS))
+  for key, value in LADOK_FIELDS.items():
+    assert scrubbed[key] != value, key
 @
 
 The pseudonymizer also notes every original value it replaced, in a private
@@ -602,6 +637,7 @@ def pseudonymizer(request, recording):
     (key or "replay-only").encode(),
     originals if recording else None,
     login_keys=LADOK_LOGIN_KEYS,
+    email_keys=LADOK_EMAIL_KEYS,
     free_text_keys=LADOK_FREE_TEXT_KEYS,
     contact_keys=LADOK_CONTACT_KEYS)
 
