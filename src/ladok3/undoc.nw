@@ -406,38 +406,43 @@ def student_participation_JSON (self, studentUID):
 
 \section{[[hamtaStudieResultatForStudent_JSON]]}
 
-This doesn't seem to work.
+This method returned all study results of a student, under [[Resultat]].
+LADOK removed the endpoint behind it in its update of 20 October 2026; it now
+answers with a 404 and an HTML error page.
+The results of a student are still available, course by course, through
+[[student_results_JSON]].
+
+We keep the method for backwards compatibility, but it must fail clearly.
+It used to decode the response as JSON without looking at it, so the HTML
+page gave a [[JSONDecodeError]], which tells the caller nothing about LADOK.
+It now goes through [[get_query]], like the methods of the API chapters,
+which turns a failed request into a [[LadokAPIError]] that names the path and
+the status.
+That error is also what a caller that handles LADOK's errors already
+catches.
 <<LadokSession data methods>>=
 # added by GQMJr
 def hamtaStudieResultatForStudent_JSON (self, studentUID):
   """
   Returns the study results for a student.
+
+  LADOK removed this endpoint on 2026-10-20, so this raises LadokAPIError;
+  use student_results_JSON for a student's results on a course.
   """
-  r = self.session.get(url = self.base_gui_proxy_url +
-        '/resultat/internal/studieresultat/resultat/student/'+studentUID,
-        headers = self.headers).json()
-  return r
+  return self.get_query(
+    '/resultat/internal/studieresultat/resultat/student/' + studentUID)
 @
 
-Let's add a test.
-The function should return the student's results as a list under
-[[Resultat]].
-For our test student, the test environment returns an empty list from this
-old endpoint, so we can only check the form of the response.
+Let's verify that the method fails with LADOK's error.
+In a live run, the test also tells us if LADOK brings the endpoint back.
+We expect a [[LadokAPIError]] and not one of its subclasses, since a 404
+carries no message from LADOK.
 <<test functions>>=
 def test_hamtaStudieResultatForStudent_JSON(ladok):
-  r = ladok.hamtaStudieResultatForStudent_JSON(student_uid)
-  assert isinstance(r["Resultat"], list)
+  with pytest.raises(ladok3.LadokAPIError, match="404") as error:
+    ladok.hamtaStudieResultatForStudent_JSON(student_uid)
+  assert type(error.value) is ladok3.LadokAPIError
 @
-
-The output looks like this:
-\begin{pycode}[apitest]
-print(r"\begin{minted}{JSON}")
-print(json.dumps(ladok3.clean_data(
-                    ladok.hamtaStudieResultatForStudent_JSON(student_uid)),
-                 indent=2))
-print(r"\end{minted}")
-\end{pycode}
 
 
 \section{Helper methods}
