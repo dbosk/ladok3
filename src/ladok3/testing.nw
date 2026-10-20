@@ -586,6 +586,15 @@ We adjust its lists in a few places.
   [[vcr_support]] treats as an email address.
 \item[[[OvrigInformation]] ] (\enquote{other information}) is the free text
   of an examination occasion.
+\item[[[Attestant]] ] is whoever certified (attested) a result.
+  As a record, its name fields are replaced like any other name; as a plain
+  string, which LADOK's attestation views give, it is the name itself, like
+  [[Beslutsfattare]], which [[vcr_support]] already knows.
+  Both can instead hold LADOK's text that the examiner is missing, which
+  names no one.
+  The pseudonymizer replaces that too, and notes its words as originals,
+  so a later scan may flag them where they occur in public text:
+  a false alarm, which errs on the safe side.
 \end{description}
 The pseudonymizer replaces text only.
 A student's sex ([[KonID]]) and whether the student is deceased
@@ -595,6 +604,7 @@ The cassettes stay on the machine that recorded them (\cref{RecordingOwn}),
 and the documentation's examples go through [[pseudonymize]], which
 replaces them.
 <<constants>>=
+LADOK_NAME_KEYS = vcr_support.NAME_KEYS | {"attestant"}
 LADOK_LOGIN_KEYS = vcr_support.LOGIN_KEYS - {"uid"}
 LADOK_EMAIL_KEYS = vcr_support.EMAIL_KEYS | {"skapadav"}
 LADOK_FREE_TEXT_KEYS = vcr_support.FREE_TEXT_KEYS \
@@ -613,6 +623,7 @@ LADOK_FIELDS = {
   "FolkbokforingsbevakningTillOchMed": "2027-01-01",
   "SkapadAv": "examiner",
   "OvrigInformation": "Ask Anna Andersson about the room.",
+  "Attestant": "Bo Berg",
 }
 
 def test_recordings_replace_ladoks_own_fields(pseudonymizer):
@@ -636,6 +647,7 @@ def pseudonymizer(request, recording):
   return vcr_support.Pseudonymizer(
     (key or "replay-only").encode(),
     originals if recording else None,
+    name_keys=LADOK_NAME_KEYS,
     login_keys=LADOK_LOGIN_KEYS,
     email_keys=LADOK_EMAIL_KEYS,
     free_text_keys=LADOK_FREE_TEXT_KEYS,

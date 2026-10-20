@@ -914,7 +914,7 @@ Similarly, the delivery-preference records use the bare key [[Epost]] where
 student records use [[Epostadress]], so we must cover both spellings.
 
 Result records name people in three more places.
-[[Beslutsfattare]] (\enquote{decision maker}) is the examiner who attested
+[[Beslutsfattare]] (\enquote{decision maker}) is the examiner who decided
 the result, and [[OvrigaMedverkande]] (\enquote{other contributors}) is a
 newline-separated list of the teachers who took part in the grading.
 [[Anteckning]] (\enquote{note}) is free text, found on suspensions and
@@ -926,6 +926,17 @@ When we report a result, we send [[Beslutsfattare]] as a list of UIDs (see
 [[finalize_result_JSON]]), but LADOK returns it as the examiner's name.
 We therefore replace only the string form and keep a list of UIDs, which
 carries no name.
+[[Attestant]] is whoever certified (attested) the result in LADOK, who need
+not be the one who decided it.
+It comes in two shapes too:
+result histories give a record, whose name fields the rules above already
+replace, but attestation views give a plain string with the name.
+So we replace its string form in the same way.
+
+Where there is no examiner to name, LADOK puts its own text in these
+fields, \enquote{Uppgift om examinator saknas/Not applicable}.
+That text names no one, and a dummy name in its place would show an
+examiner where LADOK says there is none, so we keep it.
 
 The function only knows the keys it lists.
 If LADOK adds a field that names a person, that field goes through
@@ -974,7 +985,9 @@ PSEUDONYMS = {
 
 PSEUDONYMS_IF_STRING = {
   "Beslutsfattare": "Examinator",
+  "Attestant": "Examinator",
 }
+NO_EXAMINER_TEXTS = {"Uppgift om examinator saknas/Not applicable"}
 @
 
 Two keys say something about a person by being there at all:
@@ -1002,7 +1015,8 @@ def pseudonymize(json_obj: dict | list) -> None:
       if key in json_obj:
         json_obj[key] = pseudonym
     for key, pseudonym in PSEUDONYMS_IF_STRING.items():
-      if isinstance(json_obj.get(key), str):
+      value = json_obj.get(key)
+      if isinstance(value, str) and value not in NO_EXAMINER_TEXTS:
         json_obj[key] = pseudonym
     for value in json_obj.values():
       pseudonymize(value)
@@ -1039,7 +1053,7 @@ PSEUDONYMIZED_KEYS = [
   "Anvandarnamn", "Utdelningsadress", "Postnummer", "Postort",
   "Telefonnummer", "SenastAndradAv", "Anteckning", "OvrigaMedverkande",
   "Beslutsfattare", "Fodelsedata", "KonID", "Avliden", "SkapadAv",
-  "OvrigInformation",
+  "OvrigInformation", "Attestant",
 ]
 
 @pytest.mark.parametrize("key", PSEUDONYMIZED_KEYS)
@@ -1061,6 +1075,27 @@ def test_pseudonymize_keeps_uids() -> None:
   data = {"Uid": uid, "StudentUID": uid, "Beslutsfattare": [uid]}
   ladok3.pseudonymize(data)
   assert data == {"Uid": uid, "StudentUID": uid, "Beslutsfattare": [uid]}
+@
+
+The record form of [[Attestant]] in a result history must keep its UID too,
+while its name fields are replaced.
+And LADOK's own text that the examiner is missing names no one, so it must
+come through as it is, for both fields.
+<<test functions>>=
+def test_pseudonymize_keeps_the_attestant_record() -> None:
+  uid = "00000000-0000-0000-0000-000000000002"
+  data = {"Attestant": {"Fornamn": "Anna", "Efternamn": "Andersson",
+                        "Anvandarnamn": "anna@kth.se", "Uid": uid}}
+  ladok3.pseudonymize(data)
+  assert data["Attestant"] == {"Fornamn": "Student",
+                               "Efternamn": "Studentzadeh",
+                               "Anvandarnamn": "user@domain.se", "Uid": uid}
+
+@pytest.mark.parametrize("key", ["Attestant", "Beslutsfattare"])
+def test_pseudonymize_keeps_the_missing_examiner_text(key) -> None:
+  data = {key: "Uppgift om examinator saknas/Not applicable"}
+  ladok3.pseudonymize(data)
+  assert data == {key: "Uppgift om examinator saknas/Not applicable"}
 @
 
 
