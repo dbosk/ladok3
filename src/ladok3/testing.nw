@@ -586,10 +586,15 @@ We adjust its lists in a few places.
   [[vcr_support]] treats as an email address.
 \item[[[OvrigInformation]] ] (\enquote{other information}) is the free text
   of an examination occasion.
-\item[[[Attestant]] ] is the examiner who attested a result.
+\item[[[Attestant]] ] is whoever certified (attested) a result.
   As a record, its name fields are replaced like any other name; as a plain
-  string, which LADOK's attestation views give, it is a name itself, like
+  string, which LADOK's attestation views give, it is the name itself, like
   [[Beslutsfattare]], which [[vcr_support]] already knows.
+  Both can instead hold LADOK's text that the examiner is missing, which
+  names no one.
+  The pseudonymizer replaces that too, and notes its words as originals,
+  so a later scan may flag them where they occur in public text:
+  a false alarm, which errs on the safe side.
 \end{description}
 The pseudonymizer replaces text only.
 A student's sex ([[KonID]]) and whether the student is deceased
