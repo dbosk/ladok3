@@ -930,16 +930,22 @@ This is why the documentation's example outputs are scanned before we publish
 them (the [[check-doc-privacy]] target in the top-level [[Makefile]]):
 the scan counts the distinct values per key, so a new key that carries
 names stands out even though this function doesn't know about it.
+The count only helps when the examples show several people, though:
+an example about one student gives each of that student's fields one value,
+just as a pseudonym has one value.
+So a field that describes one person, such as the date of birth
+([[Fodelsedata]]), must be listed here, whether or not the scan notices it.
 
 We keep the replacements in a table, so a new key is a one-line change.
 The names are deliberately unrealistic (\enquote{Studentzadeh}) and the
-personnummer is the fictive Tolvan's, so that no one mistakes the
-documentation's examples for real records.
+personnummer and date of birth are the fictive Tolvan's, so that no one
+mistakes the documentation's examples for real records.
 <<constants>>=
 PSEUDONYMS = {
   "Fornamn": "Student",
   "Efternamn": "Studentzadeh",
   "Personnummer": "19121212-1212",
+  "Fodelsedata": "1912-12-12",
   "Epostadress": "user@domain.se",
   "Epost": "user@domain.se",
   "Anvandarnamn": "user@domain.se",
@@ -994,7 +1000,7 @@ PSEUDONYMIZED_KEYS = [
   "Fornamn", "Efternamn", "Personnummer", "Epostadress", "Epost",
   "Anvandarnamn", "Utdelningsadress", "Postnummer", "Postort",
   "Telefonnummer", "SenastAndradAv", "Anteckning", "OvrigaMedverkande",
-  "Beslutsfattare",
+  "Beslutsfattare", "Fodelsedata",
 ]
 
 @pytest.mark.parametrize("key", PSEUDONYMIZED_KEYS)
