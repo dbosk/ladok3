@@ -699,6 +699,11 @@ to their components and results.
 A list of objects, such as a course round's participants, we show by their
 number and class.
 The session is left out, since it is the same for all objects.
+A class can replace this with a form of its own:
+a course registration is shown on one line by its course code, round and
+dates, which is how a student's courses are best listed
+(\cref{CourseRegistration}).
+That form, too, reads only what the registration got when it was made.
 
 [[repr]] must not fail, nor ask LADOK for anything:
 a debugger or pytest calls it when something has already gone wrong, and an
@@ -1306,12 +1311,20 @@ For a list of objects, or other data with objects in it, we also provide
 It writes every [[LadokData]] object that it meets as its [[json]]
 dictionary, each with its own numbers, and dates in ISO format,
 \eg \enquote{2024-09-25}, the same format as LADOK uses.
+Since each object gets its own numbers, objects that share parts, such as a
+student and one of its courses, come back from [[restore]] as separate
+graphs, each with its own copy of the shared parts.
+To keep the objects connected, write the one that the others can be reached
+from, here the student.
 <<classes>>=
 class LadokDataEncoder(json.JSONEncoder):
   """JSON encoder for LadokData objects.
 
   Serialises LadokData objects as their `json` dictionaries, which `restore`
-  turns back into objects, and dates in ISO format.
+  turns back into objects, and dates in ISO format.  Each object is written
+  on its own, so objects that share parts are restored as separate graphs;
+  write the object that the others can be reached from to keep them
+  connected.
   """
   def default(self, object):
     """Convert LadokData objects and dates to JSON-serializable format.
@@ -3171,7 +3184,7 @@ def test_failed_participants_request_is_retried():
 
 \chapter{Course objects related to students}
 
-\section{Course registrations and a student's results}
+\section{Course registrations and a student's results}\label{CourseRegistration}
 
 Students register for a course.
 The [[CourseRegistration]] class represents this data from LADOK.
@@ -4815,6 +4828,7 @@ def test_equality_of_graphs_with_cycles():
   assert student == fully_loaded_student(ladok)
 
   changed = ladok3.restore(student.json, ladok=ladok)
+  assert student == changed
   result, = changed.courses(round_id="round-broken")[0].results()
   vars(result)["_CourseResult__last_modified"] = "changed"
   assert student != changed
