@@ -45,6 +45,9 @@ LAB1_uid = "39ca27fe-73d8-11e8-afa7-8e408e694e54"
 LAB1_instance_id = "39ca2861-73d8-11e8-b4e0-063f9afb40e3"
 KTH_org_id = "2474f616-dc41-11e8-8cc1-eaeeb71b497f"
 DD1301_student_uid = "3e76e4f7-f049-11eb-8cb6-0bb93b844502"
+DD1317_running_round_id = "9731dce7-c60c-11f0-9aa4-4a24d5f444fb"
+DD1317_running_round_dates = (datetime.date(2026, 8, 24),
+                              datetime.date(2027, 1, 11))
 
 <<test functions>>
 @ We will then add [[test_X()]] functions in the [[<<test functions>>]] code 
@@ -2684,19 +2687,32 @@ ladok.remove_result_draft_JSON(result["Uid"])
 \end{pycode}
 
 
-\section{[[participants_JSON]]}
+\section{[[participants_JSON]]}\label{ParticipantsJSON}
 
 The method returns JSON data containing a list of students (the participants in 
 the course round).
 (This is an extension of Maguire's original [[participants_JSON]] method.
 The essential difference is keyword arguments to filter which students to 
 include.)
+
+LADOK filters the list by the participants' [[deltagaretillstand]], a list of
+codes.
+The flags below each add one code; [[participant_states]] takes the codes
+themselves, which is what the course rounds use to select the participants
+in some states (\cref{CourseRoundParticipantsByState}).
+Without any keyword we send LADOK's own default.
+A list of codes counts as a keyword even when it is empty, so an empty list
+is sent as it is rather than replaced by the default; the course rounds never
+send one.
 <<LadokSession data methods>>=
 def participants_JSON(self, course_round_id: str, /, **kwargs) -> list:
   """Returns JSON record containing participants in a course identified by
   round ID.
-  Filters in kwargs: not_started, ongoing, registered, finished, cancelled"""
-  participants_types = []
+  Filters in kwargs: not_started, ongoing, registered, finished, cancelled,
+  and participant_states, a list of deltagaretillstand codes (e.g.
+  ["REGISTRERAD", "AVKLARAD"]).  Returns at most PARTICIPANTS_LIMIT
+  participants."""
+  participants_types = list(kwargs.get("participant_states", []))
   if "not_started" in kwargs and kwargs["not_started"]:
     participants_types.append("EJ_PABORJAD")
   if "ongoing" in kwargs and kwargs["ongoing"]:
@@ -2717,7 +2733,7 @@ def participants_JSON(self, course_round_id: str, /, **kwargs) -> list:
 
   put_data = {
     'page': 1,
-    'limit': 400,
+    'limit': PARTICIPANTS_LIMIT,
     'orderby': ['EFTERNAMN_ASC',
                 'FORNAMN_ASC',
                 'PERSONNUMMER_ASC',
@@ -2736,6 +2752,41 @@ def participants_JSON(self, course_round_id: str, /, **kwargs) -> list:
     err.add_note(f"Response data: {response}")
     raise LadokAPIError(f"Unexpected response format when fetching participants for "
                        f"round {course_round_id}: missing 'Resultat' key") from err
+@
+
+We ask for one page of at most 400 participants.
+A round with more is cut off; we name the limit so that the tests can tell
+when a list may be.
+<<constants>>=
+PARTICIPANTS_LIMIT = 400
+@
+
+Let's verify what we send, without LADOK: we call the method on a stand-in
+for the session that records the request.
+The codes in [[participant_states]] are sent as they are, before those of
+any flags; no keyword at all sends the default.
+<<test functions>>=
+class SessionRecordingPuts:
+  def __init__(self):
+    self.sent = []
+
+  def put_query(self, path, data, content_type):
+    self.sent.append(data["deltagaretillstand"])
+    return {"Resultat": []}
+
+@pytest.mark.parametrize("kwargs,codes", [
+  ({}, ["PAGAENDE", "REGISTRERAD", "AVKLARAD"]),
+  ({"participant_states": ["EJ_PABORJAD", "AVBROTT"]},
+   ["EJ_PABORJAD", "AVBROTT"]),
+  ({"cancelled": True, "participant_states": ["AVKLARAD"]},
+   ["AVKLARAD", "AVBROTT"]),
+  ({"finished": True}, ["AVKLARAD"]),
+])
+def test_participants_JSON_sends_the_codes(kwargs, codes) -> None:
+  session = SessionRecordingPuts()
+  assert ladok3.LadokSession.participants_JSON(session, "round", **kwargs) \
+    == []
+  assert session.sent == [codes]
 @
 
 We test this as follows.
@@ -2760,6 +2811,47 @@ results = list(filter(
 print(json.dumps(results, indent=2, ensure_ascii=False))
 print(r"\end{minted}")
 \end{pycode}
+
+Against LADOK, we check the participant list's codes on a round of DD1317
+that runs from 24 August 2026 to 11 January 2027, so that the code for the
+ongoing participants is among those we ask for.
+We ask for the participants of each state, with the codes that the round's
+dates give for it on the day of the answers (\cref{ParticipationState}), and
+for those with the one code that no state uses, [[PAGAENDE]].
+What must hold on any day from the start of the round:
+each participant is in at most one of these lists, and LADOK's default list
+is the union of the lists of [[PAGAENDE]], [[REGISTRERAD]] and
+[[AVKLARAD]], since those are the codes it defaults to, and
+[[REGISTRERAD]] is ongoing or unfinished, whichever the day makes it.
+No list may be full, since a full list may have been cut off
+([[PARTICIPANTS_LIMIT]]).
+We compare the students' LADOK IDs and assert on counts, so that a failure
+shows no one.
+<<test functions>>=
+def test_participant_states_partition_a_round(ladok, recording,
+                                              vcr) -> None:
+  today = date_of_answers(recording, vcr)
+  start, end = DD1317_running_round_dates
+
+  def students(**kwargs):
+    participants = ladok.participants_JSON(DD1317_running_round_id,
+                                           **kwargs)
+    assert len(participants) < ladok3.PARTICIPANTS_LIMIT
+    return {participant["Student"]["Uid"] for participant in participants}
+
+  by_state = {}
+  for state in ladok3.COURSE_STATES:
+    codes = ladok3.participant_codes(state, start, end, today)
+    by_state[state] = students(participant_states=codes) if codes else set()
+  pagaende = students(participant_states=["PAGAENDE"])
+  default = students()
+
+  lists = [pagaende, *by_state.values()]
+  assert sum(map(len, lists)) == len(set().union(*lists))
+  assert len(default ^ (pagaende | by_state["ongoing"]
+                        | by_state["unfinished"]
+                        | by_state["completed"])) == 0
+@
 
 
 \chapter{Other API calls}

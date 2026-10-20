@@ -3427,8 +3427,20 @@ def __fetch_results(self):
 We want to get a list of participants for a course round, \ie a list of
 [[Student]] objects.
 <<CourseRound data methods>>=
-def participants(self, /, **kwargs):
-  """Returns a Student object for each participant in the course."""
+def participants(self, /, state=None, today=None, **kwargs):
+  """Returns a Student object for each participant in the course.
+
+  Without `state`, the participants that LADOK's participant list gives
+  by default.  With `state`, an English state name or an iterable of
+  them (see ladok3.COURSE_STATES), the participants in those states on
+  this round as LADOK's participant list defines them, judged on `today`
+  (default: the current date).  Raises ValueError for any other name.
+
+  Filtered on the other keywords, see ladok3.filter_on_keys.
+  """
+  if state is not None:
+    return filter_on_keys(self.__participants_in_states(state, today),
+                          **kwargs)
   try:
     self.__participants
   except:
@@ -3446,9 +3458,13 @@ failed [[participants_JSON]] left the course round without participants, in
 the cache too.
 <<CourseRound data methods>>=
 def __fetch_participants(self):
-  self.__participants = [
-    self.ladok.get_student(student["Student"]["Uid"])
-    for student in self.ladok.participants_JSON(self.round_id)]
+  self.__participants = self.__students(
+    self.ladok.participants_JSON(self.round_id))
+
+def __students(self, participants):
+  """Returns the Student objects for LADOK's participant records"""
+  return [self.ladok.get_student(student["Student"]["Uid"])
+          for student in participants]
 @
 
 Let's verify that a failed request for the participants is retried.
@@ -3482,6 +3498,279 @@ def test_failed_participants_request_is_retried():
 
   student, = course_round.participants()
   assert student.ladok_id == "student-uid"
+@
+
+\subsection{Participants by state}\label{CourseRoundParticipantsByState}
+
+Often we want only some of a round's participants, for instance those who
+take it now or those who broke off: [[course_round.participants(state=...)]],
+with the English state names of a student's courses
+(\cref{StudentCoursesByState}).
+
+A student can tell the state of each of its own courses
+(\cref{CourseRegistrationState}), but asking each participant would cost a
+request per student.
+LADOK's participant list can filter on the server instead, in the one
+request that lists the participants, by the participant's
+[[deltagaretillstand]] on the round (\cref{ParticipantsJSON}).
+So we ask once per round.
+
+The participant list has a vocabulary of its own, though, and it does not
+name a student's states.
+We compared the two on 2026-10-20: the participant list's filter on
+DD1301's rounds of 2026, which had all started or ended, and on a running
+round of DD1317, against the state of each sampled participant's own
+registration on the round (\cref{ParticipationState}).
+\begin{description}
+\item[{[[REGISTRERAD]]}] (registered) holds the students who take the course:
+  they are ongoing while the round runs (4 of 4 on DD1317, which had 177
+  registered students) and unfinished once it has ended (15 of 15).
+\item[{[[EJ_PABORJAD]]}] (not started) holds the students who have not
+  started: they are upcoming until the round has ended (3 of 3 on rounds
+  that had not started, and on the running round too).
+  On a round that has ended the code still holds them, while their own
+  registrations are in no state (7 of 7).
+\item[{[[AVKLARAD]]}] (completed) is completed (15 of 15, and 2 of 2 on the
+  running round).
+\item[{[[AVBROTT]]}] (broken off) holds the interrupted students (3), but
+  also those who broke off early ([[tidigtavbrott]]) and those who withdrew
+  after breaking off, whose own registrations are in no state (10).
+\item[{[[PAGAENDE]]}] (ongoing, literally) held no one on the running round,
+  so it does not mean what its name says, and we do not know what it means.
+  We never send it for a state, but it stays in the participant list's
+  default.
+\end{description}
+So the round's dates translate a state to a code, just as they translate a
+registration's summary to a state on the student's side.
+Two states do not depend on the dates; the other three do, by where today
+falls relative to the round, with the same convention as on the student's
+side (both the first and the last day count as running).
+A state that has no code on a round, such as ongoing on a round that has
+ended, holds no one there.
+<<constants>>=
+PARTICIPANT_CODE_BY_STATE = {
+  "completed": "AVKLARAD",
+  "interrupted": "AVBROTT",
+}
+
+PARTICIPANT_CODE_BY_STATE_AND_TIMING = {
+  ("ongoing", "running"): "REGISTRERAD",
+  ("unfinished", "ended"): "REGISTRERAD",
+  ("upcoming", "upcoming"): "EJ_PABORJAD",
+  ("upcoming", "running"): "EJ_PABORJAD",
+}
+@
+
+[[participant_codes]] translates the states to the codes for a round.
+It checks the states as [[Student.courses]] does, and gives the codes in the
+order of [[COURSE_STATES]], so that the same states give the same request,
+whatever order they were asked for in.
+It also gives each code once.
+With the tables as they are, no two states share a code on the same day,
+since ongoing and unfinished are told apart by the dates; but the tables are
+what we have learnt so far, and if two states came to share a code, it must
+still be sent once.
+<<functions>>=
+def participant_codes(state, start, end, today=None):
+  """Returns the deltagaretillstand codes of LADOK's participant list
+  that select the participants in `state` (an English state name or an
+  iterable of them, see COURSE_STATES) on a round from `start` to `end`,
+  judged on `today` (default: the current date).  Each code once; an
+  empty list if no participant can be in those states on that day."""
+  timing = round_timing(start, end, today)
+  codes = []
+  for name in course_states(state):
+    code = PARTICIPANT_CODE_BY_STATE.get(name) \
+      or PARTICIPANT_CODE_BY_STATE_AND_TIMING.get((name, timing))
+    if code and code not in codes:
+      codes.append(code)
+  return codes
+@
+
+Let's verify the translation on a round from 31 August 2026 to 15 January
+2027, judged before it starts, while it runs, on its first and last days, and
+after it has ended.
+<<test functions>>=
+ROUND_START = datetime.date(2026, 8, 31)
+ROUND_END = datetime.date(2027, 1, 15)
+ALL_STATES = ["ongoing", "upcoming", "unfinished", "completed",
+              "interrupted"]
+
+@pytest.mark.parametrize("today,codes", [
+  (datetime.date(2026, 8, 1), ["EJ_PABORJAD", "AVKLARAD", "AVBROTT"]),
+  (ROUND_START, ["REGISTRERAD", "EJ_PABORJAD", "AVKLARAD", "AVBROTT"]),
+  (datetime.date(2026, 10, 20),
+   ["REGISTRERAD", "EJ_PABORJAD", "AVKLARAD", "AVBROTT"]),
+  (ROUND_END, ["REGISTRERAD", "EJ_PABORJAD", "AVKLARAD", "AVBROTT"]),
+  (datetime.date(2027, 2, 1), ["REGISTRERAD", "AVKLARAD", "AVBROTT"]),
+])
+def test_participant_codes_of_all_states(today, codes):
+  assert ladok3.participant_codes(ALL_STATES, ROUND_START, ROUND_END,
+                                  today) == codes
+
+@pytest.mark.parametrize("state,today,codes", [
+  ("ongoing", datetime.date(2026, 10, 20), ["REGISTRERAD"]),
+  ("ongoing", datetime.date(2026, 8, 1), []),
+  ("ongoing", datetime.date(2027, 2, 1), []),
+  ("unfinished", datetime.date(2027, 2, 1), ["REGISTRERAD"]),
+  ("unfinished", datetime.date(2026, 10, 20), []),
+  ("upcoming", datetime.date(2026, 8, 1), ["EJ_PABORJAD"]),
+  ("upcoming", datetime.date(2026, 10, 20), ["EJ_PABORJAD"]),
+  ("upcoming", datetime.date(2027, 2, 1), []),
+  ("completed", datetime.date(2026, 8, 1), ["AVKLARAD"]),
+  ("interrupted", datetime.date(2027, 2, 1), ["AVBROTT"]),
+])
+def test_participant_codes_of_one_state(state, today, codes):
+  assert ladok3.participant_codes(state, ROUND_START, ROUND_END,
+                                  today) == codes
+@
+
+Two states that share a code send it once.
+No two states do with the tables as they are, so we change a table for the
+test.
+<<test functions>>=
+def test_participant_codes_send_a_shared_code_once(monkeypatch):
+  monkeypatch.setitem(ladok3.PARTICIPANT_CODE_BY_STATE,
+                      "interrupted", "AVKLARAD")
+  assert ladok3.participant_codes(["completed", "interrupted"],
+                                  ROUND_START, ROUND_END,
+                                  datetime.date(2026, 10, 20)) \
+    == ["AVKLARAD"]
+@
+
+Every English state must have a code on some day, and nothing else may.
+<<test functions>>=
+def test_participant_codes_cover_the_course_states():
+  states = set(ladok3.PARTICIPANT_CODE_BY_STATE) \
+    | {state for state, _ in ladok3.PARTICIPANT_CODE_BY_STATE_AND_TIMING}
+  assert states == set(ladok3.COURSE_STATES)
+@
+
+The list of participants in some states is a list of its own.
+It must not replace the default list, which holds other states, so we keep
+the lists per request, under the tuple of codes: asking for
+[[{"completed", "ongoing"}]] and then for [[["ongoing", "completed"]]] costs
+one request, and so does asking for unfinished after the round has ended,
+when it means the same code as ongoing did while it ran.
+The key is a tuple rather than a set, since the round must survive the round
+trip through JSON (\cref{LadokDataJSON}), which can write a tuple but not a
+set.
+States without a code on the round select no one and need no request; sent
+to LADOK, an empty filter would mean something else.
+As for the default list, we remember a list only once it is complete
+(\cref{FailuresMustNotStick}).
+<<CourseRound data methods>>=
+def __participants_in_states(self, state, today):
+  """Returns the participants in `state` on `today`, asking LADOK once
+  per set of codes"""
+  codes = tuple(participant_codes(state, self.start, self.end, today))
+  if not codes:
+    return []
+  try:
+    return self.__participants_by_codes[codes]
+  except (AttributeError, KeyError):
+    pass
+  participants = self.__students(self.ladok.participants_JSON(
+    self.round_id, participant_states=list(codes)))
+  try:
+    participants_by_codes = self.__participants_by_codes
+  except AttributeError:
+    participants_by_codes = self.__participants_by_codes = {}
+  participants_by_codes[codes] = participants
+  return participants
+@
+
+To test this, we need a LADOK whose participant list records the codes that
+it is asked for.
+It gives one participant per code, so that the result shows which codes it
+was given.
+The test round runs from 31 August to 23 October 2026, so we judge it on 20
+October 2026.
+<<test functions>>=
+class FakeLadokForParticipantStates(FakeLadokForParticipants):
+  def __init__(self):
+    self.requests = []
+
+  def participants_JSON(self, round_id, **kwargs):
+    self.requests.append(kwargs.get("participant_states"))
+    codes = kwargs.get("participant_states") or ["DEFAULT"]
+    return [{"Student": {"Uid": f"student-{code}"}} for code in codes]
+
+def ids(students):
+  return [student.ladok_id for student in students]
+
+RUNNING_DAY = datetime.date(2026, 10, 20)
+@
+
+A request asks for exactly the codes of the states, once per set of codes,
+and does not touch the default list.
+A state without a code on the round asks nothing.
+<<test functions>>=
+def test_participants_by_state_ask_once_per_set_of_codes():
+  ladok = FakeLadokForParticipantStates()
+  course_round = make_test_course_round(ladok)
+
+  assert ids(course_round.participants(state="interrupted",
+                                       today=RUNNING_DAY)) \
+    == ["student-AVBROTT"]
+  assert ids(course_round.participants(state={"completed", "ongoing"},
+                                       today=RUNNING_DAY)) \
+    == ["student-REGISTRERAD", "student-AVKLARAD"]
+  course_round.participants(state=["ongoing", "completed"],
+                            today=RUNNING_DAY)
+  course_round.participants(state="interrupted", today=RUNNING_DAY)
+  assert course_round.participants(state="unfinished",
+                                   today=RUNNING_DAY) == []
+  assert ladok.requests == [["AVBROTT"], ["REGISTRERAD", "AVKLARAD"]]
+
+  assert ids(course_round.participants()) == ["student-DEFAULT"]
+  assert ladok.requests == [["AVBROTT"], ["REGISTRERAD", "AVKLARAD"], None]
+@
+
+After the round, unfinished asks for the code that ongoing asked for while
+the round ran, and gets the remembered list.
+<<test functions>>=
+def test_participants_by_state_share_a_request_for_the_same_codes():
+  ladok = FakeLadokForParticipantStates()
+  course_round = make_test_course_round(ladok)
+
+  ongoing = course_round.participants(state="ongoing", today=RUNNING_DAY)
+  unfinished = course_round.participants(state="unfinished",
+                                         today=datetime.date(2026, 11, 1))
+  assert ids(unfinished) == ids(ongoing) == ["student-REGISTRERAD"]
+  assert ladok.requests == [["REGISTRERAD"]]
+@
+
+The round refuses what a student refuses, before it asks.
+<<test functions>>=
+@pytest.mark.parametrize("state,error", [
+  ("Ongoing", ValueError), ("AVBROTT", ValueError), (5, TypeError)])
+def test_participants_by_state_refuse_unknown_states(state, error):
+  ladok = FakeLadokForParticipantStates()
+  course_round = make_test_course_round(ladok)
+  with pytest.raises(error):
+    course_round.participants(state=state, today=RUNNING_DAY)
+  assert ladok.requests == []
+@
+
+The lists per set of codes are attributes like the others, so they must
+survive the round trips through JSON and [[pickle]] without asking again.
+<<test functions>>=
+def test_participants_by_state_survive_round_trips():
+  ladok = FakeLadokForParticipantStates()
+  course_round = make_test_course_round(ladok)
+  states = ["completed", "interrupted"]
+  course_round.participants(state=states, today=RUNNING_DAY)
+
+  for json_data in [course_round.json, through_json_text(course_round)]:
+    restored = ladok3.restore(json_data, ladok=ladok)
+    assert restored == course_round
+    assert ids(restored.participants(state=states, today=RUNNING_DAY)) \
+      == ["student-AVKLARAD", "student-AVBROTT"]
+  unpickled = pickle.loads(pickle.dumps(course_round))
+  unpickled.participants(state=states, today=RUNNING_DAY)
+  assert unpickled.ladok.requests == [["AVKLARAD", "AVBROTT"]]
+  assert ladok.requests == [["AVKLARAD", "AVBROTT"]]
 @
 
 
