@@ -233,7 +233,7 @@ def get_session(config_file=None):
       tuple: (LadokSession, credentials) where credentials is a dict.
 
   Raises:
-      ValueError: If a cached session exists but cannot be decrypted.
+      ValueError: If the credentials are missing.
   """
   if config_file is None:
     config_file = default_config_file()
@@ -268,9 +268,10 @@ def test_get_session_defaults_config_file(monkeypatch):
 @
 
 The CLI calls [[get_session]] with the user-supplied config file path.
-We catch [[ValueError]] separately because it indicates a corrupted or
-unreadable cache---the user should know about that rather than silently
-creating a new session.
+We catch [[ValueError]] separately because it means that the
+credentials are missing, which the user must fix (see [[ladok login]]).
+A cached session that cannot be decrypted is no such error: we warn and
+log in afresh, see \cref{decrypting-the-cache}.
 <<create or restore the LadokSession ls>>=
 try:
   ls, LADOK_VARS = get_session(args.config_file)
@@ -429,15 +430,31 @@ Then we do the encryption/decryption.
 
 fernet_protocol = Fernet(key)
 encrypted_ls = fernet_protocol.encrypt(pickled_ls)
+@
 
+Decryption can fail, and then we warn and treat the cache as
+missing\label{decrypting-the-cache}, so the caller logs in afresh.
+Fernet verifies a token before decrypting it and raises [[InvalidToken]]
+if that fails.
+It deliberately does not say why: a key derived from other credentials
+and a damaged file look the same.
+So the warning cannot say which of the two happened, but we keep it, so
+that a cache that keeps failing gets noticed rather than silently
+costing a login on every run.
+[[InvalidToken]] carries no message, so formatting [[error]] alone left
+the warning ending in a bare colon.
+When the message is empty we print the exception's class name instead.
+We still print the message when there is one: we catch any exception
+here, and only [[InvalidToken]] is known to have none.
 <<decrypt encrypted ls>>=
 <<set up kdf and derive key from credentials>>
 
 fernet_protocol = Fernet(key)
 try:
   pickled_ls = fernet_protocol.decrypt(encrypted_ls)
-except Exception as err:
-  warn(f"cache was corrupted, cannot decrypt: {err}")
+except Exception as error:
+  warn("cache was corrupted, cannot decrypt: "
+       f"{str(error) or type(error).__name__}")
   pickled_ls = None
 
 <<restore pickled ls>>=
@@ -446,9 +463,9 @@ try:
 except (AttributeError,
         ImportError,
         ModuleNotFoundError,
-        pickle.UnpicklingError) as err:
+        pickle.UnpicklingError) as error:
   warn("cache refers to unavailable optional classes, retrying without "
-       f"those handlers: {err}")
+       f"those handlers: {error}")
   ls = tolerant_pickle_loads(pickled_ls)
   drop_unimportable_handlers(ls)
   return ls
@@ -740,6 +757,28 @@ def test_session_cache_needs_same_credentials(cache_dir, monkeypatch,
   assert ladok3.cli.restore_ladok_session(credentials) is None
   assert len(warnings) == 1
   assert "cannot decrypt" in warnings[0]
+  assert warnings[0].endswith(": InvalidToken")
+@
+
+A damaged cache file must give the same warning and a fresh login, since
+Fernet cannot tell it from a wrong key.
+We damage a stored cache in two ways: flipping one byte, as a disk or
+copy error would, and cutting it short, as an interrupted write would.
+<<test functions>>=
+@pytest.mark.parametrize("damage", [
+  lambda data: data[:-1] + bytes([data[-1] ^ 1]),
+  lambda data: data[:len(data) // 2],
+], ids=["flipped byte", "truncated"])
+def test_session_cache_damaged_file(cache_dir, monkeypatch, damage):
+  warnings = []
+  monkeypatch.setattr(ladok3.cli, "warn", warnings.append)
+  ladok3.cli.store_ladok_session(offline_session(), CACHE_CREDENTIALS)
+  cache_file = cache_dir / "LadokSession"
+  cache_file.write_bytes(damage(cache_file.read_bytes()))
+
+  assert ladok3.cli.restore_ladok_session(CACHE_CREDENTIALS) is None
+  assert len(warnings) == 1
+  assert warnings[0].endswith("cannot decrypt: InvalidToken")
 @
 
 
