@@ -118,21 +118,7 @@ We can do this in two ways:
 
 We'll use [[argparse]] to parse the command-line options.
 <<process command-line options>>=
-argp = argparse.ArgumentParser(
-  description="This is a CLI-ification of LADOK3's web GUI.",
-  epilog="Copyright (c) 2020 Alexander Baltatzis, Gerald Q. Maguire Jr.;\n"
-         "              2021--2026 Daniel Bosk;\n"
-         "              2026 Christian Ohm.\n"
-         "Licensed under MIT. "
-         "Web: https://github.com/dbosk/ladok3"
-)
-<<add global configuration options>>
-subp = argp.add_subparsers(
-  title="commands",
-  dest="command",
-  required=True
-)
-<<add subparsers to subp>>
+argp = make_argument_parser()
 argcomplete.autocomplete(argp)
 args = argp.parse_args()
 <<configure logging based on verbose flag>>
@@ -142,7 +128,37 @@ args = argp.parse_args()
 <<save LadokSession ls>>
 @
 
-For each subcommand, we will add a subparser ([[subp.add_parser]]) that will 
+We build the parser in a function of its own rather than inline in
+[[main]].
+Then a test can parse a real command line with exactly the parser that
+[[main]] uses, global options and subcommands included, without logging
+in to LADOK.
+That matters where the two levels interact, as when a subcommand accepts
+an option that the top-level parser also has (\cref{report-verbose-alias}).
+<<functions>>=
+def make_argument_parser():
+  """Return the argument parser of the `ladok` command, with all
+  subcommands added."""
+  argp = argparse.ArgumentParser(
+    description="This is a CLI-ification of LADOK3's web GUI.",
+    epilog="Copyright (c) 2020 Alexander Baltatzis, "
+           "Gerald Q. Maguire Jr.;\n"
+           "              2021--2026 Daniel Bosk;\n"
+           "              2026 Christian Ohm.\n"
+           "Licensed under MIT. "
+           "Web: https://github.com/dbosk/ladok3"
+  )
+  <<add global configuration options>>
+  subp = argp.add_subparsers(
+    title="commands",
+    dest="command",
+    required=True
+  )
+  <<add subparsers to subp>>
+  return argp
+@
+
+For each subcommand, we will add a subparser ([[subp.add_parser]]) that will
 set the [[func]] attribute.
 Then we can execute the correct function and let that function check the 
 remaining arguments.
@@ -772,7 +788,7 @@ available, so we can use [[args.config_file]] directly when we want to access
 the configuration file.
 
 
-\paragraph{Controlling verbosity}
+\paragraph{Controlling verbosity}\label{controlling-verbosity}
 
 The CLI used to print warnings and errors with ad-hoc [[print(...,
 file=sys.stderr)]] calls.  We now route everything through Python's
