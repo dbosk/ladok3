@@ -129,7 +129,7 @@ report_parser.add_argument("-f", "--finalize",
 )
 @
 
-\subsection{The old [[-v]] option}
+\subsection{The old [[-v]] option}\label{report-verbose-alias}
 
 [[report]] used to have a [[-v]] option of its own, which printed the
 results it reported.
@@ -140,7 +140,7 @@ Scripts written before that, typically run by [[cron]], still say
 Without the old option the parser rejects that as an unknown argument,
 and the script reports nothing.
 We therefore accept [[-v]] after [[report]] as well, as an alias for the
-global option: it counts into the same [[verbose]] value, so
+global option: it sets the same [[verbose]] value, so
 [[ladok report -fv]] and [[ladok -v report -f]] mean the same thing.
 We don't add [[-q]] here, since [[report]] never had it.
 
@@ -152,8 +152,9 @@ With a default of 0, the copy would reset the count that a global
 [[-v]] had set, so [[ladok -v report -f]] would lose its [[-v]].
 With [[SUPPRESS]] the value exists only if [[-v]] was given after
 [[report]], and then it replaces the global count.
-So [[ladok -v report -v]] counts one [[-v]], not two, which no script
-needs.
+So [[ladok -v report -v]] counts one [[-v]], not two.
+Adding the two counts would need a [[dest]] of its own that [[main]]
+adds to the global count, which no script needs.
 <<add report command arguments to report parser>>=
 report_parser.add_argument("-v", "--verbose",
   action="count",
@@ -175,6 +176,7 @@ built here would check only our copy of the global options.
   (["report", "-fvv"], 2),
   (["-v", "report", "-f"], 1),
   (["-vv", "report", "-f"], 2),
+  (["-vv", "report", "-fv"], 1),  # report's count replaces the global
 ])
 def test_report_accepts_verbose_at_both_levels(argv, verbose):
   args = ladok3.cli.make_argument_parser().parse_args(argv)
@@ -199,12 +201,12 @@ many_parser.add_argument("-d", "--delimiter",
     "use `-d,` or `-d ,` to get comma-separated values.")
 @
 
-Bulk reporting used to define its own [[-v]] flag here.  We now rely on
-the global [[-v]]/[[-q]] flags defined in [[ladok3.cli]] so that
-verbosity behaves identically across every subcommand: a wrapper script
-that passes [[-v]] once gets [[INFO]]-level reporting from both
-[[ladok report]] and any other [[ladok]] subcommand it invokes, with no
-duplicated flag parsing here.  The per-row stderr message and the
+Bulk reporting used to define its own [[-v]] flag here.  It is now the
+alias for the global [[-v]] (\cref{report-verbose-alias}), so verbosity
+behaves identically across every subcommand: a wrapper script that
+passes [[-v]] once gets [[INFO]]-level reporting from both
+[[ladok report]] and any other [[ladok]] subcommand it invokes.  The
+per-row stderr message and the
 ``reported \dots'' confirmation are now produced via this module's
 [[logger]] (see below).
 @

@@ -134,7 +134,7 @@ Then a test can parse a real command line with exactly the parser that
 [[main]] uses, global options and subcommands included, without logging
 in to LADOK.
 That matters where the two levels interact, as when a subcommand accepts
-an option that the top-level parser also has (see [[report]]'s [[-v]]).
+an option that the top-level parser also has (\cref{report-verbose-alias}).
 <<functions>>=
 def make_argument_parser():
   """Return the argument parser of the `ladok` command, with all
