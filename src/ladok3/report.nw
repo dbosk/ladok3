@@ -24,6 +24,7 @@ We provide a function [[add_command_options]] that adds the subcommand options
 to a given parser.
 We need access to LADOK through the [[ladok3]] module.
 <<[[report.py]]>>=
+import argparse
 import csv
 import datetime
 import ladok3
@@ -70,6 +71,7 @@ import types
 import pytest
 
 import ladok3
+import ladok3.cli
 import ladok3.report
 
 <<test helpers>>
@@ -125,6 +127,59 @@ report_parser.add_argument("-f", "--finalize",
   action="store_true",
   default=False
 )
+@
+
+\subsection{The old [[-v]] option}
+
+[[report]] used to have a [[-v]] option of its own, which printed the
+results it reported.
+The global [[-v]]/[[-q]] options (\cref{controlling-verbosity})
+replaced it, so the verbose form is now [[ladok -v report -f]].
+Scripts written before that, typically run by [[cron]], still say
+[[ladok report -fv]].
+Without the old option the parser rejects that as an unknown argument,
+and the script reports nothing.
+We therefore accept [[-v]] after [[report]] as well, as an alias for the
+global option: it counts into the same [[verbose]] value, so
+[[ladok report -fv]] and [[ladok -v report -f]] mean the same thing.
+We don't add [[-q]] here, since [[report]] never had it.
+
+The alias needs [[default=argparse.SUPPRESS]], not the [[default=0]] of
+the global option.
+[[argparse]] parses a subcommand's arguments into a namespace of its
+own and then copies every value in it over the top-level namespace.
+With a default of 0, the copy would reset the count that a global
+[[-v]] had set, so [[ladok -v report -f]] would lose its [[-v]].
+With [[SUPPRESS]] the value exists only if [[-v]] was given after
+[[report]], and then it replaces the global count.
+So [[ladok -v report -v]] counts one [[-v]], not two, which no script
+needs.
+<<add report command arguments to report parser>>=
+report_parser.add_argument("-v", "--verbose",
+  action="count",
+  default=argparse.SUPPRESS,
+  help="Same as the global -v, kept for older scripts that put it "
+    "after report."
+)
+@
+
+Let's verify that both positions give the same verbosity, and that a
+global [[-v]] survives the subcommand.
+We parse with [[make_argument_parser]], the parser that [[main]] uses,
+because the problem lies in how the two levels interact: a test parser
+built here would check only our copy of the global options.
+<<test functions>>=
+@pytest.mark.parametrize("argv,verbose", [
+  (["report", "-f"], 0),
+  (["report", "-fv"], 1),
+  (["report", "-fvv"], 2),
+  (["-v", "report", "-f"], 1),
+  (["-vv", "report", "-f"], 2),
+])
+def test_report_accepts_verbose_at_both_levels(argv, verbose):
+  args = ladok3.cli.make_argument_parser().parse_args(argv)
+  assert args.verbose == verbose
+  assert args.finalize
 @
 
 
