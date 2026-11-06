@@ -1032,6 +1032,7 @@ def update_credentials_in_keyring(ls, args):
   print("""
 <<login prompt>>
 """)
+  matches = []
   while True:
     institution = input("Institution: ")
     <<check that institution uniquely identifies on SeamlessAccess>>
@@ -1066,20 +1067,39 @@ Now, we want to check that the institution is uniquely identified at
 SeamlessAccess using the name provided by the user.
 We do this by looking up the name and asking the user to change if not a unique 
 match.
+Some institution names are prefixes of other institution names, which makes it
+impossible to enter such a name and obtain a unique match.
+For example, "Chalmers" is a prefix of "Chalmers Library", so one can never type
+in the former and get a unique match.
+For such cases, we allow selecting a match from a previous search by number.
 <<check that institution uniquely identifies on SeamlessAccess>>=
-matches = sa.find_entity_data_by_name(institution)
 
-if not matches:
-  print("No match, try again.")
-  continue
+match = None
+if matches and institution.isdigit():
+  choice = int(institution)
+  if 0 < choice <= len(matches):
+    match = matches[choice - 1]
+  else:
+    print(
+      f"Invalid number: {choice}. "
+      f"Choose from 1 to {len(matches)}, or enter a name."
+    )
+    continue
 
-if len(matches) > 1:
-  print("More than one match. Which one?")
-  for match in matches:
-    print(f"- {match['title']}")
-  continue
+if not match:
+  matches = sa.find_entity_data_by_name(institution)
 
-match = matches[0]
+  if not matches:
+    print("No match, try again.")
+    continue
+
+  if len(matches) > 1:
+    print("More than one match. Which one? (Enter name or number.)")
+    for i, match in enumerate(matches):
+      print(f"{i+1:3d}: {match['title']}")
+    continue
+
+  match = matches[0]
 
 print(f"Matched uniquely, using {match['title']}\n"
       f"            with domain {match['domain']} and\n"
