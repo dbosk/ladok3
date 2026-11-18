@@ -49,9 +49,11 @@ import pytest
 We can also test [[CourseResult]] parsing without a live LADOK session by
 using small local stubs.
 <<test [[course_result.py]]>>=
+import datetime
 import types
 
 import ladok3
+import ladok3.report
 import pytest
 
 <<test course result helpers>>
@@ -4333,7 +4335,11 @@ class CourseResult(LadokRemoteData):
     return result
 
   def pull(self):
-    """Refresh the result from LADOK."""
+    """Refresh the result from LADOK.
+
+    If LADOK no longer has a result for the component, for instance because
+    it was removed in LADOK, the object becomes an empty result, so that
+    the next `set_grade` creates a new result."""
     data, attested, transfer = self.__pull_result_data()
     <<replace CourseResult attributes transactionally>>
 
@@ -4410,8 +4416,17 @@ self.__modified = False
 However, if this is a completely new result, it doesn't exist in LADOK.
 Then we lack quite a few of the attributes.
 A new result is neither finalized nor attested.
+It has none of LADOK's identifiers for a result either.
+We set them to [[None]] explicitly, rather than leaving them unset, because a
+refresh can turn an existing result into an empty one
+(\cref{CourseResultRemoved}).
+Without [[uid]], [[push]] creates a new result and takes the new identifiers
+from LADOK's answer; until then, nothing in the object refers to the removed
+result.
 <<populate CourseResult attributes for empty result>>=
 self.__uid = None
+self.__results_id = None
+self.__study_results_id = None
 self.__instance_id = self.__component.instance_id
 
 self.__date = None
@@ -4508,16 +4523,16 @@ component that happens to have no result yet.
 Along with the definitive result data we also return the matched entry's
 wrapper, so that a refresh renews the credit-transfer summary together with
 the grade state instead of leaving it stale.
-If LADOK no longer returns any entry for the component, then the cached object
-no longer has a corresponding remote result and we report that explicitly.
 <<fetch current CourseResult data from LADOK>>=
 response = self.ladok.student_results_JSON(
   self.__student.ladok_id, self.__component.course.education_id
 )["Kursversioner"][0]
 components = self.__component.course.components()
+transfer = None
 
 for result in response["VersionensModuler"]:
   if not has_recorded_result(result):
+    <<remember [[result]]'s summary if it is for this component>>
     continue
   try:
     data, attested = self.__choose_result_data(
@@ -4542,9 +4557,56 @@ if has_recorded_result(course_result):
     raise LadokError(
       "couldn't parse existing course result: "
       f"{course_result}") from err
+else:
+  result = course_result
+  <<remember [[result]]'s summary if it is for this component>>
 
-raise LadokNotFoundError(
-  f"{self.__component.code}: no result found in LADOK for refresh")
+<<return an empty result, since LADOK has none>>
+@
+
+\subsubsection{A result removed in LADOK}\label{CourseResultRemoved}
+
+The loop above can end without finding any result for the component.
+That happens when someone has removed the result in LADOK since we cached it.
+The typical case is the one in [[report.set_grade]]: LADOK refuses to change
+an attested result, so the reporter removes it in LADOK's web interface in
+order to report a new grade, and runs [[ladok report]] again.
+
+An earlier version raised [[LadokNotFoundError]] here.
+That made the reporter's re-run stop on the cached copy of the very result
+they had just removed, and only clearing the whole cache got them past it.
+The refresh was meant to spare them exactly that.
+
+The right answer is to make the object what a fresh fetch would make it.
+When [[CourseRegistration]] fills its results from the same payload, a
+component without a recorded result gets an empty placeholder
+([[<<add new CourseResult objects for missing components>>]]).
+So we return empty data, and the transactional replacement below turns this
+object into such a placeholder: [[__populate_attributes]] with no data takes
+the empty-result path, which keeps the component and forgets the removed
+result's identifiers.
+We must change the object itself rather than replace it, since it is the
+object that sits in the cached result list.
+Because the placeholder has no [[uid]], the next [[set_grade]] makes [[push]]
+create a new result in LADOK instead of updating the removed one.
+<<return an empty result, since LADOK has none>>=
+return {}, False, transfer
+@
+
+Like the fill path, the placeholder should carry the credit-transfer summary
+of its component, so that a transferred component still looks transferred
+after the reset.
+LADOK keeps a module's entry after a draft result is removed; we saw that in
+the recording of [[test_remove_result_draft_JSON]], where the entry is left
+with only the summary.
+(Should an entry be dropped instead, [[transfer]] stays [[None]] and the
+placeholder has no transfer, as on the fill path.)
+We match the entry on its top-level [[UtbildningsinstansUID]], the same key
+that [[<<remember [[result]]'s credit-transfer summary>>]] uses on the fill
+path.
+<<remember [[result]]'s summary if it is for this component>>=
+if result.get("UtbildningsinstansUID") == self.__component.instance_id:
+  transfer = result.get("ResultatPaUtbildning")
 @
 
 Even after LADOK has returned a replacement payload, repopulating the object
@@ -4585,6 +4647,7 @@ class FakeLadokForCourseResult:
         {"ID": 11, "Kod": "P", "GiltigSomSlutbetyg": True},
       ])
     self.__student_results_response = student_results_response
+    self.created = []
     if course_round_components_response is None:
       self.__course_round_components_response = {
         "UtbildningsinstansUID": "course-instance",
@@ -4612,6 +4675,8 @@ class FakeLadokForCourseResult:
 
   def set_student_results_response(self, response):
     self.__student_results_response = response
+
+  <<[[FakeLadokForCourseResult]] write methods>>
 
 
 def make_course_component_for_test(ladok):
@@ -5134,48 +5199,185 @@ def test_pull_course_result_refreshes_credit_transfer():
   assert result.transferred_credits == 1.5
 @
 
+A result that the user removed in LADOK must not stop the refresh.
+This is the field report behind \cref{CourseResultRemoved}: the user removed an
+attested result with a lower grade in LADOK's web interface, and the next
+[[ladok report]] stopped on the cached copy until the cache was cleared.
+
+After a removal, LADOK can answer in more than one shape, and the reset must
+handle each of them.
+The recording of [[test_remove_result_draft_JSON]] shows one: after a draft is
+removed, the module entry stays, but its wrapper holds only the
+credit-transfer summary.
+The course grade keeps its summary in [[VersionensKurs]] instead, and we
+should not rely on the entry staying at all, so we also try an answer without
+it.
+In every shape we add a sibling module that is fully credit transferred: the
+reset must pick its own component's summary, not just any summary, or the
+sibling's transfer would lock the component against reporting.
+The fake answers in these shapes; that recording is at the level of the API
+methods, and recording the same case at this level would mean removing a
+result in LADOK's test environment in an attended live run for each shape.
 <<test course result functions>>=
-def test_pull_course_result_raises_if_refresh_result_disappeared():
-  ladok = FakeLadokForCourseResult(
-    student_results_response={
-      "Kursversioner": [{
-        "VersionensModuler": [],
-        "VersionensKurs": {},
-      }],
-    })
-  component = make_course_component_for_test(ladok)
-  component.course.components = lambda **kwargs: [component]
-
-  result = ladok3.CourseResult(
+def make_cached_result_for_test(ladok, component, state="attested"):
+  """Return a result for `component` as it was cached before the user
+  removed it in LADOK: an attested or a finalized F."""
+  data = {
+    "Uid": f"{state}-uid",
+    "UtbildningsinstansUID": "component-instance",
+    "ResultatUID": f"{state}-result",
+    "StudieresultatUID": "study-result",
+    "Betygsgrad": 10,
+    "BetygsskalaID": 1,
+    "Examinationsdatum": "2024-01-15",
+  }
+  if state == "attested":
+    wrapper = {"SenastAttesteradeResultat": data}
+  else:
+    wrapper = {"Arbetsunderlag": dict(data, ProcessStatus=2)}
+  return ladok3.CourseResult(
     ladok=ladok,
     student=types.SimpleNamespace(ladok_id="student-uid"),
     components=[component],
-    ResultatPaUtbildning={
-      "SenastAttesteradeResultat": {
-        "Uid": "attested-uid",
-        "UtbildningsinstansUID": "component-instance",
-        "ResultatUID": "attested-result",
-        "StudieresultatUID": "study-result",
-        "Betygsgrad": 11,
-        "BetygsskalaID": 1,
-        "Examinationsdatum": "2024-01-15",
-      },
-    })
-
-  with pytest.raises(
-      ladok3.LadokNotFoundError,
-      match="DD1315: no result found in LADOK for refresh"):
-    result.pull()
+    ResultatPaUtbildning=wrapper)
 
 
+PARTIAL_TRANSFER = {
+  "HarTillgodoraknande": True,
+  "HeltTillgodoraknad": False,
+  "TotalTillgodoraknadOmfattning": 1.5,
+}
+
+def results_after_removal_for_test(shape="module entry kept"):
+  """Return LADOK's answer after the component's result was removed, in
+  one of the shapes in `REMOVAL_SHAPES`."""
+  modules = [{
+    "UtbildningsinstansUID": "sibling-instance",
+    "ResultatPaUtbildning": {
+      "HarTillgodoraknande": True,
+      "HeltTillgodoraknad": True,
+      "TotalTillgodoraknadOmfattning": 3.0,
+    },
+  }]
+  course = {}
+  own_entry = {"UtbildningsinstansUID": "component-instance",
+               "ResultatPaUtbildning": dict(PARTIAL_TRANSFER)}
+  if shape == "module entry kept":
+    modules.append(own_entry)
+  elif shape == "course entry kept":
+    course = own_entry
+  return {"Kursversioner": [{"VersionensModuler": modules,
+                             "VersionensKurs": course}]}
+
+REMOVAL_SHAPES = {
+  "module entry kept": 1.5,
+  "course entry kept": 1.5,
+  "entry dropped": 0.0,
+}
+
+
+@pytest.mark.parametrize("shape", REMOVAL_SHAPES)
+def test_pull_course_result_becomes_empty_if_result_removed(shape):
+  ladok = FakeLadokForCourseResult()
+  component = make_course_component_for_test(ladok)
+  component.course.components = lambda **kwargs: [component]
+  result = make_cached_result_for_test(ladok, component)
+  assert result.attested and result.grade == "F"
+
+  ladok.set_student_results_response(results_after_removal_for_test(shape))
+  result.pull()
+
+  assert result.grade is None
+  assert result.date is None
+  assert result.attested == False
+  assert result.finalized == False
+  assert result.fully_credit_transferred == False
+  assert result.transferred_credits == REMOVAL_SHAPES[shape]
+  assert result.credit_transferred == bool(REMOVAL_SHAPES[shape])
+@
+
+Becoming empty is only half of the fix; the point is that the next grade
+creates a new result in LADOK.
+If the object kept the deleted result's identifier, [[push]] would try to
+update a result that no longer exists.
+The fake therefore records every result it is asked to create and refuses
+every update.
+<<[[FakeLadokForCourseResult]] write methods>>=
+def create_result_JSON(self, student_id, course_instance_id, component_id,
+                       grade_id, date):
+  self.created.append(
+    (student_id, course_instance_id, component_id, grade_id, date))
+  return {
+    "Uid": "new-uid",
+    "UtbildningsinstansUID": component_id,
+    "ResultatUID": "new-result",
+    "StudieresultatUID": "study-result",
+    "ProcessStatus": 1,
+    "Betygsgrad": grade_id,
+    "BetygsskalaID": 1,
+    "Examinationsdatum": date,
+  }
+
+def update_result_JSON(self, result_id, *args, **kwargs):
+  raise AssertionError(f"tried to update removed result {result_id}")
+<<test course result functions>>=
+def test_course_result_removed_in_ladok_is_created_anew():
+  ladok = FakeLadokForCourseResult()
+  component = make_course_component_for_test(ladok)
+  component.course.components = lambda **kwargs: [component]
+  result = make_cached_result_for_test(ladok, component)
+  ladok.set_student_results_response(results_after_removal_for_test())
+
+  result.pull()
+  result.set_grade("P", "2024-02-01")
+
+  assert ladok.created == [("student-uid", "course-instance",
+                            "component-instance", 11, "2024-02-01")]
+  assert result.grade == "P"
+  assert result.attested == False
+@
+
+Finally, the whole flow from the field report, through
+[[ladok3.report.set_grade]] with a real [[CourseResult]]: the cached result
+is a locked F, the user has removed it in LADOK and now reports a P.
+The cached result can be attested or only finalized; both branches of
+[[set_grade]] refresh the result and must then create the new one.
+(The tests of [[set_grade]] itself, in the report chapter, replace the result
+by a fake whose [[pull]] just sets attributes, so they cannot see this.)
+Only the student and the course around the result are stand-ins.
+<<test course result functions>>=
+@pytest.mark.parametrize("state", ["attested", "finalized"])
+def test_report_after_removed_result_creates_new_result(state):
+  ladok = FakeLadokForCourseResult()
+  component = make_course_component_for_test(ladok)
+  component.course.components = lambda **kwargs: [component]
+  result = make_cached_result_for_test(ladok, component, state)
+  course = types.SimpleNamespace(start=datetime.date(2024, 1, 15),
+                                 results=lambda **kwargs: [result])
+  student = types.SimpleNamespace(courses=lambda **kwargs: [course])
+  ladok.get_student = lambda student_id: student
+  ladok.set_student_results_response(results_after_removal_for_test())
+  args = types.SimpleNamespace(finalize=False, verbose=0)
+
+  ladok3.report.set_grade(ladok, args, "191212121212", "DD1315", "DD1315",
+                          "P", "2024-02-01", [])
+
+  assert ladok.created == [("student-uid", "course-instance",
+                            "component-instance", 11, "2024-02-01")]
+  assert result.grade == "P"
+@
+
+The transactional refresh must still keep the old state when the refresh
+really fails.
+This test used to provoke the failure with a result missing from LADOK's
+answer; now that a missing result is a valid answer, it fails the request
+itself instead, which is what a network or server error does.
+<<test course result functions>>=
 def test_pull_course_result_keeps_state_if_refresh_fails():
-  ladok = FakeLadokForCourseResult(
-    student_results_response={
-      "Kursversioner": [{
-        "VersionensModuler": [],
-        "VersionensKurs": {},
-      }],
-    })
+  ladok = FakeLadokForCourseResult()
+  def fail(*args, **kwargs):
+    raise ladok3.LadokAPIError("LADOK unavailable")
+  ladok.student_results_JSON = fail
   component = make_course_component_for_test(ladok)
   component.course.components = lambda **kwargs: [component]
 
@@ -5195,9 +5397,7 @@ def test_pull_course_result_keeps_state_if_refresh_fails():
       },
     })
 
-  with pytest.raises(
-      ladok3.LadokNotFoundError,
-      match="DD1315: no result found in LADOK for refresh"):
+  with pytest.raises(ladok3.LadokAPIError, match="LADOK unavailable"):
     result.pull()
 
   assert result.attested == True
