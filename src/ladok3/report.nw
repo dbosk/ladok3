@@ -411,6 +411,9 @@ the cached attestation is stale.  That refresh serves two purposes:
 \item It lets the reporter fix the underlying problem in LADOK (remove
   the attested result, re-attest with the right date) and re-run the
   command without clearing the whole cached session.
+  A removed result comes back from the refresh as an empty result
+  (\cref{CourseResultRemoved}), so the next iteration reports the
+  requested grade as a new draft.
 \item If the cached attestation is stale, the next loop iteration will
   continue from the refreshed draft or finalized state instead, so we
   don't warn or raise about state that no longer exists.
@@ -459,7 +462,8 @@ credit transfer.
 Then the refresh-and-compare dance above makes no sense: there is no
 ordinary attested result to compare grades and dates against, and a
 transfer-only component has no result payload to refresh, so [[pull()]]
-would only fail with not-found.
+would only turn it into the empty, still transferred, result it already
+is.
 We therefore reject such reporting outright, and we do so before even
 normalizing the date: date normalization can log a warning about dates
 before the course start, which would be noise for a component we are about
@@ -818,21 +822,25 @@ def test_set_grade_retries_after_stale_attested_result():
   assert component.pull_calls == 1
   assert component.set_calls == [("P", datetime.date(2024, 2, 1))]
   assert component.finalize_calls == []
+@
 
-
-def test_set_grade_propagates_missing_result_after_refresh():
+When the reporter has removed the locked result in LADOK, the refresh turns
+the cached result into an empty one (\cref{CourseResultRemoved}), and the loop
+reports the requested grade as a new result.
+That needs a real [[CourseResult]], so the test is in the chapter on results.
+A refresh that fails, on the other hand, tells us nothing about the result, so the
+loop must not guess: the error reaches the reporter and nothing is written.
+<<test functions>>=
+def test_set_grade_propagates_failed_refresh():
   component = FakeComponent(
     grade="F", attested=True, finalized=True, date="2024-01-20",
-    pull_exception=ladok3.LadokNotFoundError(
-      "DD1315: no result found in LADOK for refresh"))
+    pull_exception=ladok3.LadokAPIError("LADOK unavailable"))
   course = FakeCourse(component)
   student = FakeStudent(course)
   ladok = FakeLadok(student)
   args = types.SimpleNamespace(finalize=False, verbose=0)
 
-  with pytest.raises(
-      ladok3.LadokNotFoundError,
-      match="DD1315: no result found in LADOK for refresh"):
+  with pytest.raises(ladok3.LadokAPIError, match="LADOK unavailable"):
     ladok3.report.set_grade(
       ladok, args, "191212121212", "DD1315", "DD1315", "P",
       "2024-02-01", [])
